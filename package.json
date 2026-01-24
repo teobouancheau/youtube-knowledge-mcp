@@ -1,0 +1,79 @@
+{
+  "name": "youtube-knowledge-extractor",
+  "version": "1.0.0",
+  "description": "MCP Server for extracting and managing YouTube video knowledge",
+  "author": "teobouancheau",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/teobouancheau/youtube-knowledge-extractor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/teobouancheau/youtube-knowledge-extractor/issues"
+  },
+  "homepage": "https://github.com/teobouancheau/youtube-knowledge-extractor#readme",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "youtube",
+    "transcript",
+    "knowledge-management",
+    "claude",
+    "ai"
+  ],
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "youtube-knowledge": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && chmod 755 dist/index.js",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist coverage",
+    "rebuild": "npm run clean && npm run build",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "validate": "npm run typecheck && npm run lint && npm run test",
+    "prepare": "husky"
+  },
+  "files": [
+    "dist"
+  ],
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "execa": "^9.0.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@types/node": "^22.19.7",
+    "@vitest/coverage-v8": "^4.0.18",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "prettier": "^3.8.1",
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.53.1",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
