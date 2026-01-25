@@ -210,7 +210,7 @@ Content is stored in `~/.youtube-knowledge/`:
 "Create a Claude Code skill from this video's content"
 ```
 
-## 🧪 Testing
+## Testing
 
 ```bash
 npm test              # Run all tests
@@ -224,7 +224,7 @@ npm run test:coverage # Coverage report
 - ⚡ **Execution time:** ~100ms
 - 🧰 **Framework:** Vitest
 
-## 💻 Development
+## Development
 
 ```bash
 npm run dev      # Watch mode
