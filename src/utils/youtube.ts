@@ -289,10 +289,39 @@ export async function listFormats(urlOrId: string): Promise<VideoFormat[]> {
     });
 }
 
+export type VideoQuality =
+  | 'best'
+  | '2160p'
+  | '1440p'
+  | '1080p'
+  | '720p'
+  | '480p'
+  | '360p'
+  | 'audio';
+
+// Smart format selectors that use yt-dlp's fallback syntax
+const QUALITY_FORMAT_SELECTORS: Record<VideoQuality, string> = {
+  best: 'bestvideo*+bestaudio/best',
+  '2160p':
+    'bestvideo[height<=2160]+bestaudio/bestvideo*[height<=2160]+bestaudio/best[height<=2160]/bestvideo+bestaudio/best',
+  '1440p':
+    'bestvideo[height<=1440]+bestaudio/bestvideo*[height<=1440]+bestaudio/best[height<=1440]/bestvideo+bestaudio/best',
+  '1080p':
+    'bestvideo[height<=1080]+bestaudio/bestvideo*[height<=1080]+bestaudio/best[height<=1080]/bestvideo+bestaudio/best',
+  '720p':
+    'bestvideo[height<=720]+bestaudio/bestvideo*[height<=720]+bestaudio/best[height<=720]/bestvideo+bestaudio/best',
+  '480p':
+    'bestvideo[height<=480]+bestaudio/bestvideo*[height<=480]+bestaudio/best[height<=480]/bestvideo+bestaudio/best',
+  '360p':
+    'bestvideo[height<=360]+bestaudio/bestvideo*[height<=360]+bestaudio/best[height<=360]/bestvideo+bestaudio/best',
+  audio: 'bestaudio/best',
+};
+
 export async function downloadVideo(
   urlOrId: string,
   formatId: string,
-  outputDir?: string
+  outputDir?: string,
+  quality?: VideoQuality
 ): Promise<DownloadResult> {
   const videoId = extractVideoId(urlOrId);
   const url = `https://www.youtube.com/watch?v=${videoId}`;
@@ -313,17 +342,53 @@ export async function downloadVideo(
   // Download with specified format
   const outputTemplate = join(targetDir, '%(title)s.%(ext)s');
 
-  await execa('yt-dlp', ['-f', formatId, '-o', outputTemplate, '--no-playlist', url]);
+  // Determine format selector - use quality preset or explicit formatId
+  const formatSelector = quality ? QUALITY_FORMAT_SELECTORS[quality] : formatId;
+
+  // Build yt-dlp arguments with merge format for combining video+audio
+  const ytdlpArgs = [
+    '-f',
+    formatSelector,
+    '-o',
+    outputTemplate,
+    '--no-playlist',
+    '--merge-output-format',
+    'mp4', // Ensure merged output is mp4
+  ];
+
+  // Try download, with fallback to best available if format fails
+  try {
+    await execa('yt-dlp', [...ytdlpArgs, url]);
+  } catch (error) {
+    // If specific format failed, try with best available as fallback
+    if (!quality && formatId !== 'best') {
+      console.error(`Format ${formatId} failed, trying best available...`);
+      await execa('yt-dlp', [
+        '-f',
+        QUALITY_FORMAT_SELECTORS.best,
+        '-o',
+        outputTemplate,
+        '--no-playlist',
+        '--merge-output-format',
+        'mp4',
+        url,
+      ]);
+    } else {
+      throw error;
+    }
+  }
 
   // Get the actual filename that was created
   const { stdout: filenameOutput } = await execa('yt-dlp', [
     '-f',
-    formatId,
+    formatSelector,
     '--print',
     'filename',
     '-o',
     outputTemplate,
     '--no-playlist',
+    '--merge-output-format',
+    'mp4',
     url,
   ]);
   const filePath = filenameOutput.trim();
@@ -332,7 +397,7 @@ export async function downloadVideo(
     videoId,
     title,
     filePath,
-    format: formatId,
+    format: quality ?? formatId,
   };
 }
 

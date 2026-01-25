@@ -97,7 +97,7 @@ server.registerTool(
   {
     title: 'Download Video',
     description:
-      'Download a YouTube video with a specific format. Use youtube_list_formats first to see available formats.',
+      'Download a YouTube video. Use quality parameter (best, 1080p, 720p, etc.) for automatic best format selection with fallbacks. Or use formatId for specific formats from youtube_list_formats.',
     inputSchema: downloadVideoSchema,
   },
   downloadVideoHandler

@@ -1,16 +1,16 @@
 {
-  "name": "youtube-knowledge-extractor",
+  "name": "youtube-knowledge-mcp",
   "version": "1.0.0",
   "description": "MCP Server for extracting and managing YouTube video knowledge",
   "author": "teobouancheau",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/teobouancheau/youtube-knowledge-extractor.git"
+    "url": "git+https://github.com/teobouancheau/youtube-knowledge-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/teobouancheau/youtube-knowledge-extractor/issues"
+    "url": "https://github.com/teobouancheau/youtube-knowledge-mcp/issues"
   },
-  "homepage": "https://github.com/teobouancheau/youtube-knowledge-extractor#readme",
+  "homepage": "https://github.com/teobouancheau/youtube-knowledge-mcp#readme",
   "license": "MIT",
   "keywords": [
     "mcp",
@@ -24,7 +24,7 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "youtube-knowledge": "./dist/index.js"
+    "youtube-knowledge-mcp": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && chmod 755 dist/index.js",

@@ -1,15 +1,17 @@
-# YouTube Knowledge Extractor
+# YouTube Knowledge MCP
 
+[![npm version](https://img.shields.io/npm/v/youtube-knowledge-mcp.svg)](https://www.npmjs.com/package/youtube-knowledge-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-green.svg)](https://nodejs.org/)
 
-MCP Server for extracting and managing YouTube video knowledge in Claude Code.
+MCP Server for extracting and managing YouTube video knowledge.
 
 ## Features
 
 - **Fetch videos** from playlists or channels
 - **Get video info** (title, channel, duration, description, tags)
 - **Extract transcripts** (auto-generated or manual captions)
+- **Download videos** with quality selection and format options
 - **Save to library** (summaries, notes, skills)
 - **List library** with tag filtering
 
@@ -20,39 +22,63 @@ MCP Server for extracting and managing YouTube video knowledge in Claude Code.
 
 ## Installation
 
+### Via npm (Recommended)
+
 ```bash
-git clone https://github.com/teobouancheau/youtube-knowledge-extractor.git
-cd youtube-knowledge-extractor
+npm install -g youtube-knowledge-mcp
+```
+
+### Via npx (no installation)
+
+Configure directly with npx (see Configuration section).
+
+### From source
+
+```bash
+git clone https://github.com/teobouancheau/youtube-knowledge-mcp.git
+cd youtube-knowledge-mcp
 npm install
 npm run build
 ```
 
 ## Configuration
 
-### Option 1: Project-level (`.mcp.json`)
+### With npx (Recommended)
 
-Add a `.mcp.json` file to your project root:
+Add to your Claude Code MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "youtube-knowledge": {
+      "command": "npx",
+      "args": ["-y", "youtube-knowledge-mcp"]
+    }
+  }
+}
+```
+
+### With npm global
+
+```json
+{
+  "mcpServers": {
+    "youtube-knowledge": {
+      "command": "youtube-knowledge-mcp"
+    }
+  }
+}
+```
+
+### From source
 
 ```json
 {
   "mcpServers": {
     "youtube-knowledge": {
       "command": "node",
-      "args": ["/path/to/youtube-knowledge-extractor/dist/index.js"]
+      "args": ["/path/to/youtube-knowledge-mcp/dist/index.js"]
     }
-  }
-}
-```
-
-### Option 2: Global configuration
-
-Add to your Claude Code MCP configuration:
-
-```json
-{
-  "youtube-knowledge": {
-    "command": "node",
-    "args": ["/path/to/youtube-knowledge-extractor/dist/index.js"]
   }
 }
 ```
@@ -89,17 +115,39 @@ Extract transcript/subtitles from a YouTube video.
 | `video`    | string | required | Video ID or URL         |
 | `language` | string | "en"     | Preferred language code |
 
+### youtube_list_formats
+
+List available download formats for a YouTube video.
+
+| Parameter | Type   | Description     |
+| --------- | ------ | --------------- |
+| `video`   | string | Video ID or URL |
+
+**Returns:** format IDs, resolutions, codecs, file sizes
+
+### youtube_download_video
+
+Download a YouTube video with quality selection.
+
+| Parameter   | Type   | Default  | Description                                                         |
+| ----------- | ------ | -------- | ------------------------------------------------------------------- |
+| `video`     | string | required | Video ID or URL                                                     |
+| `quality`   | string | "best"   | Quality preset (best, 2160p, 1440p, 1080p, 720p, 480p, 360p, audio) |
+| `formatId`  | string | -        | Specific format code from youtube_list_formats                      |
+| `outputDir` | string | -        | Custom output directory                                             |
+
 ### youtube_save_to_library
 
 Save content to your personal YouTube knowledge library.
 
-| Parameter      | Type     | Description          |
-| -------------- | -------- | -------------------- |
-| `video_id`     | string   | YouTube video ID     |
-| `title`        | string   | Video title          |
-| `content`      | string   | Content to save      |
-| `content_type` | string   | "summary" or "skill" |
-| `tags`         | string[] | Optional tags        |
+| Parameter      | Type     | Description           |
+| -------------- | -------- | --------------------- |
+| `video_id`     | string   | YouTube video ID      |
+| `title`        | string   | Video title           |
+| `content`      | string   | Content to save       |
+| `content_type` | string   | "summary" or "skill"  |
+| `tags`         | string[] | Optional tags         |
+| `channel`      | string   | Optional channel name |
 
 ### youtube_list_library
 
@@ -122,6 +170,8 @@ Content is stored in `~/.youtube-knowledge/`:
 │       ├── metadata.json
 │       ├── summary.md
 │       └── skill.md
+├── downloads/            # Downloaded videos
+│   └── {video_title}.{ext}
 └── index.json            # Searchable index
 ```
 
@@ -137,6 +187,12 @@ Content is stored in `~/.youtube-knowledge/`:
 
 ```
 "Show me the latest videos from @ThePrimeagen"
+```
+
+### Download a video
+
+```
+"Download this video in 1080p: https://youtube.com/watch?v=ABC123"
 ```
 
 ### Save to library

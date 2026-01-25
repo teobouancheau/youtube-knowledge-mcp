@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { listFormats, downloadVideo } from '../utils/youtube.js';
+import { listFormats, downloadVideo, VideoQuality } from '../utils/youtube.js';
 
 // Tool 1: List available formats
 export const listFormatsSchema = {
@@ -69,9 +69,18 @@ export async function listFormatsHandler({ video }: { video: string }) {
 // Tool 2: Download video with selected format
 export const downloadVideoSchema = {
   video: z.string().describe('YouTube video ID or URL'),
+  quality: z
+    .enum(['best', '2160p', '1440p', '1080p', '720p', '480p', '360p', 'audio'])
+    .optional()
+    .describe(
+      'Quality preset (recommended). Uses smart format selection with fallbacks. Options: best, 2160p, 1440p, 1080p, 720p, 480p, 360p, audio'
+    ),
   formatId: z
     .string()
-    .describe('Format code from list_formats (e.g., "22", "137+140" for video+audio merge)'),
+    .optional()
+    .describe(
+      'Advanced: Specific format code from list_formats (e.g., "22", "137+140"). Use quality instead for automatic best format selection.'
+    ),
   outputDir: z
     .string()
     .optional()
@@ -80,23 +89,39 @@ export const downloadVideoSchema = {
 
 export async function downloadVideoHandler({
   video,
+  quality,
   formatId,
   outputDir,
 }: {
   video: string;
-  formatId: string;
+  quality?: VideoQuality;
+  formatId?: string;
   outputDir?: string;
 }) {
-  const result = await downloadVideo(video, formatId, outputDir);
+  // Validate: at least one of quality or formatId must be provided
+  if (!quality && !formatId) {
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: 'Error: Please provide either quality (recommended: "best", "1080p", etc.) or formatId',
+        },
+      ],
+      isError: true,
+    };
+  }
 
-  const lines: string[] = [
-    `✓ Downloaded`,
-    '',
-    result.title,
-    `format ${result.format}`,
-    '',
-    result.filePath,
-  ];
+  // If quality is provided, use it; otherwise use formatId
+  const result = await downloadVideo(
+    video,
+    formatId ?? 'best', // formatId is only used if quality is not provided
+    outputDir,
+    quality
+  );
+
+  const qualityLabel = quality ? `quality: ${quality}` : `format: ${result.format}`;
+
+  const lines: string[] = [`✓ Downloaded`, '', result.title, qualityLabel, '', result.filePath];
 
   return {
     content: [
