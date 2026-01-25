@@ -15,19 +15,20 @@ export async function getTranscriptHandler({
 }) {
   const result = await getTranscript(video, language);
 
-  const output = {
-    videoId: result.videoId,
-    language: result.language,
-    characterCount: result.transcript.length,
-    wordCount: result.transcript.split(/\s+/).length,
-    transcript: result.transcript,
-  };
+  const wordCount = result.transcript.split(/\s+/).length;
+
+  const lines: string[] = [
+    `Transcript (${result.language})`,
+    `${wordCount.toLocaleString()} words`,
+    '',
+    result.transcript,
+  ];
 
   return {
     content: [
       {
         type: 'text' as const,
-        text: JSON.stringify(output, null, 2),
+        text: lines.join('\n'),
       },
     ],
   };

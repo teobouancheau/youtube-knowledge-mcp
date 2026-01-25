@@ -8,25 +8,39 @@ export const listLibrarySchema = {
 export async function listLibraryHandler({ tag }: { tag?: string }) {
   const items = await listLibrary(tag ? { tag } : undefined);
 
-  const output = {
-    count: items.length,
-    items: items.map((item) => ({
-      video_id: item.videoId,
-      title: item.title,
-      channel: item.channel,
-      tags: item.tags,
-      date_saved: item.dateSaved,
-      has_summary: item.hasSummary,
-      has_skill: item.hasSkill,
-      url: item.url,
-    })),
-  };
+  const lines: string[] = [];
+
+  if (items.length === 0) {
+    lines.push('Your library is empty.');
+  } else {
+    const header = tag
+      ? `${items.length} item${items.length !== 1 ? 's' : ''} matching "${tag}"`
+      : `${items.length} item${items.length !== 1 ? 's' : ''} in library`;
+    lines.push(header);
+    lines.push('');
+
+    items.forEach((item, i) => {
+      const types: string[] = [];
+      if (item.hasSummary) types.push('summary');
+      if (item.hasSkill) types.push('skill');
+
+      lines.push(`${i + 1}. ${item.title}`);
+      if (item.channel) {
+        lines.push(`   by ${item.channel}`);
+      }
+      lines.push(`   ${types.join(', ')} · saved ${item.dateSaved}`);
+      if (item.tags.length > 0) {
+        lines.push(`   tags: ${item.tags.join(', ')}`);
+      }
+      lines.push('');
+    });
+  }
 
   return {
     content: [
       {
         type: 'text' as const,
-        text: JSON.stringify(output, null, 2),
+        text: lines.join('\n'),
       },
     ],
   };

@@ -8,23 +8,29 @@ export const getVideoInfoSchema = {
 export async function getVideoInfoHandler({ video }: { video: string }) {
   const info = await getVideoInfo(video);
 
-  const output = {
-    id: info.id,
-    title: info.title,
-    channel: info.channel,
-    duration: info.durationFormatted,
-    date: info.uploadDate,
-    description: info.description,
-    tags: info.tags,
-    url: info.url,
-    thumbnail: info.thumbnailUrl,
-  };
+  const lines: string[] = [
+    info.title,
+    `by ${info.channel}`,
+    '',
+    `${info.durationFormatted} · ${info.uploadDate || 'Unknown date'}`,
+    info.url,
+  ];
+
+  if (info.tags.length > 0) {
+    lines.push('');
+    lines.push(`tags: ${info.tags.join(', ')}`);
+  }
+
+  if (info.description) {
+    lines.push('');
+    lines.push(info.description);
+  }
 
   return {
     content: [
       {
         type: 'text' as const,
-        text: JSON.stringify(output, null, 2),
+        text: lines.join('\n'),
       },
     ],
   };
