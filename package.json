@@ -41,7 +41,8 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "validate": "npm run typecheck && npm run lint && npm run test",
-    "prepare": "husky"
+    "prepare": "husky",
+    "prepublishOnly": "npm run rebuild && npm run validate"
   },
   "files": [
     "dist"
