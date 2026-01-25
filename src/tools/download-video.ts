@@ -98,26 +98,10 @@ export async function downloadVideoHandler({
   formatId?: string;
   outputDir?: string;
 }) {
-  // Validate: at least one of quality or formatId must be provided
-  if (!quality && !formatId) {
-    return {
-      content: [
-        {
-          type: 'text' as const,
-          text: 'Error: Please provide either quality (recommended: "best", "1080p", etc.) or formatId',
-        },
-      ],
-      isError: true,
-    };
-  }
+  // Use "best" as default quality if neither quality nor formatId is provided
+  const effectiveQuality = quality ?? (formatId ? undefined : 'best');
 
-  // If quality is provided, use it; otherwise use formatId
-  const result = await downloadVideo(
-    video,
-    formatId ?? 'best', // formatId is only used if quality is not provided
-    outputDir,
-    quality
-  );
+  const result = await downloadVideo(video, formatId ?? 'best', outputDir, effectiveQuality);
 
   const qualityLabel = quality ? `quality: ${quality}` : `format: ${result.format}`;
 
