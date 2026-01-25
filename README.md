@@ -5,6 +5,8 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-green.svg)](https://nodejs.org/)
 [![GitHub stars](https://img.shields.io/github/stars/teobouancheau/youtube-knowledge-mcp?style=social)](https://github.com/teobouancheau/youtube-knowledge-mcp)
 
+![YouTube Knowledge MCP](https://raw.githubusercontent.com/teobouancheau/youtube-knowledge-mcp/develop/thumbnail.png)
+
 A Model Context Protocol (MCP) server that gives AI assistants the ability to extract knowledge from YouTube videos. Works with Claude Desktop, Claude Code, Cursor and any MCP-compatible client. Fetch video metadata, extract transcripts, download videos, and build a personal knowledge library from YouTube content.
 
 ## Features
@@ -228,7 +230,5 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ---
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/teobouancheau/youtube-knowledge-mcp/develop/thumbnail.png" width="100" style="border-radius:50%">
-  <br><br>
   <strong>Built by <a href="https://github.com/teobouancheau">teobouancheau</a></strong>
 </div>
