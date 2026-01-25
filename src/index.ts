@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import { readFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
@@ -15,9 +18,14 @@ import {
   downloadVideoHandler,
 } from './tools/download-video.js';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')) as {
+  version: string;
+};
+
 const server = new McpServer({
-  name: 'youtube-knowledge-extractor',
-  version: '1.0.0',
+  name: 'youtube-knowledge-mcp',
+  version: pkg.version,
 });
 
 // Tool 1: Fetch videos from playlist or channel

@@ -46,9 +46,9 @@ npm run build
 
 ## Configuration
 
-### With npx (Recommended)
+### Quick Start with npx (Recommended)
 
-Add to your Claude Code MCP configuration:
+No installation needed! Add to your MCP configuration:
 
 ```json
 {
@@ -61,7 +61,11 @@ Add to your Claude Code MCP configuration:
 }
 ```
 
-### With npm global
+### With Global Installation
+
+```bash
+npm install -g youtube-knowledge-mcp
+```
 
 ```json
 {
@@ -73,20 +77,17 @@ Add to your Claude Code MCP configuration:
 }
 ```
 
-### From source
+### Configuration File Locations
 
-```json
-{
-  "mcpServers": {
-    "youtube-knowledge": {
-      "command": "node",
-      "args": ["/path/to/youtube-knowledge-mcp/dist/index.js"]
-    }
-  }
-}
-```
+| Client                       | Path                                                              |
+| ---------------------------- | ----------------------------------------------------------------- |
+| **Claude Desktop (macOS)**   | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| **Claude Desktop (Windows)** | `%APPDATA%\Claude\claude_desktop_config.json`                     |
+| **Claude Desktop (Linux)**   | `~/.config/Claude/claude_desktop_config.json`                     |
+| **Claude Code**              | `.mcp.json` in your project or `~/.claude/settings.json`          |
+| **Cursor**                   | `.cursor/mcp.json` in your project                                |
 
-Then restart Claude Code to load the new MCP server.
+Restart your client after updating configuration.
 
 ## MCP Tools
 
