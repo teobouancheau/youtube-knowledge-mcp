@@ -221,14 +221,33 @@ npm start        # Run the server
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Run tests (`npm test`)
+4. Submit a pull request
 
 ## License
 
-[MIT](LICENSE) © 2026 teobouancheau
+MIT License - see [LICENSE](LICENSE) for details.
+
+**Attribution appreciated!** If you use YouTube Knowledge MCP, consider:
+
+- ⭐ Starring this repository
+- 💬 Mentioning it in your project
+- 🔗 Linking back to this repo
+
+## Acknowledgments
+
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) for the powerful YouTube extraction
+- [Anthropic](https://anthropic.com) for the Model Context Protocol
+- All contributors and users of this project
 
 ---
 
 <div align="center">
-  <strong>Built by <a href="https://github.com/teobouancheau">teobouancheau</a></strong>
+  <strong>Built with ❤️ by <a href="https://github.com/teobouancheau">teobouancheau</a> for the YouTube community</strong>
+  <br>
+  <sub>AI + YouTube knowledge to supercharge content creation</sub>
 </div>
