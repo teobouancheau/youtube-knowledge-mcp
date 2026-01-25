@@ -8,6 +8,12 @@ import { getVideoInfoSchema, getVideoInfoHandler } from './tools/get-video-info.
 import { getTranscriptSchema, getTranscriptHandler } from './tools/get-transcript.js';
 import { saveToLibrarySchema, saveToLibraryHandler } from './tools/save-to-library.js';
 import { listLibrarySchema, listLibraryHandler } from './tools/list-library.js';
+import {
+  listFormatsSchema,
+  listFormatsHandler,
+  downloadVideoSchema,
+  downloadVideoHandler,
+} from './tools/download-video.js';
 
 const server = new McpServer({
   name: 'youtube-knowledge-extractor',
@@ -71,6 +77,30 @@ server.registerTool(
     inputSchema: listLibrarySchema,
   },
   listLibraryHandler
+);
+
+// Tool 6: List video formats
+server.registerTool(
+  'youtube_list_formats',
+  {
+    title: 'List Video Formats',
+    description:
+      'List available download formats for a YouTube video. Returns format IDs, resolutions, codecs, and file sizes.',
+    inputSchema: listFormatsSchema,
+  },
+  listFormatsHandler
+);
+
+// Tool 7: Download video
+server.registerTool(
+  'youtube_download_video',
+  {
+    title: 'Download Video',
+    description:
+      'Download a YouTube video with a specific format. Use youtube_list_formats first to see available formats.',
+    inputSchema: downloadVideoSchema,
+  },
+  downloadVideoHandler
 );
 
 // Connect via stdio transport

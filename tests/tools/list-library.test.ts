@@ -5,28 +5,12 @@ vi.mock('../../src/utils/storage.js', () => ({
   listLibrary: vi.fn(),
 }));
 
-interface LibraryOutputItem {
-  video_id: string;
-  title: string;
-  channel: string;
-  tags: string[];
-  date_saved: string;
-  has_summary: boolean;
-  has_skill: boolean;
-  url: string;
-}
-
-interface ListLibraryOutput {
-  count: number;
-  items: LibraryOutputItem[];
-}
-
 describe('list-library tool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should return library items', async () => {
+  it('should return library items as human-readable text', async () => {
     const { listLibrary } = await import('../../src/utils/storage.js');
     vi.mocked(listLibrary).mockResolvedValue([
       {
@@ -46,9 +30,11 @@ describe('list-library tool', () => {
     const result = await listLibraryHandler({});
 
     expect(result.content).toHaveLength(1);
-    const parsed = JSON.parse(result.content[0].text) as ListLibraryOutput;
-    expect(parsed.count).toBe(1);
-    expect(parsed.items[0].video_id).toBe('vid1');
+    const text = result.content[0].text;
+    expect(text).toContain('1 item in library');
+    expect(text).toContain('Video 1');
+    expect(text).toContain('by Channel 1');
+    expect(text).toContain('tags: tag1');
   });
 
   it('should filter by tag', async () => {
@@ -61,15 +47,14 @@ describe('list-library tool', () => {
     expect(listLibrary).toHaveBeenCalledWith({ tag: 'programming' });
   });
 
-  it('should return empty list when library is empty', async () => {
+  it('should return empty message when library is empty', async () => {
     const { listLibrary } = await import('../../src/utils/storage.js');
     vi.mocked(listLibrary).mockResolvedValue([]);
 
     const { listLibraryHandler } = await import('../../src/tools/list-library.js');
     const result = await listLibraryHandler({});
 
-    const parsed = JSON.parse(result.content[0].text) as ListLibraryOutput;
-    expect(parsed.count).toBe(0);
-    expect(parsed.items).toEqual([]);
+    const text = result.content[0].text;
+    expect(text).toContain('Your library is empty');
   });
 });

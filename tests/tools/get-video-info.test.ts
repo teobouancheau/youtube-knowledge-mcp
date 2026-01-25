@@ -5,24 +5,12 @@ vi.mock('../../src/utils/youtube.js', () => ({
   getVideoInfo: vi.fn(),
 }));
 
-interface VideoInfoOutput {
-  id: string;
-  title: string;
-  channel: string;
-  duration: string;
-  date: string;
-  description: string;
-  tags: string[];
-  url: string;
-  thumbnail: string;
-}
-
 describe('get-video-info tool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should return video info as JSON', async () => {
+  it('should return video info as human-readable text', async () => {
     const { getVideoInfo } = await import('../../src/utils/youtube.js');
     vi.mocked(getVideoInfo).mockResolvedValue({
       id: 'test123',
@@ -43,10 +31,11 @@ describe('get-video-info tool', () => {
     expect(result.content).toHaveLength(1);
     expect(result.content[0].type).toBe('text');
 
-    const parsed = JSON.parse(result.content[0].text) as VideoInfoOutput;
-    expect(parsed.id).toBe('test123');
-    expect(parsed.title).toBe('Test Video');
-    expect(parsed.channel).toBe('Test Channel');
+    const text = result.content[0].text;
+    expect(text).toContain('Test Video');
+    expect(text).toContain('by Test Channel');
+    expect(text).toContain('5:00');
+    expect(text).toContain('tags: test, demo');
   });
 
   it('should handle YouTube URLs', async () => {

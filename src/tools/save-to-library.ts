@@ -37,18 +37,24 @@ export async function saveToLibraryHandler({
     tags,
   });
 
-  const output = {
-    saved: result.saved,
-    path: result.path,
-    videoId: video_id,
-    contentType: content_type,
-  };
+  const lines: string[] = [`✓ Saved ${content_type} to library`, '', title];
+
+  if (channel) {
+    lines.push(`by ${channel}`);
+  }
+
+  if (tags && tags.length > 0) {
+    lines.push(`tags: ${tags.join(', ')}`);
+  }
+
+  lines.push('');
+  lines.push(result.path);
 
   return {
     content: [
       {
         type: 'text' as const,
-        text: JSON.stringify(output, null, 2),
+        text: lines.join('\n'),
       },
     ],
   };

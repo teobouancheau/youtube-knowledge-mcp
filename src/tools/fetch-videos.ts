@@ -9,22 +9,20 @@ export const fetchVideosSchema = {
 export async function fetchVideosHandler({ url, limit }: { url: string; limit: number }) {
   const videos = await listVideos(url, limit);
 
-  const output = {
-    count: videos.length,
-    videos: videos.map((v) => ({
-      id: v.id,
-      title: v.title,
-      duration: v.durationFormatted,
-      date: v.uploadDate,
-      url: v.url,
-    })),
-  };
+  const lines: string[] = [`✓ Found ${videos.length} video${videos.length !== 1 ? 's' : ''}`, ''];
+
+  videos.forEach((v, i) => {
+    lines.push(`${i + 1}. ${v.title}`);
+    lines.push(`   ${v.durationFormatted} · ${v.uploadDate || 'Unknown date'}`);
+    lines.push(`   ${v.url}`);
+    lines.push('');
+  });
 
   return {
     content: [
       {
         type: 'text' as const,
-        text: JSON.stringify(output, null, 2),
+        text: lines.join('\n'),
       },
     ],
   };

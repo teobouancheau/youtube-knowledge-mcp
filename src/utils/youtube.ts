@@ -34,6 +34,24 @@ export interface TranscriptResult {
   videoId: string;
 }
 
+export interface VideoFormat {
+  formatId: string;
+  ext: string;
+  resolution: string;
+  fps?: number;
+  vcodec: string;
+  acodec: string;
+  filesize?: number;
+  note: string;
+}
+
+export interface DownloadResult {
+  videoId: string;
+  title: string;
+  filePath: string;
+  format: string;
+}
+
 function extractVideoId(urlOrId: string): string {
   // If it's already an ID (11 characters, no special chars except - and _)
   if (/^[a-zA-Z0-9_-]{11}$/.test(urlOrId)) {
@@ -225,6 +243,97 @@ export async function getTranscript(
       `Failed to get transcript for ${videoId}: ${error instanceof Error ? error.message : String(error)}`
     );
   }
+}
+
+const DOWNLOADS_DIR = join(homedir(), '.youtube-knowledge', 'downloads');
+
+interface YtDlpFormat {
+  format_id: string;
+  ext: string;
+  resolution?: string;
+  width?: number;
+  height?: number;
+  fps?: number;
+  vcodec?: string;
+  acodec?: string;
+  filesize?: number;
+  filesize_approx?: number;
+  format_note?: string;
+}
+
+export async function listFormats(urlOrId: string): Promise<VideoFormat[]> {
+  const videoId = extractVideoId(urlOrId);
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+
+  const { stdout } = await execa('yt-dlp', ['-j', '--skip-download', url]);
+
+  const data = JSON.parse(stdout) as { formats?: YtDlpFormat[] };
+  const formats = data.formats ?? [];
+
+  return formats
+    .filter((f) => !f.format_id.startsWith('sb')) // skip storyboards
+    .map((f) => {
+      const resolution =
+        f.resolution ?? (f.width && f.height ? `${f.width}x${f.height}` : 'audio only');
+
+      return {
+        formatId: f.format_id,
+        ext: f.ext,
+        resolution,
+        fps: f.fps,
+        vcodec: f.vcodec ?? 'none',
+        acodec: f.acodec ?? 'none',
+        filesize: f.filesize ?? f.filesize_approx,
+        note: f.format_note ?? '',
+      };
+    });
+}
+
+export async function downloadVideo(
+  urlOrId: string,
+  formatId: string,
+  outputDir?: string
+): Promise<DownloadResult> {
+  const videoId = extractVideoId(urlOrId);
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+  const targetDir = outputDir ?? DOWNLOADS_DIR;
+
+  // Ensure download directory exists
+  await mkdir(targetDir, { recursive: true });
+
+  // Get video title first for the result
+  const { stdout: titleOutput } = await execa('yt-dlp', [
+    '--skip-download',
+    '--print',
+    '%(title)s',
+    url,
+  ]);
+  const title = titleOutput.trim();
+
+  // Download with specified format
+  const outputTemplate = join(targetDir, '%(title)s.%(ext)s');
+
+  await execa('yt-dlp', ['-f', formatId, '-o', outputTemplate, '--no-playlist', url]);
+
+  // Get the actual filename that was created
+  const { stdout: filenameOutput } = await execa('yt-dlp', [
+    '-f',
+    formatId,
+    '--print',
+    'filename',
+    '-o',
+    outputTemplate,
+    '--no-playlist',
+    url,
+  ]);
+  const filePath = filenameOutput.trim();
+
+  return {
+    videoId,
+    title,
+    filePath,
+    format: formatId,
+  };
 }
 
 function parseVtt(vttContent: string): string {
