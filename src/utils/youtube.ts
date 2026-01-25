@@ -346,14 +346,17 @@ export async function downloadVideo(
   const formatSelector = quality ? QUALITY_FORMAT_SELECTORS[quality] : formatId;
 
   // Build yt-dlp arguments with merge format for combining video+audio
+  // -S vcodec:h264,acodec:m4a prefers H.264+AAC codecs compatible with MP4
   const ytdlpArgs = [
     '-f',
     formatSelector,
+    '-S',
+    'vcodec:h264,acodec:m4a',
     '-o',
     outputTemplate,
     '--no-playlist',
     '--merge-output-format',
-    'mp4', // Ensure merged output is mp4
+    'mp4',
   ];
 
   // Try download, with fallback to best available if format fails
@@ -366,6 +369,8 @@ export async function downloadVideo(
       await execa('yt-dlp', [
         '-f',
         QUALITY_FORMAT_SELECTORS.best,
+        '-S',
+        'vcodec:h264,acodec:m4a',
         '-o',
         outputTemplate,
         '--no-playlist',
