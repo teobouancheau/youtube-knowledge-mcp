@@ -228,7 +228,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ---
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/teobouancheau/youtube-knowledge-mcp/main/thumbnail.png" width="100" style="border-radius:50%">
+  <img src="https://raw.githubusercontent.com/teobouancheau/youtube-knowledge-mcp/develop/thumbnail.png" width="100" style="border-radius:50%">
   <br><br>
   <strong>Built by <a href="https://github.com/teobouancheau">teobouancheau</a></strong>
 </div>
