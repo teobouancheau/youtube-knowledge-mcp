@@ -339,7 +339,7 @@ function startHttp(): void {
       handler: (req: IncomingMessage & { body?: unknown }, res: ServerResponse) => Promise<void>
     ) => void;
     listen: (port: number, cb: () => void) => void;
-  } = createMcpExpressApp();
+  } = createMcpExpressApp({ host: '0.0.0.0' });
 
   const transports = new Map<string, StreamableHTTPServerTransport>();
 
