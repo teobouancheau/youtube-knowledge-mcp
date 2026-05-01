@@ -1,9 +1,15 @@
 import { z } from 'zod';
 import { getTranscript } from '../utils/youtube.js';
+import { textContent } from '../utils/format.js';
 
 export const getTranscriptSchema = {
-  video: z.string().describe('YouTube video ID or URL'),
-  language: z.string().default('en').describe('Preferred language code (e.g., en, fr, es)'),
+  video: z.string().describe('YouTube video ID (e.g., dQw4w9WgXcQ) or full URL'),
+  language: z
+    .string()
+    .default('en')
+    .describe(
+      'Preferred caption language as ISO 639-1 code (e.g., en, fr, es, de). Falls back to available language if unavailable. Default: en'
+    ),
 };
 
 export async function getTranscriptHandler({
@@ -24,12 +30,5 @@ export async function getTranscriptHandler({
     result.transcript,
   ];
 
-  return {
-    content: [
-      {
-        type: 'text' as const,
-        text: lines.join('\n'),
-      },
-    ],
-  };
+  return textContent(lines.join('\n'));
 }

@@ -24,11 +24,6 @@ export interface LibraryIndex {
   items: Record<string, LibraryMetadata>;
 }
 
-export interface LibraryItem extends LibraryMetadata {
-  summary?: string;
-  skill?: string;
-}
-
 async function ensureDirectories(): Promise<void> {
   await mkdir(BASE_DIR, { recursive: true });
   await mkdir(LIBRARY_DIR, { recursive: true });
@@ -147,48 +142,4 @@ export async function listLibrary(filter?: { tag?: string }): Promise<LibraryMet
   items.sort((a, b) => new Date(b.dateSaved).getTime() - new Date(a.dateSaved).getTime());
 
   return items;
-}
-
-export async function getFromLibrary(videoId: string): Promise<LibraryItem | null> {
-  const index = await loadIndex();
-
-  if (!Object.hasOwn(index.items, videoId)) {
-    return null;
-  }
-
-  const metadata = index.items[videoId];
-  const itemDir = join(LIBRARY_DIR, videoId);
-  const item: LibraryItem = { ...metadata };
-
-  // Load summary if exists
-  const summaryPath = join(itemDir, 'summary.md');
-  if (existsSync(summaryPath)) {
-    item.summary = await readFile(summaryPath, 'utf-8');
-  }
-
-  // Load skill if exists
-  const skillPath = join(itemDir, 'skill.md');
-  if (existsSync(skillPath)) {
-    item.skill = await readFile(skillPath, 'utf-8');
-  }
-
-  return item;
-}
-
-export async function deleteFromLibrary(videoId: string): Promise<boolean> {
-  const index = await loadIndex();
-
-  if (!Object.hasOwn(index.items, videoId)) {
-    return false;
-  }
-
-  // Create new items object without the deleted videoId
-  const { [videoId]: _removed, ...remainingItems } = index.items;
-  index.items = remainingItems;
-  await saveIndex(index);
-
-  // Note: We don't delete the files, just remove from index
-  // This allows recovery if needed
-
-  return true;
 }
