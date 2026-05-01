@@ -1,9 +1,19 @@
 import { z } from 'zod';
 import { listVideos } from '../utils/youtube.js';
+import { textContent } from '../utils/format.js';
 
 export const fetchVideosSchema = {
-  url: z.string().describe('YouTube playlist or channel URL'),
-  limit: z.number().min(1).max(100).default(20).describe('Maximum number of videos to fetch'),
+  url: z
+    .string()
+    .describe(
+      'YouTube playlist URL, channel URL, or channel handle (e.g., https://www.youtube.com/@channel)'
+    ),
+  limit: z
+    .number()
+    .min(1)
+    .max(100)
+    .default(20)
+    .describe('Maximum number of videos to return (1-100, default: 20)'),
 };
 
 export async function fetchVideosHandler({ url, limit }: { url: string; limit: number }) {
@@ -18,12 +28,5 @@ export async function fetchVideosHandler({ url, limit }: { url: string; limit: n
     lines.push('');
   });
 
-  return {
-    content: [
-      {
-        type: 'text' as const,
-        text: lines.join('\n'),
-      },
-    ],
-  };
+  return textContent(lines.join('\n'));
 }

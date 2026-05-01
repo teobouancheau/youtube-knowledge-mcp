@@ -5,18 +5,25 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-green.svg)](https://nodejs.org/)
 [![GitHub stars](https://img.shields.io/github/stars/teobouancheau/youtube-knowledge-mcp?style=social)](https://github.com/teobouancheau/youtube-knowledge-mcp)
 
-A Model Context Protocol (MCP) server that gives AI assistants the ability to extract knowledge from YouTube videos. Works with Claude Desktop, Claude Code, Cursor and any MCP-compatible client. Fetch video metadata, extract transcripts, download videos, and build a personal knowledge library from YouTube content.
+A Model Context Protocol (MCP) server that gives AI assistants the ability to search, analyze, and extract knowledge from YouTube videos. Works with Claude Desktop, Claude Code, Claude.ai, Cursor and any MCP-compatible client.
+
+Supports both **local** (stdio) and **remote** (Streamable HTTP) transports.
 
 ![YouTube Knowledge MCP](https://raw.githubusercontent.com/teobouancheau/youtube-knowledge-mcp/main/thumbnail.png)
 
 ## Features
 
+- **Search videos** by keyword or phrase
 - **Fetch videos** from playlists or channels
-- **Get video info** (title, channel, duration, description, tags)
+- **Get video info** (title, channel, duration, views, likes, comments, description, tags)
 - **Extract transcripts** (auto-generated or manual captions)
-- **Download videos** with quality selection and format options
-- **Save to library** (summaries, notes, skills)
-- **List library** with tag filtering
+- **Get chapters** (timestamps and structure)
+- **Get comments** (top comments sorted by popularity)
+- **Get channel info** (name, handle, subscriber count, description)
+- **List formats** (available download resolutions and codecs)
+- **Download videos** with quality selection (local mode only)
+- **Save to library** (summaries, notes, skills) (local mode only)
+- **List library** with tag filtering (local mode only)
 
 ## Prerequisites
 
@@ -46,9 +53,9 @@ npm run build
 
 ## Configuration
 
-### Quick Start with npx (Recommended)
+### Local (stdio) -- Claude Desktop, Claude Code, Cursor
 
-No installation needed! Add to your MCP configuration:
+#### Quick Start with npx
 
 ```json
 {
@@ -61,7 +68,7 @@ No installation needed! Add to your MCP configuration:
 }
 ```
 
-### With Global Installation
+#### With Global Installation
 
 ```bash
 npm install -g youtube-knowledge-mcp
@@ -77,7 +84,7 @@ npm install -g youtube-knowledge-mcp
 }
 ```
 
-### Configuration File Locations
+#### Configuration File Locations
 
 | Client                       | Path                                                              |
 | ---------------------------- | ----------------------------------------------------------------- |
@@ -89,77 +96,183 @@ npm install -g youtube-knowledge-mcp
 
 Restart your client after updating configuration.
 
+### Remote (HTTP) -- Claude.ai, Claude Mobile, Custom Connectors
+
+The server supports Streamable HTTP transport for remote access via Claude's official connectors.
+
+#### Self-hosted
+
+```bash
+npm run build
+npm run start:http
+```
+
+The server listens on `PORT` (default 3000). Set `PORT` environment variable to change.
+
+#### Docker
+
+```bash
+npm run build
+docker build -t youtube-knowledge-mcp .
+docker run -p 3000:10000 youtube-knowledge-mcp
+```
+
+#### Deploy to Render
+
+1. Push to GitHub
+2. Create a **Web Service** on Render with **Docker** runtime
+3. Render sets `PORT` automatically
+4. Add the Render URL as a custom connector in Claude.ai > Settings > Connectors
+
+#### Connect via Claude.ai
+
+1. Go to **Settings > Connectors**
+2. Click **Add custom connector**
+3. Enter your server URL (e.g., `https://your-app.onrender.com/mcp`)
+4. Click **Add**
+
 ## MCP Tools
 
-### youtube_fetch_videos
+### Remote + Local (10 tools)
+
+#### search_videos
+
+Search YouTube for videos by keyword or phrase.
+
+| Parameter | Type   | Default  | Description                      |
+| --------- | ------ | -------- | -------------------------------- |
+| `query`   | string | required | Search query                     |
+| `limit`   | number | 5        | Maximum results to return (1-20) |
+
+**Returns:** video IDs, titles, durations, channels, view counts, URLs
+
+#### fetch_videos
 
 List videos from a YouTube playlist or channel.
 
-| Parameter | Type   | Default  | Description                     |
-| --------- | ------ | -------- | ------------------------------- |
-| `url`     | string | required | YouTube playlist or channel URL |
-| `limit`   | number | 20       | Maximum videos to fetch         |
+| Parameter | Type   | Default  | Description                          |
+| --------- | ------ | -------- | ------------------------------------ |
+| `url`     | string | required | Playlist URL, channel URL, or handle |
+| `limit`   | number | 20       | Maximum videos to return (1-100)     |
 
-### youtube_get_video_info
+#### get_video_info
 
-Get detailed metadata for a YouTube video.
-
-| Parameter | Type   | Description     |
-| --------- | ------ | --------------- |
-| `video`   | string | Video ID or URL |
-
-**Returns:** title, channel, duration, description, tags, thumbnail
-
-### youtube_get_transcript
-
-Extract transcript/subtitles from a YouTube video.
-
-| Parameter  | Type   | Default  | Description             |
-| ---------- | ------ | -------- | ----------------------- |
-| `video`    | string | required | Video ID or URL         |
-| `language` | string | "en"     | Preferred language code |
-
-### youtube_list_formats
-
-List available download formats for a YouTube video.
+Get detailed metadata for a single YouTube video.
 
 | Parameter | Type   | Description     |
 | --------- | ------ | --------------- |
 | `video`   | string | Video ID or URL |
 
-**Returns:** format IDs, resolutions, codecs, file sizes
+**Returns:** title, channel, duration, upload date, view count, like count, comment count, description, tags, thumbnail URL
 
-### youtube_download_video
+#### get_transcript
 
-Download a YouTube video with quality selection.
+Extract the full transcript from a YouTube video.
+
+| Parameter  | Type   | Default  | Description                    |
+| ---------- | ------ | -------- | ------------------------------ |
+| `video`    | string | required | Video ID or URL                |
+| `language` | string | "en"     | Preferred language (ISO 639-1) |
+
+**Returns:** plain text transcript with word count and detected language
+
+#### get_chapters
+
+Extract chapter markers and timestamps from a YouTube video.
+
+| Parameter | Type   | Description     |
+| --------- | ------ | --------------- |
+| `video`   | string | Video ID or URL |
+
+**Returns:** chapter titles with start and end times. Empty list if no chapters found.
+
+#### get_comments
+
+Get top comments from a YouTube video sorted by popularity.
+
+| Parameter | Type   | Default  | Description                                 |
+| --------- | ------ | -------- | ------------------------------------------- |
+| `video`   | string | required | Video ID or URL                             |
+| `limit`   | number | 20       | Maximum top-level comments to return (1-50) |
+
+**Returns:** author, text, like count, pinned status
+
+#### get_channel_info
+
+Get metadata for a YouTube channel.
+
+| Parameter | Type   | Description                                    |
+| --------- | ------ | ---------------------------------------------- |
+| `channel` | string | Channel URL, handle (e.g., @Fireship), or name |
+
+**Returns:** channel name, handle, subscriber count, description, channel URL
+
+#### search_channels
+
+Search YouTube for channels by keyword or phrase.
+
+| Parameter | Type   | Default  | Description                       |
+| --------- | ------ | -------- | --------------------------------- |
+| `query`   | string | required | Search query for channels         |
+| `limit`   | number | 5        | Maximum channels to return (1-20) |
+
+**Returns:** channel names, handles, subscriber counts, descriptions, URLs
+
+#### get_playlist_info
+
+Get metadata for a YouTube playlist.
+
+| Parameter | Type   | Description          |
+| --------- | ------ | -------------------- |
+| `url`     | string | YouTube playlist URL |
+
+**Returns:** title, channel, video count, last updated date, description
+
+#### list_formats
+
+List all available download formats for a YouTube video.
+
+| Parameter | Type   | Description     |
+| --------- | ------ | --------------- |
+| `video`   | string | Video ID or URL |
+
+**Returns:** format IDs, extensions, resolutions, FPS, codecs, file sizes
+
+### Local Only (3 tools, stdio mode)
+
+These tools operate on the local filesystem and are only available in stdio mode.
+
+#### download_video
+
+Download a YouTube video to local disk.
 
 | Parameter   | Type   | Default  | Description                                                         |
 | ----------- | ------ | -------- | ------------------------------------------------------------------- |
 | `video`     | string | required | Video ID or URL                                                     |
 | `quality`   | string | "best"   | Quality preset (best, 2160p, 1440p, 1080p, 720p, 480p, 360p, audio) |
-| `formatId`  | string | -        | Specific format code from youtube_list_formats                      |
+| `formatId`  | string | -        | Specific format code from list_formats                              |
 | `outputDir` | string | -        | Custom output directory                                             |
 
-### youtube_save_to_library
+#### save_to_library
 
-Save content to your personal YouTube knowledge library.
+Save a summary or skill note to your local YouTube knowledge library.
 
-| Parameter      | Type     | Description           |
-| -------------- | -------- | --------------------- |
-| `video_id`     | string   | YouTube video ID      |
-| `title`        | string   | Video title           |
-| `content`      | string   | Content to save       |
-| `content_type` | string   | "summary" or "skill"  |
-| `tags`         | string[] | Optional tags         |
-| `channel`      | string   | Optional channel name |
+| Parameter      | Type     | Description                        |
+| -------------- | -------- | ---------------------------------- |
+| `video_id`     | string   | YouTube video ID                   |
+| `title`        | string   | Video title                        |
+| `content`      | string   | Content to save (markdown format)  |
+| `content_type` | string   | "summary" or "skill"               |
+| `tags`         | string[] | Tags for categorization (optional) |
+| `channel`      | string   | Channel name (optional)            |
 
-### youtube_list_library
+#### list_library
 
-List all saved items in your library.
+List all saved items in your local knowledge library.
 
-| Parameter | Type   | Description            |
-| --------- | ------ | ---------------------- |
-| `tag`     | string | Optional filter by tag |
+| Parameter | Type   | Description                             |
+| --------- | ------ | --------------------------------------- |
+| `tag`     | string | Filter by tag (optional, partial match) |
 
 ## Library Storage
 
@@ -181,34 +294,34 @@ Content is stored in `~/.youtube-knowledge/`:
 
 ## Usage Examples
 
-### Quick summary
+### Search and analyze
 
 ```
-"Summarize this video: https://youtube.com/watch?v=ABC123"
+"Search YouTube for 'transformer architecture explained' and summarize the top result"
 ```
 
 ### Explore a channel
 
 ```
-"Show me the latest videos from @ThePrimeagen"
+"Show me the latest videos from @ThePrimeagen and get the chapters for the most recent one"
 ```
 
-### Download a video
+### Deep content analysis
+
+```
+"Get the transcript and chapters for this video, then create a structured summary"
+```
+
+### Audience sentiment
+
+```
+"What are the top comments on this video? What does the audience think?"
+```
+
+### Download a video (local only)
 
 ```
 "Download this video in 1080p: https://youtube.com/watch?v=ABC123"
-```
-
-### Save to library
-
-```
-"Save this summary with tags: programming, productivity"
-```
-
-### Create a skill
-
-```
-"Create a Claude Code skill from this video's content"
 ```
 
 ## Testing
@@ -219,19 +332,15 @@ npm run test:watch    # Watch mode
 npm run test:coverage # Coverage report
 ```
 
-**Test Suite:**
-
-- ✅ **11 tests** passing
-- ⚡ **Execution time:** ~100ms
-- 🧰 **Framework:** Vitest
-
 ## Development
 
 ```bash
-npm run dev      # Watch mode
-npm run build    # Build for production
-npm run rebuild  # Clean and rebuild
-npm start        # Run the server
+npm run dev        # Watch mode
+npm run build      # Build for production
+npm run rebuild    # Clean and rebuild
+npm start          # Run server (stdio)
+npm run start:http # Run server (HTTP)
+npm run validate   # Typecheck + lint + test
 ```
 
 ## Contributing
@@ -240,29 +349,14 @@ Contributions are welcome! Please:
 
 1. Fork the repository
 2. Create a feature branch
-3. Run tests (`npm test`)
+3. Run tests (`npm run validate`)
 4. Submit a pull request
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
-**Attribution appreciated!** If you use YouTube Knowledge MCP, consider:
-
-- ⭐ Starring this repository
-- 💬 Mentioning it in your project
-- 🔗 Linking back to this repo
-
 ## Acknowledgments
 
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) for the powerful YouTube extraction
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) for YouTube extraction
 - [Anthropic](https://anthropic.com) for the Model Context Protocol
-- All contributors and users of this project
-
----
-
-<div align="center">
-  <strong>Built with ❤️ by <a href="https://github.com/teobouancheau">teobouancheau</a> for the YouTube community</strong>
-  <br>
-  <sub>AI + YouTube knowledge to supercharge content creation</sub>
-</div>

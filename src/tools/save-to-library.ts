@@ -1,16 +1,24 @@
 import { z } from 'zod';
 import { saveToLibrary } from '../utils/storage.js';
+import { textContent } from '../utils/format.js';
 
 export const saveToLibrarySchema = {
-  video_id: z.string().describe('YouTube video ID'),
-  title: z.string().describe('Video title'),
-  content: z.string().describe('Content to save (summary, notes, or skill)'),
+  video_id: z.string().describe('YouTube video ID (e.g., dQw4w9WgXcQ)'),
+  title: z.string().describe('Video title for library indexing'),
+  content: z
+    .string()
+    .describe('Content to save: summary, notes, or extracted skill in markdown format'),
   content_type: z
     .enum(['summary', 'skill'])
     .default('summary')
-    .describe('Type of content being saved'),
-  channel: z.string().optional().describe('Channel name'),
-  tags: z.array(z.string()).optional().describe('Tags for categorization'),
+    .describe(
+      'Type of content: "summary" for video summaries, "skill" for extracted techniques or knowledge'
+    ),
+  channel: z.string().optional().describe('YouTube channel name for library indexing'),
+  tags: z
+    .array(z.string())
+    .optional()
+    .describe('Tags for categorization and filtering (e.g., ["machine-learning", "tutorial"])'),
 };
 
 export async function saveToLibraryHandler({
@@ -50,12 +58,5 @@ export async function saveToLibraryHandler({
   lines.push('');
   lines.push(result.path);
 
-  return {
-    content: [
-      {
-        type: 'text' as const,
-        text: lines.join('\n'),
-      },
-    ],
-  };
+  return textContent(lines.join('\n'));
 }

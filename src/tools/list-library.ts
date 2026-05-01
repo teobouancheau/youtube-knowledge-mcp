@@ -1,8 +1,14 @@
 import { z } from 'zod';
 import { listLibrary } from '../utils/storage.js';
+import { textContent } from '../utils/format.js';
 
 export const listLibrarySchema = {
-  tag: z.string().optional().describe('Filter by tag (partial match)'),
+  tag: z
+    .string()
+    .optional()
+    .describe(
+      'Filter results by tag. Case-insensitive partial match (e.g., "ml" matches "machine-learning")'
+    ),
 };
 
 export async function listLibraryHandler({ tag }: { tag?: string }) {
@@ -36,12 +42,5 @@ export async function listLibraryHandler({ tag }: { tag?: string }) {
     });
   }
 
-  return {
-    content: [
-      {
-        type: 'text' as const,
-        text: lines.join('\n'),
-      },
-    ],
-  };
+  return textContent(lines.join('\n'));
 }

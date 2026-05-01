@@ -3,6 +3,7 @@ import { homedir } from 'os';
 import { join } from 'path';
 import { mkdir, readFile, writeFile, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
+import { formatYouTubeDate } from './format.js';
 
 const CACHE_DIR = join(homedir(), '.youtube-knowledge', 'transcripts');
 
@@ -17,6 +18,9 @@ export interface VideoInfo {
   tags: string[];
   url: string;
   thumbnailUrl: string;
+  viewCount: number;
+  likeCount: number;
+  commentCount: number;
 }
 
 export interface VideoListItem {
@@ -50,6 +54,107 @@ export interface DownloadResult {
   title: string;
   filePath: string;
   format: string;
+}
+
+export interface SearchResult {
+  id: string;
+  title: string;
+  duration: number;
+  durationFormatted: string;
+  channel: string;
+  viewCount: number;
+  url: string;
+}
+
+export interface Chapter {
+  title: string;
+  startTime: number;
+  startTimeFormatted: string;
+  endTime: number;
+  endTimeFormatted: string;
+}
+
+export interface VideoComment {
+  author: string;
+  text: string;
+  likeCount: number;
+  isPinned: boolean;
+}
+
+export interface ChannelInfo {
+  name: string;
+  channelId: string;
+  handle: string;
+  subscriberCount: number;
+  channelUrl: string;
+  description: string;
+}
+
+interface YtDlpSearchResult {
+  id: string;
+  title?: string;
+  duration?: number;
+  channel?: string;
+  view_count?: number;
+  url?: string;
+}
+
+interface YtDlpChapter {
+  title: string;
+  start_time: number;
+  end_time: number;
+}
+
+interface YtDlpComment {
+  author?: string;
+  text?: string;
+  like_count?: number;
+  is_pinned?: boolean;
+  parent?: string;
+}
+
+interface YtDlpChannelMeta {
+  channel?: string;
+  channel_id?: string;
+  channel_url?: string;
+  uploader_id?: string;
+  channel_follower_count?: number;
+  description?: string;
+}
+
+interface YtDlpChannelSearchResult {
+  id?: string;
+  title?: string;
+  channel?: string;
+  channel_id?: string;
+  channel_url?: string;
+  uploader_id?: string;
+  channel_follower_count?: number;
+  description?: string;
+}
+
+export interface PlaylistInfo {
+  id: string;
+  title: string;
+  channel: string;
+  handle: string;
+  channelUrl: string;
+  videoCount: number;
+  lastModified: string;
+  url: string;
+  description: string;
+}
+
+interface YtDlpPlaylistMeta {
+  id?: string;
+  title?: string;
+  channel?: string;
+  channel_url?: string;
+  uploader_id?: string;
+  playlist_count?: number;
+  modified_date?: string;
+  webpage_url?: string;
+  description?: string;
 }
 
 function extractVideoId(urlOrId: string): string {
@@ -92,12 +197,23 @@ export async function getVideoInfo(urlOrId: string): Promise<VideoInfo> {
   const { stdout } = await execa('yt-dlp', [
     '--skip-download',
     '--print',
-    '%(id)s|||%(title)s|||%(channel)s|||%(duration)s|||%(upload_date)s|||%(description)s|||%(tags)j|||%(thumbnail)s',
+    '%(id)s|||%(title)s|||%(channel)s|||%(duration)s|||%(upload_date)s|||%(description)s|||%(tags)j|||%(thumbnail)s|||%(view_count)s|||%(like_count)s|||%(comment_count)s',
     url,
   ]);
 
-  const [id, title, channel, durationStr, uploadDate, description, tagsJson, thumbnailUrl] =
-    stdout.split('|||');
+  const [
+    id,
+    title,
+    channel,
+    durationStr,
+    uploadDate,
+    description,
+    tagsJson,
+    thumbnailUrl,
+    viewCountStr,
+    likeCountStr,
+    commentCountStr,
+  ] = stdout.split('|||');
   const duration = parseInt(durationStr, 10) || 0;
 
   let tags: string[] = [];
@@ -116,13 +232,14 @@ export async function getVideoInfo(urlOrId: string): Promise<VideoInfo> {
     channel,
     duration,
     durationFormatted: formatDuration(duration),
-    uploadDate: uploadDate
-      ? `${uploadDate.slice(0, 4)}-${uploadDate.slice(4, 6)}-${uploadDate.slice(6, 8)}`
-      : '',
+    uploadDate: formatYouTubeDate(uploadDate),
     description: description || '',
     tags,
     url,
     thumbnailUrl: thumbnailUrl || '',
+    viewCount: parseInt(viewCountStr, 10) || 0,
+    likeCount: parseInt(likeCountStr, 10) || 0,
+    commentCount: parseInt(commentCountStr, 10) || 0,
   };
 }
 
@@ -148,9 +265,7 @@ export async function listVideos(urlOrChannel: string, limit = 20): Promise<Vide
       title: title || 'Unknown title',
       duration,
       durationFormatted: formatDuration(duration),
-      uploadDate: uploadDate
-        ? `${uploadDate.slice(0, 4)}-${uploadDate.slice(4, 6)}-${uploadDate.slice(6, 8)}`
-        : '',
+      uploadDate: formatYouTubeDate(uploadDate),
       url: `https://www.youtube.com/watch?v=${id}`,
     };
   });
@@ -403,6 +518,150 @@ export async function downloadVideo(
     title,
     filePath,
     format: quality ?? formatId,
+  };
+}
+
+export async function searchVideos(query: string, limit = 5): Promise<SearchResult[]> {
+  const { stdout } = await execa('yt-dlp', [
+    `ytsearch${limit}:${query}`,
+    '--dump-json',
+    '--flat-playlist',
+  ]);
+
+  const lines = stdout.trim().split('\n').filter(Boolean);
+
+  return lines.map((line) => {
+    const data = JSON.parse(line) as YtDlpSearchResult;
+    return {
+      id: data.id,
+      title: data.title ?? 'Unknown',
+      duration: data.duration ?? 0,
+      durationFormatted: formatDuration(data.duration ?? 0),
+      channel: data.channel ?? 'Unknown',
+      viewCount: data.view_count ?? 0,
+      url: data.url ?? `https://www.youtube.com/watch?v=${data.id}`,
+    };
+  });
+}
+
+export async function getChapters(urlOrId: string): Promise<Chapter[]> {
+  const videoId = extractVideoId(urlOrId);
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+
+  const { stdout } = await execa('yt-dlp', ['-j', '--skip-download', url]);
+  const data = JSON.parse(stdout) as { chapters?: YtDlpChapter[] };
+  const chapters = data.chapters ?? [];
+
+  return chapters.map((ch) => ({
+    title: ch.title,
+    startTime: ch.start_time,
+    startTimeFormatted: formatDuration(Math.floor(ch.start_time)),
+    endTime: ch.end_time,
+    endTimeFormatted: formatDuration(Math.floor(ch.end_time)),
+  }));
+}
+
+export async function getComments(urlOrId: string, limit = 20): Promise<VideoComment[]> {
+  const videoId = extractVideoId(urlOrId);
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+
+  const { stdout } = await execa('yt-dlp', [
+    '-j',
+    '--skip-download',
+    '--write-comments',
+    '--extractor-args',
+    `youtube:comment_sort=top;max_comments=${limit}`,
+    url,
+  ]);
+
+  const data = JSON.parse(stdout) as { comments?: YtDlpComment[] };
+  const comments = data.comments ?? [];
+
+  return comments
+    .filter((c) => c.parent === 'root')
+    .slice(0, limit)
+    .map((c) => ({
+      author: c.author ?? 'Unknown',
+      text: c.text ?? '',
+      likeCount: c.like_count ?? 0,
+      isPinned: c.is_pinned ?? false,
+    }));
+}
+
+export async function searchChannels(query: string, limit = 5): Promise<ChannelInfo[]> {
+  // YouTube channel filter: sp=EgIQAg%3D%3D
+  const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAg%3D%3D`;
+
+  const { stdout } = await execa('yt-dlp', [
+    searchUrl,
+    '--dump-json',
+    '--flat-playlist',
+    '--playlist-items',
+    `1-${limit}`,
+  ]);
+
+  const lines = stdout.trim().split('\n').filter(Boolean);
+
+  return lines.map((line) => {
+    const data = JSON.parse(line) as YtDlpChannelSearchResult;
+    return {
+      name: data.channel ?? data.title ?? 'Unknown',
+      channelId: data.channel_id ?? data.id ?? '',
+      handle: data.uploader_id ?? '',
+      subscriberCount: data.channel_follower_count ?? 0,
+      channelUrl: data.channel_url ?? '',
+      description: data.description ?? '',
+    };
+  });
+}
+
+export async function getPlaylistInfo(playlistUrl: string): Promise<PlaylistInfo> {
+  const { stdout } = await execa('yt-dlp', [
+    '--dump-single-json',
+    '--flat-playlist',
+    '--playlist-items',
+    '0',
+    playlistUrl,
+  ]);
+
+  const data = JSON.parse(stdout) as YtDlpPlaylistMeta;
+  const modDate = data.modified_date ?? '';
+
+  return {
+    id: data.id ?? '',
+    title: data.title ?? 'Unknown',
+    channel: data.channel ?? '',
+    handle: data.uploader_id ?? '',
+    channelUrl: data.channel_url ?? '',
+    videoCount: data.playlist_count ?? 0,
+    lastModified: formatYouTubeDate(modDate),
+    url: data.webpage_url ?? playlistUrl,
+    description: data.description ?? '',
+  };
+}
+
+export async function getChannelInfo(channel: string): Promise<ChannelInfo> {
+  const channelUrl = channel.startsWith('http')
+    ? channel
+    : `https://www.youtube.com/${channel.startsWith('@') ? channel : `@${channel}`}`;
+
+  const { stdout } = await execa('yt-dlp', [
+    '--dump-single-json',
+    '--flat-playlist',
+    '--playlist-items',
+    '0',
+    channelUrl,
+  ]);
+
+  const data = JSON.parse(stdout) as YtDlpChannelMeta;
+
+  return {
+    name: data.channel ?? 'Unknown',
+    channelId: data.channel_id ?? '',
+    handle: data.uploader_id ?? '',
+    subscriberCount: data.channel_follower_count ?? 0,
+    channelUrl: data.channel_url ?? channelUrl,
+    description: data.description ?? '',
   };
 }
 
