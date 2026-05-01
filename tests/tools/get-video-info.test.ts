@@ -23,6 +23,9 @@ describe('get-video-info tool', () => {
       tags: ['test', 'demo'],
       url: 'https://youtube.com/watch?v=test123',
       thumbnailUrl: 'https://img.youtube.com/test123.jpg',
+      viewCount: 1500000,
+      likeCount: 50000,
+      commentCount: 1200,
     });
 
     const { getVideoInfoHandler } = await import('../../src/tools/get-video-info.js');
@@ -51,6 +54,9 @@ describe('get-video-info tool', () => {
       tags: [],
       url: 'https://youtube.com/watch?v=abc123',
       thumbnailUrl: '',
+      viewCount: 0,
+      likeCount: 0,
+      commentCount: 0,
     });
 
     const { getVideoInfoHandler } = await import('../../src/tools/get-video-info.js');
