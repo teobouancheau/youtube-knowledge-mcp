@@ -3,12 +3,12 @@ import { saveToLibrary } from '../utils/storage.js';
 import { textContent } from '../utils/format.js';
 
 export const saveToLibrarySchema = {
-  video_id: z.string().describe('YouTube video ID (e.g., dQw4w9WgXcQ)'),
+  videoId: z.string().describe('YouTube video ID (e.g., dQw4w9WgXcQ)'),
   title: z.string().describe('Video title for library indexing'),
   content: z
     .string()
     .describe('Content to save: summary, notes, or extracted skill in markdown format'),
-  content_type: z
+  contentType: z
     .enum(['summary', 'skill'])
     .default('summary')
     .describe(
@@ -22,30 +22,30 @@ export const saveToLibrarySchema = {
 };
 
 export async function saveToLibraryHandler({
-  video_id,
+  videoId,
   title,
   content,
-  content_type,
+  contentType,
   channel,
   tags,
 }: {
-  video_id: string;
+  videoId: string;
   title: string;
   content: string;
-  content_type: 'summary' | 'skill';
+  contentType: 'summary' | 'skill';
   channel?: string;
   tags?: string[];
 }) {
   const result = await saveToLibrary({
-    videoId: video_id,
+    videoId,
     title,
     content,
-    contentType: content_type,
+    contentType,
     channel,
     tags,
   });
 
-  const lines: string[] = [`✓ Saved ${content_type} to library`, '', title];
+  const lines: string[] = [`Saved ${contentType} to library`, '', title];
 
   if (channel) {
     lines.push(`by ${channel}`);

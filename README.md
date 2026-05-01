@@ -257,14 +257,14 @@ Download a YouTube video to local disk.
 
 Save a summary or skill note to your local YouTube knowledge library.
 
-| Parameter      | Type     | Description                        |
-| -------------- | -------- | ---------------------------------- |
-| `video_id`     | string   | YouTube video ID                   |
-| `title`        | string   | Video title                        |
-| `content`      | string   | Content to save (markdown format)  |
-| `content_type` | string   | "summary" or "skill"               |
-| `tags`         | string[] | Tags for categorization (optional) |
-| `channel`      | string   | Channel name (optional)            |
+| Parameter     | Type     | Description                        |
+| ------------- | -------- | ---------------------------------- |
+| `videoId`     | string   | YouTube video ID                   |
+| `title`       | string   | Video title                        |
+| `content`     | string   | Content to save (markdown format)  |
+| `contentType` | string   | "summary" or "skill"               |
+| `tags`        | string[] | Tags for categorization (optional) |
+| `channel`     | string   | Channel name (optional)            |
 
 #### list_library
 
@@ -360,3 +360,11 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) for YouTube extraction
 - [Anthropic](https://anthropic.com) for the Model Context Protocol
+
+---
+
+<div align="center">
+  <strong>Built by <a href="https://github.com/teobouancheau">teobouancheau</a></strong>
+  <br>
+  <sub>AI + YouTube knowledge to supercharge content creation</sub>
+</div>
