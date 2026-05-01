@@ -8,9 +8,13 @@ RUN apt-get update && \
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
-COPY dist/ ./dist/
+COPY tsconfig.json tsconfig.build.json ./
+COPY src/ ./src/
+RUN npm run build
+
+RUN npm prune --omit=dev
 
 EXPOSE 10000
 
