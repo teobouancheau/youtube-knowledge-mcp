@@ -4,11 +4,11 @@ import type { ReadResourceResult } from '@modelcontextprotocol/sdk/types.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 
 /**
- * The prompt and resource surface, driven through a real MCP client.
+ * The resource read callbacks, driven through a real MCP client.
  *
- * Completion in particular cannot be tested any other way: whether the server
- * advertises the capability at all is a property of registration, invisible
- * from the prompt callback.
+ * `protocol.test.ts` checks that the templates are advertised; this checks that
+ * reading one actually returns the right document. The two are different
+ * failures — a template can list correctly and still resolve to nothing.
  */
 
 vi.mock('../src/utils/youtube.js', async (importOriginal) => {
@@ -82,7 +82,227 @@ beforeEach(() => {
   vi.mocked(listTags).mockResolvedValue(['systems', 'syntax']);
 });
 
-describe('prompt argument completion', () => {
+describe('transcript resource', () => {
+  it('returns the transcript with its timestamps', async () => {
+    const client = await connect();
+
+    const result = await client.readResource({ uri: 'youtube://transcript/dQw4w9WgXcQ' });
+
+    expect(textOfContents(result)).toBe('[0:00] hello there\n[1:02] and welcome');
+    expect(getTranscript).toHaveBeenCalledWith('dQw4w9WgXcQ');
+  });
+
+  it('labels the document as plain text under the URI it was asked for', async () => {
+    const client = await connect();
+
+    const result = await client.readResource({ uri: 'youtube://transcript/dQw4w9WgXcQ' });
+
+    expect(result.contents[0]).toMatchObject({
+      uri: 'youtube://transcript/dQw4w9WgXcQ',
+      mimeType: 'text/plain',
+    });
+  });
+
+  it('is readable over the remote transport too', async () => {
+    const client = await connect('http');
+
+    const result = await client.readResource({ uri: 'youtube://transcript/dQw4w9WgXcQ' });
+
+    expect(textOfContents(result)).toContain('hello there');
+  });
+});
+
+describe('library resource', () => {
+  it('returns the saved summary', async () => {
+    const client = await connect();
+
+    const result = await client.readResource({ uri: 'youtube://library/dQw4w9WgXcQ/summary' });
+
+    expect(textOfContents(result)).toBe('# The summary');
+    expect(getLibraryItem).toHaveBeenCalledWith('dQw4w9WgXcQ', 'summary');
+  });
+
+  it('returns the saved skill note', async () => {
+    const client = await connect();
+
+    const result = await client.readResource({ uri: 'youtube://library/dQw4w9WgXcQ/skill' });
+
+    expect(textOfContents(result)).toBe('# The skill');
+    expect(getLibraryItem).toHaveBeenCalledWith('dQw4w9WgXcQ', 'skill');
+  });
+
+  it('treats any other content type as a summary rather than failing', async () => {
+    const client = await connect();
+
+    const result = await client.readResource({ uri: 'youtube://library/dQw4w9WgXcQ/nonsense' });
+
+    expect(getLibraryItem).toHaveBeenCalledWith('dQw4w9WgXcQ', 'summary');
+    expect(textOfContents(result)).toBe('# The summary');
+  });
+
+  it('returns an empty document rather than undefined when the note is absent', async () => {
+    vi.mocked(getLibraryItem).mockResolvedValue({ metadata: METADATA, summary: undefined });
+
+    const client = await connect();
+    const result = await client.readResource({ uri: 'youtube://library/dQw4w9WgXcQ/summary' });
+
+    expect(textOfContents(result)).toBe('');
+  });
+
+  it('enumerates what is saved, so a client can browse the library', async () => {
+    const client = await connect();
+
+    const { resources } = await client.listResources();
+
+    expect(resources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          uri: 'youtube://library/dQw4w9WgXcQ/summary',
+          name: 'A Talk (summary)',
+          mimeType: 'text/markdown',
+        }),
+        expect.objectContaining({ uri: 'youtube://library/dQw4w9WgXcQ/skill' }),
+      ])
+    );
+  });
+
+  it('lists only the content types that actually exist', async () => {
+    vi.mocked(listLibrary).mockResolvedValue([{ ...METADATA, hasSkill: false }]);
+
+    const client = await connect();
+    const uris = (await client.listResources()).resources.map((resource) => resource.uri);
+
+    expect(uris).toContain('youtube://library/dQw4w9WgXcQ/summary');
+    expect(uris).not.toContain('youtube://library/dQw4w9WgXcQ/skill');
+  });
+
+  it('is not reachable over the remote transport', async () => {
+    const client = await connect('http');
+
+    await expect(
+      client.readResource({ uri: 'youtube://library/dQw4w9WgXcQ/summary' })
+    ).rejects.toThrow();
+  });
+});
+
+describe('prompt rendering', () => {
+  /** Every prompt, with a minimal set of arguments. */
+  const CASES: [string, Record<string, string>, string[]][] = [
+    ['summarize_video', { video: 'dQw4w9WgXcQ' }, ['dQw4w9WgXcQ', 'get_chapters', 'standard']],
+    ['extract_skill', { video: 'dQw4w9WgXcQ' }, ['dQw4w9WgXcQ']],
+    ['compare_videos', { videos: 'aaa,bbb' }, ['aaa,bbb']],
+    ['research_topic', { topic: 'rate limiting' }, ['rate limiting', 'search_videos']],
+    ['channel_deep_dive', { channel: '@creator' }, ['@creator']],
+    [
+      'clip_from_quote',
+      { video: 'dQw4w9WgXcQ', quote: 'never gonna' },
+      ['never gonna', 'extract_clip'],
+    ],
+    ['review_library', {}, ['list_library']],
+  ];
+
+  it.each(CASES)('renders %s', async (name, args, expected) => {
+    const client = await connect();
+
+    const result = await client.getPrompt({ name, arguments: args });
+    const [message] = result.messages;
+    const text = message?.content.type === 'text' ? message.content.text : '';
+
+    for (const fragment of expected) {
+      expect(text, `${name} should mention ${fragment}`).toContain(fragment);
+    }
+  });
+
+  it.each(CASES)('addresses %s to the user role', async (name, args) => {
+    const client = await connect();
+
+    const result = await client.getPrompt({ name, arguments: args });
+
+    expect(result.messages[0]?.role).toBe('user');
+  });
+
+  describe('optional arguments change the instructions', () => {
+    it('caps the transcript read when a brief summary is asked for', async () => {
+      const client = await connect();
+
+      const brief = await client.getPrompt({
+        name: 'summarize_video',
+        arguments: { video: 'v', depth: 'brief' },
+      });
+      const standard = await client.getPrompt({
+        name: 'summarize_video',
+        arguments: { video: 'v', depth: 'standard' },
+      });
+
+      const textOf = (r: typeof brief): string =>
+        r.messages[0]?.content.type === 'text' ? r.messages[0].content.text : '';
+
+      expect(textOf(brief)).toContain('maxChars=8000');
+      expect(textOf(standard)).not.toContain('maxChars=8000');
+    });
+
+    it('reads transcripts only for a deep research pass', async () => {
+      const client = await connect();
+
+      const deep = await client.getPrompt({
+        name: 'research_topic',
+        arguments: { topic: 'x', depth: 'deep' },
+      });
+      const survey = await client.getPrompt({
+        name: 'research_topic',
+        arguments: { topic: 'x', depth: 'survey' },
+      });
+
+      const textOf = (r: typeof deep): string =>
+        r.messages[0]?.content.type === 'text' ? r.messages[0].content.text : '';
+
+      expect(textOf(deep)).toContain('get_transcripts');
+      expect(textOf(survey)).not.toContain('get_transcripts');
+    });
+
+    it('narrows the library review to a tag when one is given', async () => {
+      const client = await connect();
+
+      const tagged = await client.getPrompt({
+        name: 'review_library',
+        arguments: { tag: 'systems' },
+      });
+      const all = await client.getPrompt({ name: 'review_library', arguments: {} });
+
+      const textOf = (r: typeof tagged): string =>
+        r.messages[0]?.content.type === 'text' ? r.messages[0].content.text : '';
+
+      expect(textOf(tagged)).toContain('tagged "systems"');
+      expect(textOf(all)).toContain('Review everything');
+    });
+
+    it('narrows a comparison to a focus question when one is given', async () => {
+      const client = await connect();
+
+      const result = await client.getPrompt({
+        name: 'compare_videos',
+        arguments: { videos: 'a,b', focus: 'which is faster' },
+      });
+      const text =
+        result.messages[0]?.content.type === 'text' ? result.messages[0].content.text : '';
+
+      expect(text).toContain('which is faster');
+    });
+
+    it('passes a survey limit through to the channel deep dive', async () => {
+      const client = await connect();
+
+      const result = await client.getPrompt({
+        name: 'channel_deep_dive',
+        arguments: { channel: '@creator', limit: '50' },
+      });
+      const text =
+        result.messages[0]?.content.type === 'text' ? result.messages[0].content.text : '';
+
+      expect(text).toContain('50');
+    });
+  });
+
   it('completes a library tag from what is actually saved', async () => {
     const client = await connect();
 
