@@ -19,7 +19,7 @@ vi.mock('fs', () => ({
 }));
 
 /**
- * getVideoInfo prints 11 pipe-delimited fields. Building the mock from a record
+ * getVideoInfo prints 13 pipe-delimited fields. Building the mock from a record
  * rather than a hand-written string is what keeps this suite honest: the old
  * version supplied only 8 fields, so view/like/comment counts silently parsed
  * as 0 and `toMatchObject` never noticed.
@@ -36,6 +36,8 @@ const VIDEO_INFO_FIELDS = [
   'viewCount',
   'likeCount',
   'commentCount',
+  'availability',
+  'liveStatus',
 ] as const;
 
 function videoInfoStdout(
@@ -53,6 +55,8 @@ function videoInfoStdout(
     viewCount: '1600000000',
     likeCount: '17000000',
     commentCount: '2300000',
+    availability: 'public',
+    liveStatus: 'not_live',
   };
   const merged = { ...defaults, ...overrides };
   return VIDEO_INFO_FIELDS.map((field) => merged[field]).join('|||');
@@ -99,6 +103,53 @@ describe('YouTube Utils', () => {
         likeCount: 17_000_000,
         commentCount: 2_300_000,
       });
+    });
+
+    it.each([
+      ['private', 'PRIVATE'],
+      ['subscriber_only', 'MEMBERS_ONLY'],
+      ['premium_only', 'PREMIUM_ONLY'],
+      ['needs_auth', 'AGE_GATED'],
+    ])(
+      'reports availability %s as %s rather than returning a hollow row',
+      async (availability, code) => {
+        // `--ignore-no-formats-error` turns a refusal into a populated row, so the
+        // restriction has to be caught here or it is silently returned as a video.
+        const { execa } = await import('execa');
+        vi.mocked(execa).mockResolvedValue(execaSuccess(videoInfoStdout({ availability })));
+
+        const { getVideoInfo } = await import('../../src/utils/youtube.js');
+
+        await expect(getVideoInfo('dQw4w9WgXcQ')).rejects.toMatchObject({ code });
+      }
+    );
+
+    it('reports an upcoming premiere rather than a video with no content', async () => {
+      const { execa } = await import('execa');
+      vi.mocked(execa).mockResolvedValue(
+        execaSuccess(videoInfoStdout({ liveStatus: 'is_upcoming', duration: 'NA' }))
+      );
+
+      const { getVideoInfo } = await import('../../src/utils/youtube.js');
+
+      await expect(getVideoInfo('dQw4w9WgXcQ')).rejects.toMatchObject({ code: 'LIVE_NOT_ENDED' });
+    });
+
+    it('asks yt-dlp for the structured availability fields', async () => {
+      const { execa } = await import('execa');
+      vi.mocked(execa).mockResolvedValue(execaSuccess(videoInfoStdout({})));
+
+      const { getVideoInfo } = await import('../../src/utils/youtube.js');
+      await getVideoInfo('dQw4w9WgXcQ');
+
+      expect(execa).toHaveBeenCalledWith(
+        'yt-dlp',
+        expect.arrayContaining([
+          '--ignore-no-formats-error',
+          expect.stringContaining('%(availability)s|||%(live_status)s'),
+        ]),
+        expect.anything()
+      );
     });
 
     it('falls back to zero for absent counts', async () => {

@@ -3,7 +3,7 @@ import { join } from 'path';
 import { mkdir, readFile, writeFile, unlink } from 'fs/promises';
 import { existsSync, readdirSync } from 'fs';
 import { formatYouTubeDate } from './format.js';
-import { YouTubeError } from './errors.js';
+import { YouTubeError, classifyPlayability } from './errors.js';
 import { TIMEOUTS, isRecord, parseYtDlpJson, parseYtDlpJsonLines, runYtDlp } from './ytdlp.js';
 import { assertLanguageTag, resolveOutputDir } from './validate.js';
 import { log } from './context.js';
@@ -216,8 +216,14 @@ export async function getVideoInfo(urlOrId: string): Promise<VideoInfo> {
   const stdout = await runYtDlp(
     [
       '--skip-download',
+      // Without this, a video YouTube refuses to serve aborts extraction and the
+      // only thing left to read is YouTube's localised refusal text. With it,
+      // yt-dlp downgrades that abort to a warning and still fills in the
+      // structured fields, so the reason can be read from `availability` and
+      // `live_status` instead of guessed at from prose.
+      '--ignore-no-formats-error',
       '--print',
-      '%(id)s|||%(title)s|||%(channel)s|||%(duration)s|||%(upload_date)s|||%(description)s|||%(tags)j|||%(thumbnail)s|||%(view_count)s|||%(like_count)s|||%(comment_count)s',
+      '%(id)s|||%(title)s|||%(channel)s|||%(duration)s|||%(upload_date)s|||%(description)s|||%(tags)j|||%(thumbnail)s|||%(view_count)s|||%(like_count)s|||%(comment_count)s|||%(availability)s|||%(live_status)s',
       url,
     ],
     { label: 'get_video_info' }
@@ -227,6 +233,11 @@ export async function getVideoInfo(urlOrId: string): Promise<VideoInfo> {
   // index access has to tolerate a short row rather than trust its length.
   const parts = stdout.split('|||');
   const field = (index: number): string => parts[index] ?? '';
+
+  // Refusals reach us as a populated row rather than a failure, so this is the
+  // point at which one becomes a typed error.
+  const refusal = classifyPlayability({ availability: field(11), liveStatus: field(12) });
+  if (refusal) throw refusal;
 
   const [id, title, channel, durationStr, uploadDate, description, tagsJson, thumbnailUrl] = [
     field(0),

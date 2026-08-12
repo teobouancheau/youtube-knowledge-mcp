@@ -60,6 +60,23 @@ video but never say when something was said.
   tool indefinitely.
 - Unrecognised yt-dlp stderr is never forwarded to the client; it routinely
   contains the full command line and local paths.
+- WebVTT is parsed by `webvtt-parser`, the W3C reference implementation, rather
+  than by hand-written expressions. WebVTT has a real grammar — cue settings,
+  inline timestamps, `<c>` spans, escapes — and an approximation of it silently
+  returns wrong text rather than failing.
+- Why a video cannot be read is now determined from yt-dlp's structured
+  `availability` and `live_status` fields, which are closed sets yt-dlp itself
+  defines, rather than from the text it prints. The text is not yt-dlp's: it is
+  YouTube's `playabilityStatus.reason`, re-raised verbatim, so it is localised
+  to the server's account and rewritten whenever YouTube changes its copy.
+  Matching on it produced confident, unverifiable answers. Metadata lookups pass
+  `--ignore-no-formats-error` so those fields are populated for a refused video
+  instead of extraction aborting. What is still read out of stderr is limited to
+  sentences yt-dlp constructs itself, each carrying a source citation.
+- Error codes track what can actually be produced: `PREMIUM_ONLY` and
+  `LOGIN_REQUIRED` are added, and `BOT_CHECK`, `NETWORK`, `REGION_BLOCKED` and
+  `REMOVED` are removed — nothing could emit them without guessing at YouTube's
+  wording.
 - HTTP transport: opt-in bearer authentication (`MCP_AUTH_TOKEN`), configurable
   Origin/Host allowlists, idle session expiry and a session cap, `Retry-After`
   on 429, and SIGTERM handling. Authentication is off by default so existing

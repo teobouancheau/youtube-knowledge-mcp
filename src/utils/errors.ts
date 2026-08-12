@@ -12,14 +12,12 @@ export type YouTubeErrorCode =
   | 'PRIVATE'
   | 'AGE_GATED'
   | 'MEMBERS_ONLY'
-  | 'REGION_BLOCKED'
-  | 'REMOVED'
+  | 'PREMIUM_ONLY'
+  | 'LOGIN_REQUIRED'
   | 'NOT_FOUND'
   | 'NO_CAPTIONS'
   | 'LIVE_NOT_ENDED'
-  | 'BOT_CHECK'
   | 'RATE_LIMITED'
-  | 'NETWORK'
   | 'TIMEOUT'
   | 'CANCELLED'
   | 'YTDLP_MISSING'
@@ -55,107 +53,78 @@ export class YouTubeError extends Error {
   }
 }
 
+/**
+ * Why so little is read out of stderr.
+ *
+ * When YouTube refuses a video, the sentence yt-dlp prints is not yt-dlp's. It
+ * is YouTube's own `playabilityStatus.reason`, fetched from the InnerTube API
+ * and re-raised verbatim (`_video.py:4040-4048`). That text is localised to the
+ * server's account settings, appears nowhere in yt-dlp's source, and YouTube
+ * rewrites it at will — so there is no honest way to match on it. An earlier
+ * revision of this file matched a dozen such sentences; the strings had been
+ * written from memory of what YouTube "probably" says, and the tests asserting
+ * them only proved that invented patterns match invented samples.
+ *
+ * What follows is therefore restricted to strings that yt-dlp itself
+ * constructs, each quoted from the cited line of the installed copy. The reason
+ * a video was refused is read from structured fields instead — see
+ * `classifyPlayability`.
+ */
 interface Rule {
   code: YouTubeErrorCode;
-  match: RegExp;
+  /** A literal substring, matched case-insensitively. Never a pattern. */
+  emits: string;
+  /** Where yt-dlp builds it, so a future reader can re-verify. */
+  source: string;
   message: string;
   nextStep?: string;
   retryable?: boolean;
 }
 
-/**
- * Ordered most-specific first — "Video unavailable" appears alongside more
- * precise reasons in real yt-dlp output, so the narrow rules must win.
- */
 const RULES: Rule[] = [
   {
-    code: 'BOT_CHECK',
-    // Must not be loosened to "sign in to confirm you": that is also the prefix
-    // of the age-gate message ("Sign in to confirm your age"), which is a
-    // different, non-retryable failure.
-    match: /confirm you'?re not a bot|cookies are no longer valid|not a bot/i,
-    message: 'YouTube is challenging this request as automated traffic.',
-    nextStep:
-      'This usually clears on its own. Retry in a minute, or reduce how many videos you request at once. For sustained use, configure yt-dlp with browser cookies.',
-    retryable: true,
-  },
-  {
     code: 'RATE_LIMITED',
-    match: /HTTP Error 429|too many requests|rate.?limit/i,
+    // exceptions.py formats `HTTP Error {status}: {reason}`; the reason for 429
+    // is Python's http.HTTPStatus.TOO_MANY_REQUESTS.phrase.
+    emits: 'HTTP Error 429',
+    source: 'yt_dlp/networking/exceptions.py:63',
     message: 'YouTube is rate limiting this client.',
     nextStep: 'Wait a minute before retrying, and request fewer items per call.',
     retryable: true,
   },
   {
-    code: 'MEMBERS_ONLY',
-    match: /members-only|available to this channel'?s members|join this channel/i,
-    message: 'This video is restricted to channel members.',
-    nextStep: 'Members-only content cannot be accessed. Try a different video.',
-  },
-  {
-    code: 'AGE_GATED',
-    match: /sign in to confirm your age|age-restricted|inappropriate for some users/i,
-    message: 'This video is age-restricted and requires a signed-in account.',
-    nextStep:
-      'Age-gated videos cannot be read without authentication. Try a different video, or configure yt-dlp with browser cookies.',
-  },
-  {
-    code: 'PRIVATE',
-    match: /private video|this video is private/i,
-    message: 'This video is private.',
-    nextStep: 'Only the owner and invited viewers can access it. Try a different video.',
-  },
-  {
-    code: 'REGION_BLOCKED',
-    match:
-      /available in your country|blocked it in your country|geo.?restrict|not available from your location/i,
-    message: 'This video is blocked in the region this server runs from.',
-    nextStep: 'Try a different video, or run the server from another region.',
-  },
-  {
-    code: 'REMOVED',
-    match:
-      /has been removed|removed by the uploader|account associated with this video has been terminated|violat(?:ed|ing) .*(?:Terms of Service|Community Guidelines)/i,
-    message: 'This video has been removed from YouTube.',
-    nextStep: 'Search for a re-upload or an alternative source.',
-  },
-  {
-    code: 'LIVE_NOT_ENDED',
-    match:
-      /premieres in|this live event will begin|is not yet available|live stream recording is not available/i,
-    message: 'This is an upcoming or in-progress live stream.',
-    nextStep:
-      'Captions, chapters and downloads only exist once the stream has ended and been processed. Try again later.',
-  },
-  {
     code: 'NO_CAPTIONS',
-    match:
-      /no subtitles|there are no subtitles|requested format is not available.*sub|no automatic captions/i,
+    emits: 'There are no subtitles for the requested languages',
+    source: 'yt_dlp/YoutubeDL.py:4459',
     message: 'No captions are available for this video in the requested language.',
     nextStep:
       'Call get_transcript again with a different language, or read the description instead.',
   },
   {
-    code: 'NOT_FOUND',
-    match:
-      /video unavailable|unable to extract|incomplete youtube id|does not exist|is not a valid url/i,
-    message: 'That video could not be found.',
-    nextStep: 'Check the video ID or URL. Use search_videos to find the right one.',
+    code: 'FFMPEG_MISSING',
+    emits: 'but ffmpeg is not installed',
+    source: 'yt_dlp/YoutubeDL.py:3545',
+    message: 'ffmpeg is required for this operation but is not installed.',
+    nextStep: 'Install ffmpeg and call check_health to confirm it is on PATH.',
   },
   {
     code: 'FFMPEG_MISSING',
-    match: /ffmpeg (?:is )?not (?:found|installed)|you have requested merging.*ffmpeg|ffprobe/i,
+    emits: 'ffmpeg not found. Please install or provide the path using --ffmpeg-location',
+    source: 'yt_dlp/postprocessor/ffmpeg.py:225',
     message: 'ffmpeg is required for this operation but is not installed.',
-    nextStep:
-      'Install ffmpeg and make sure it is on PATH (macOS: `brew install ffmpeg`, Debian/Ubuntu: `apt install ffmpeg`).',
+    nextStep: 'Install ffmpeg and call check_health to confirm it is on PATH.',
   },
   {
-    code: 'NETWORK',
-    match:
-      /HTTP Error 5\d\d|unable to download|connection (?:reset|refused|timed out)|temporary failure in name resolution|getaddrinfo|ECONNRESET|EAI_AGAIN/i,
-    message: 'A network error occurred while contacting YouTube.',
-    nextStep: 'This is usually transient. Retry shortly.',
-    retryable: true,
+    // Appended by yt-dlp whenever YouTube's refusal mentions signing in
+    // (`_video.py:4052` calls `_youtube_login_hint`), whatever language that
+    // refusal is written in. It is the one authentication signal we can read
+    // off a failed extraction without guessing at YouTube's wording.
+    code: 'LOGIN_REQUIRED',
+    emits: 'for tips on effectively exporting YouTube cookies',
+    source: 'yt_dlp/extractor/youtube/_base.py:664',
+    message: 'This video requires a signed-in YouTube account.',
+    nextStep:
+      'It may be private, age-restricted or members-only. Try a different video, or configure yt-dlp with browser cookies.',
   },
 ];
 
@@ -165,8 +134,10 @@ const RULES: Rule[] = [
  * model, because it routinely contains the full command line and local paths.
  */
 export function classifyYtDlpFailure(stderr: string, cause?: unknown): YouTubeError {
+  const haystack = stderr.toLowerCase();
+
   for (const rule of RULES) {
-    if (rule.match.test(stderr)) {
+    if (haystack.includes(rule.emits.toLowerCase())) {
       return new YouTubeError(rule.code, rule.message, {
         nextStep: rule.nextStep,
         retryable: rule.retryable,
@@ -180,6 +151,68 @@ export function classifyYtDlpFailure(stderr: string, cause?: unknown): YouTubeEr
       'The video may be unavailable, or yt-dlp may be out of date — YouTube changes frequently and yt-dlp needs regular updates. Run `yt-dlp -U`, or call check_health for diagnostics.',
     cause,
   });
+}
+
+/**
+ * Why a video cannot be read, taken from yt-dlp's structured output rather than
+ * its prose.
+ *
+ * `availability` is a closed set built by `InfoExtractor._availability`
+ * (`extractor/common.py:4010`) and documented at `common.py:413`; YouTube fills
+ * it in at `_video.py:4559`, where `needs_auth` is exactly `age_limit >= 18` and
+ * `needs_subscription` is the members-only badge. `live_status` is the closed
+ * set documented at `common.py:392`.
+ *
+ * Both are enum members chosen by yt-dlp, so unlike stderr they are stable
+ * across locales and across YouTube's copy changes.
+ */
+export function classifyPlayability(fields: {
+  availability?: string;
+  liveStatus?: string;
+}): YouTubeError | undefined {
+  switch (fields.availability) {
+    case 'private':
+      return new YouTubeError('PRIVATE', 'This video is private.', {
+        nextStep: 'Only the owner and invited viewers can access it. Try a different video.',
+      });
+    case 'subscriber_only':
+      return new YouTubeError('MEMBERS_ONLY', 'This video is restricted to channel members.', {
+        nextStep: 'Members-only content cannot be accessed. Try a different video.',
+      });
+    case 'premium_only':
+      return new YouTubeError('PREMIUM_ONLY', 'This video requires a YouTube Premium account.', {
+        nextStep: 'Premium content cannot be accessed. Try a different video.',
+      });
+    case 'needs_auth':
+      return new YouTubeError(
+        'AGE_GATED',
+        'This video is age-restricted and requires a signed-in account.',
+        {
+          nextStep:
+            'Age-gated videos cannot be read without authentication. Try a different video, or configure yt-dlp with browser cookies.',
+        }
+      );
+  }
+
+  // 'is_live' is deliberately absent: a stream in progress has real metadata,
+  // and asking about one is a legitimate request.
+  switch (fields.liveStatus) {
+    case 'is_upcoming':
+      return new YouTubeError('LIVE_NOT_ENDED', 'This live stream has not started yet.', {
+        nextStep: 'Nothing has been broadcast. Try again once the stream has finished.',
+      });
+    case 'post_live':
+      return new YouTubeError(
+        'LIVE_NOT_ENDED',
+        'This live stream has ended but is still processing.',
+        {
+          nextStep: 'YouTube has not published the recording yet. Try again later.',
+          retryable: true,
+        }
+      );
+  }
+
+  return undefined;
 }
 
 /** Normalise anything thrown inside a tool handler into a YouTubeError. */
