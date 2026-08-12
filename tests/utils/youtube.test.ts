@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock execa before importing the module
 vi.mock('execa', () => ({
   execa: vi.fn(),
+  // runYtDlp narrows failures with `instanceof ExecaError`, so the mock needs a
+  // real class to test against.
+  ExecaError: class ExecaError extends Error {},
 }));
 
-// Mock fs/promises
 vi.mock('fs/promises', () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
   readFile: vi.fn(),
@@ -13,10 +14,62 @@ vi.mock('fs/promises', () => ({
   unlink: vi.fn().mockResolvedValue(undefined),
 }));
 
-// Mock fs
 vi.mock('fs', () => ({
   existsSync: vi.fn(),
 }));
+
+/**
+ * getVideoInfo prints 11 pipe-delimited fields. Building the mock from a record
+ * rather than a hand-written string is what keeps this suite honest: the old
+ * version supplied only 8 fields, so view/like/comment counts silently parsed
+ * as 0 and `toMatchObject` never noticed.
+ */
+const VIDEO_INFO_FIELDS = [
+  'id',
+  'title',
+  'channel',
+  'duration',
+  'uploadDate',
+  'description',
+  'tagsJson',
+  'thumbnail',
+  'viewCount',
+  'likeCount',
+  'commentCount',
+] as const;
+
+function videoInfoStdout(
+  overrides: Partial<Record<(typeof VIDEO_INFO_FIELDS)[number], string>>
+): string {
+  const defaults: Record<(typeof VIDEO_INFO_FIELDS)[number], string> = {
+    id: 'dQw4w9WgXcQ',
+    title: 'Never Gonna Give You Up',
+    channel: 'Rick Astley',
+    duration: '213',
+    uploadDate: '20091025',
+    description: 'Description',
+    tagsJson: '["tag1","tag2"]',
+    thumbnail: 'https://thumbnail.jpg',
+    viewCount: '1600000000',
+    likeCount: '17000000',
+    commentCount: '2300000',
+  };
+  const merged = { ...defaults, ...overrides };
+  return VIDEO_INFO_FIELDS.map((field) => merged[field]).join('|||');
+}
+
+function execaSuccess(stdout: string): never {
+  return {
+    stdout,
+    stderr: '',
+    exitCode: 0,
+    failed: false,
+    command: '',
+    escapedCommand: '',
+    killed: false,
+    timedOut: false,
+  } as never;
+}
 
 describe('YouTube Utils', () => {
   beforeEach(() => {
@@ -24,74 +77,67 @@ describe('YouTube Utils', () => {
   });
 
   describe('getVideoInfo', () => {
-    it('should extract video info from yt-dlp output', async () => {
+    it('parses every field yt-dlp prints', async () => {
       const { execa } = await import('execa');
-      const mockedExeca = vi.mocked(execa);
-
-      mockedExeca.mockResolvedValue({
-        stdout:
-          'dQw4w9WgXcQ|||Never Gonna Give You Up|||Rick Astley|||213|||20091025|||Description|||["tag1","tag2"]|||https://thumbnail.jpg',
-        stderr: '',
-        exitCode: 0,
-        failed: false,
-        command: '',
-        escapedCommand: '',
-        killed: false,
-        timedOut: false,
-      } as never);
+      vi.mocked(execa).mockResolvedValue(execaSuccess(videoInfoStdout({})));
 
       const { getVideoInfo } = await import('../../src/utils/youtube.js');
       const result = await getVideoInfo('dQw4w9WgXcQ');
 
-      expect(result).toMatchObject({
+      expect(result).toEqual({
         id: 'dQw4w9WgXcQ',
         title: 'Never Gonna Give You Up',
         channel: 'Rick Astley',
         duration: 213,
+        durationFormatted: '3:33',
+        uploadDate: '2009-10-25',
+        description: 'Description',
+        tags: ['tag1', 'tag2'],
+        url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        thumbnailUrl: 'https://thumbnail.jpg',
+        viewCount: 1_600_000_000,
+        likeCount: 17_000_000,
+        commentCount: 2_300_000,
       });
     });
 
-    it('should handle YouTube URLs', async () => {
+    it('falls back to zero for absent counts', async () => {
+      const { execa } = await import('execa');
+      vi.mocked(execa).mockResolvedValue(
+        execaSuccess(
+          videoInfoStdout({ viewCount: 'NA', likeCount: 'NA', commentCount: 'NA', tagsJson: '[]' })
+        )
+      );
+
+      const { getVideoInfo } = await import('../../src/utils/youtube.js');
+      const result = await getVideoInfo('dQw4w9WgXcQ');
+
+      expect(result).toMatchObject({ viewCount: 0, likeCount: 0, commentCount: 0, tags: [] });
+    });
+
+    it('accepts a full URL and applies a timeout to the yt-dlp call', async () => {
       const { execa } = await import('execa');
       const mockedExeca = vi.mocked(execa);
-
-      mockedExeca.mockResolvedValue({
-        stdout: 'ABC123xyzAB|||Test|||Channel|||60|||20240101|||Desc|||[]|||thumb.jpg',
-        stderr: '',
-        exitCode: 0,
-        failed: false,
-        command: '',
-        escapedCommand: '',
-        killed: false,
-        timedOut: false,
-      } as never);
+      mockedExeca.mockResolvedValue(execaSuccess(videoInfoStdout({ id: 'ABC123xyzAB' })));
 
       const { getVideoInfo } = await import('../../src/utils/youtube.js');
       const result = await getVideoInfo('https://www.youtube.com/watch?v=ABC123xyzAB');
 
+      expect(result.id).toBe('ABC123xyzAB');
       expect(mockedExeca).toHaveBeenCalledWith(
         'yt-dlp',
-        expect.arrayContaining(['https://www.youtube.com/watch?v=ABC123xyzAB'])
+        expect.arrayContaining(['https://www.youtube.com/watch?v=ABC123xyzAB']),
+        expect.objectContaining({ timeout: expect.any(Number) })
       );
-      expect(result.id).toBe('ABC123xyzAB');
     });
   });
 
   describe('listVideos', () => {
-    it('should list videos from a playlist', async () => {
+    it('lists videos from a playlist', async () => {
       const { execa } = await import('execa');
-      const mockedExeca = vi.mocked(execa);
-
-      mockedExeca.mockResolvedValue({
-        stdout: 'vid1|||Title 1|||120|||20240101\nvid2|||Title 2|||180|||20240102',
-        stderr: '',
-        exitCode: 0,
-        failed: false,
-        command: '',
-        escapedCommand: '',
-        killed: false,
-        timedOut: false,
-      } as never);
+      vi.mocked(execa).mockResolvedValue(
+        execaSuccess('vid1|||Title 1|||120|||20240101\nvid2|||Title 2|||180|||20240102')
+      );
 
       const { listVideos } = await import('../../src/utils/youtube.js');
       const result = await listVideos('https://youtube.com/playlist?list=PLtest', 10);
@@ -101,6 +147,8 @@ describe('YouTube Utils', () => {
         id: 'vid1',
         title: 'Title 1',
         duration: 120,
+        durationFormatted: '2:00',
+        uploadDate: '2024-01-01',
       });
     });
   });

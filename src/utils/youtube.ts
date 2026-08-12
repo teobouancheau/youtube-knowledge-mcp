@@ -1,9 +1,12 @@
-import { execa } from 'execa';
 import { homedir } from 'os';
 import { join } from 'path';
 import { mkdir, readFile, writeFile, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
 import { formatYouTubeDate } from './format.js';
+import { YouTubeError } from './errors.js';
+import { TIMEOUTS, isRecord, parseYtDlpJson, parseYtDlpJsonLines, runYtDlp } from './ytdlp.js';
+import { assertLanguageTag, resolveOutputDir } from './validate.js';
+import { log } from './context.js';
 
 const CACHE_DIR = join(homedir(), '.youtube-knowledge', 'transcripts');
 
@@ -97,6 +100,10 @@ interface YtDlpSearchResult {
   channel?: string;
   view_count?: number;
   url?: string;
+}
+
+function isSearchResult(value: unknown): value is YtDlpSearchResult {
+  return isRecord(value) && typeof value.id === 'string';
 }
 
 interface YtDlpChapter {
@@ -194,12 +201,15 @@ export async function getVideoInfo(urlOrId: string): Promise<VideoInfo> {
   const videoId = extractVideoId(urlOrId);
   const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-  const { stdout } = await execa('yt-dlp', [
-    '--skip-download',
-    '--print',
-    '%(id)s|||%(title)s|||%(channel)s|||%(duration)s|||%(upload_date)s|||%(description)s|||%(tags)j|||%(thumbnail)s|||%(view_count)s|||%(like_count)s|||%(comment_count)s',
-    url,
-  ]);
+  const stdout = await runYtDlp(
+    [
+      '--skip-download',
+      '--print',
+      '%(id)s|||%(title)s|||%(channel)s|||%(duration)s|||%(upload_date)s|||%(description)s|||%(tags)j|||%(thumbnail)s|||%(view_count)s|||%(like_count)s|||%(comment_count)s',
+      url,
+    ],
+    { label: 'get_video_info' }
+  );
 
   const [
     id,
@@ -244,15 +254,18 @@ export async function getVideoInfo(urlOrId: string): Promise<VideoInfo> {
 }
 
 export async function listVideos(urlOrChannel: string, limit = 20): Promise<VideoListItem[]> {
-  const { stdout } = await execa('yt-dlp', [
-    '--skip-download',
-    '--flat-playlist',
-    '--print',
-    '%(id)s|||%(title)s|||%(duration)s|||%(upload_date)s',
-    '--playlist-end',
-    limit.toString(),
-    urlOrChannel,
-  ]);
+  const stdout = await runYtDlp(
+    [
+      '--skip-download',
+      '--flat-playlist',
+      '--print',
+      '%(id)s|||%(title)s|||%(duration)s|||%(upload_date)s',
+      '--playlist-end',
+      limit.toString(),
+      urlOrChannel,
+    ],
+    { label: 'fetch_videos', timeoutMs: TIMEOUTS.transcript }
+  );
 
   const lines = stdout.trim().split('\n').filter(Boolean);
 
@@ -276,6 +289,7 @@ export async function getTranscript(
   preferredLang = 'en'
 ): Promise<TranscriptResult> {
   const videoId = extractVideoId(urlOrId);
+  assertLanguageTag(preferredLang);
   const url = `https://www.youtube.com/watch?v=${videoId}`;
 
   // Ensure cache directory exists
@@ -299,20 +313,23 @@ export async function getTranscript(
 
   try {
     // Try to get subtitles (auto-generated or manual)
-    await execa('yt-dlp', [
-      '--skip-download',
-      '--write-auto-sub',
-      '--write-sub',
-      '--sub-lang',
-      `${preferredLang},${preferredLang}-orig`,
-      '--sub-format',
-      'vtt',
-      '--convert-subs',
-      'vtt',
-      '-o',
-      outputTemplate,
-      url,
-    ]);
+    await runYtDlp(
+      [
+        '--skip-download',
+        '--write-auto-sub',
+        '--write-sub',
+        '--sub-lang',
+        `${preferredLang},${preferredLang}-orig`,
+        '--sub-format',
+        'vtt',
+        '--convert-subs',
+        'vtt',
+        '-o',
+        outputTemplate,
+        url,
+      ],
+      { label: 'get_transcript', timeoutMs: TIMEOUTS.transcript }
+    );
 
     // Find the generated subtitle file
     const possibleFiles = [
@@ -335,7 +352,7 @@ export async function getTranscript(
     }
 
     if (!subtitleFile) {
-      throw new Error(`No subtitles found for video ${videoId}`);
+      throw await noCaptionsError(url, preferredLang);
     }
 
     // Read and parse VTT file
@@ -354,11 +371,57 @@ export async function getTranscript(
       videoId,
     };
   } catch (error) {
-    throw new Error(
-      `Failed to get transcript for ${videoId}: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error }
-    );
+    // Already typed and actionable — pass it through rather than flattening it
+    // into a generic string, which is what the old wrapper did to every failure.
+    if (error instanceof YouTubeError) throw error;
+    throw new YouTubeError('YTDLP_FAILED', `Could not read the transcript for ${videoId}.`, {
+      nextStep: 'Verify the video exists and has captions, or call health_check.',
+      cause: error,
+    });
   }
+}
+
+/**
+ * Ask yt-dlp which caption tracks the video actually has, so the error can name
+ * the languages that would work instead of just saying "not found".
+ */
+async function noCaptionsError(url: string, requested: string): Promise<YouTubeError> {
+  let available: string[] = [];
+
+  try {
+    const stdout = await runYtDlp(['-j', '--skip-download', url], {
+      label: 'get_transcript (caption probe)',
+    });
+    const data = parseYtDlpJson<{
+      subtitles?: Record<string, unknown>;
+      automatic_captions?: Record<string, unknown>;
+    }>(stdout, isRecord, 'caption tracks');
+
+    available = [
+      ...Object.keys(data.subtitles ?? {}),
+      ...Object.keys(data.automatic_captions ?? {}),
+    ]
+      .filter((code) => !code.endsWith('-orig'))
+      .filter((code, index, all) => all.indexOf(code) === index)
+      .sort();
+  } catch {
+    // The probe is a nicety; never let it mask the original problem.
+  }
+
+  if (available.length === 0) {
+    return new YouTubeError('NO_CAPTIONS', 'This video has no captions in any language.', {
+      nextStep:
+        'Try get_video_info for the description, or get_comments for viewer discussion instead.',
+    });
+  }
+
+  const shown = available.slice(0, 25).join(', ');
+  const more = available.length > 25 ? `, and ${available.length - 25} more` : '';
+  return new YouTubeError(
+    'NO_CAPTIONS',
+    `No "${requested}" captions are available for this video.`,
+    { nextStep: `Call get_transcript again with one of: ${shown}${more}.` }
+  );
 }
 
 const DOWNLOADS_DIR = join(homedir(), '.youtube-knowledge', 'downloads');
@@ -381,9 +444,9 @@ export async function listFormats(urlOrId: string): Promise<VideoFormat[]> {
   const videoId = extractVideoId(urlOrId);
   const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-  const { stdout } = await execa('yt-dlp', ['-j', '--skip-download', url]);
+  const stdout = await runYtDlp(['-j', '--skip-download', url], { label: 'list_formats' });
 
-  const data = JSON.parse(stdout) as { formats?: YtDlpFormat[] };
+  const data = parseYtDlpJson<{ formats?: YtDlpFormat[] }>(stdout, isRecord, 'video formats');
   const formats = data.formats ?? [];
 
   return formats
@@ -434,31 +497,28 @@ export async function downloadVideo(
 ): Promise<DownloadResult> {
   const videoId = extractVideoId(urlOrId);
   const url = `https://www.youtube.com/watch?v=${videoId}`;
-  const targetDir = outputDir ?? DOWNLOADS_DIR;
+  const targetDir = resolveOutputDir(outputDir, DOWNLOADS_DIR);
 
   // Ensure download directory exists
   await mkdir(targetDir, { recursive: true });
 
   // Get video title first for the result
-  const { stdout: titleOutput } = await execa('yt-dlp', [
-    '--skip-download',
-    '--print',
-    '%(title)s',
-    url,
-  ]);
+  const titleOutput = await runYtDlp(['--skip-download', '--print', '%(title)s', url], {
+    label: 'download_video (title)',
+  });
   const title = titleOutput.trim();
 
   // Download with specified format
   const outputTemplate = join(targetDir, '%(title)s.%(ext)s');
 
-  // Determine format selector - use quality preset or explicit formatId
+  // A quality preset always wins over formatId; that is what the tool schema
+  // promises, and the two are resolved in exactly one place.
   const formatSelector = quality ? QUALITY_FORMAT_SELECTORS[quality] : formatId;
 
-  // Build yt-dlp arguments with merge format for combining video+audio
-  // -S vcodec:h264,acodec:m4a prefers H.264+AAC codecs compatible with MP4
-  const ytdlpArgs = [
+  // -S vcodec:h264,acodec:m4a prefers H.264+AAC, which merge cleanly into MP4.
+  const commonArgs = (selector: string): string[] => [
     '-f',
-    formatSelector,
+    selector,
     '-S',
     'vcodec:h264,acodec:m4a',
     '-o',
@@ -468,64 +528,50 @@ export async function downloadVideo(
     'mp4',
   ];
 
-  // Try download, with fallback to best available if format fails
+  // Transfers are not retried automatically: a partial file on disk plus a
+  // silent second attempt is worse than one clear failure.
+  const downloadOptions = {
+    label: 'download_video',
+    timeoutMs: TIMEOUTS.download,
+    retry: false,
+  } as const;
+
+  let effectiveSelector = formatSelector;
   try {
-    await execa('yt-dlp', [...ytdlpArgs, url]);
+    await runYtDlp([...commonArgs(formatSelector), url], downloadOptions);
   } catch (error) {
-    // If specific format failed, try with best available as fallback
-    if (!quality && formatId !== 'best') {
-      console.error(`Format ${formatId} failed, trying best available...`);
-      await execa('yt-dlp', [
-        '-f',
-        QUALITY_FORMAT_SELECTORS.best,
-        '-S',
-        'vcodec:h264,acodec:m4a',
-        '-o',
-        outputTemplate,
-        '--no-playlist',
-        '--merge-output-format',
-        'mp4',
-        url,
-      ]);
-    } else {
-      throw error;
-    }
+    // An explicitly requested format may simply not exist for this video, so
+    // falling back to "best" is worth one attempt. A preset failing is not:
+    // presets already encode their own fallback chain, and "best" failing
+    // leaves nothing to fall back to.
+    const alreadyBroadest = quality !== undefined || formatId === 'best';
+    if (alreadyBroadest) throw error;
+
+    log('warning', `format ${formatId} unavailable, falling back to best`);
+    effectiveSelector = QUALITY_FORMAT_SELECTORS.best;
+    await runYtDlp([...commonArgs(effectiveSelector), url], downloadOptions);
   }
 
-  // Get the actual filename that was created
-  const { stdout: filenameOutput } = await execa('yt-dlp', [
-    '-f',
-    formatSelector,
-    '--print',
-    'filename',
-    '-o',
-    outputTemplate,
-    '--no-playlist',
-    '--merge-output-format',
-    'mp4',
-    url,
-  ]);
-  const filePath = filenameOutput.trim();
+  // Ask yt-dlp what it actually named the file rather than guessing.
+  const filenameOutput = await runYtDlp(
+    [...commonArgs(effectiveSelector), '--print', 'filename', '--skip-download', url],
+    { label: 'download_video (filename)' }
+  );
 
   return {
     videoId,
     title,
-    filePath,
+    filePath: filenameOutput.trim(),
     format: quality ?? formatId,
   };
 }
 
 export async function searchVideos(query: string, limit = 5): Promise<SearchResult[]> {
-  const { stdout } = await execa('yt-dlp', [
-    `ytsearch${limit}:${query}`,
-    '--dump-json',
-    '--flat-playlist',
-  ]);
+  const stdout = await runYtDlp([`ytsearch${limit}:${query}`, '--dump-json', '--flat-playlist'], {
+    label: 'search_videos',
+  });
 
-  const lines = stdout.trim().split('\n').filter(Boolean);
-
-  return lines.map((line) => {
-    const data = JSON.parse(line) as YtDlpSearchResult;
+  return parseYtDlpJsonLines(stdout, isSearchResult).map((data) => {
     return {
       id: data.id,
       title: data.title ?? 'Unknown',
@@ -542,8 +588,8 @@ export async function getChapters(urlOrId: string): Promise<Chapter[]> {
   const videoId = extractVideoId(urlOrId);
   const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-  const { stdout } = await execa('yt-dlp', ['-j', '--skip-download', url]);
-  const data = JSON.parse(stdout) as { chapters?: YtDlpChapter[] };
+  const stdout = await runYtDlp(['-j', '--skip-download', url], { label: 'get_chapters' });
+  const data = parseYtDlpJson<{ chapters?: YtDlpChapter[] }>(stdout, isRecord, 'video chapters');
   const chapters = data.chapters ?? [];
 
   return chapters.map((ch) => ({
@@ -559,16 +605,19 @@ export async function getComments(urlOrId: string, limit = 20): Promise<VideoCom
   const videoId = extractVideoId(urlOrId);
   const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-  const { stdout } = await execa('yt-dlp', [
-    '-j',
-    '--skip-download',
-    '--write-comments',
-    '--extractor-args',
-    `youtube:comment_sort=top;max_comments=${limit}`,
-    url,
-  ]);
+  const stdout = await runYtDlp(
+    [
+      '-j',
+      '--skip-download',
+      '--write-comments',
+      '--extractor-args',
+      `youtube:comment_sort=top;max_comments=${limit}`,
+      url,
+    ],
+    { label: 'get_comments', timeoutMs: TIMEOUTS.comments }
+  );
 
-  const data = JSON.parse(stdout) as { comments?: YtDlpComment[] };
+  const data = parseYtDlpJson<{ comments?: YtDlpComment[] }>(stdout, isRecord, 'video comments');
   const comments = data.comments ?? [];
 
   return comments
@@ -586,18 +635,12 @@ export async function searchChannels(query: string, limit = 5): Promise<ChannelI
   // YouTube channel filter: sp=EgIQAg%3D%3D
   const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAg%3D%3D`;
 
-  const { stdout } = await execa('yt-dlp', [
-    searchUrl,
-    '--dump-json',
-    '--flat-playlist',
-    '--playlist-items',
-    `1-${limit}`,
-  ]);
+  const stdout = await runYtDlp(
+    [searchUrl, '--dump-json', '--flat-playlist', '--playlist-items', `1-${limit}`],
+    { label: 'search_channels' }
+  );
 
-  const lines = stdout.trim().split('\n').filter(Boolean);
-
-  return lines.map((line) => {
-    const data = JSON.parse(line) as YtDlpChannelSearchResult;
+  return parseYtDlpJsonLines<YtDlpChannelSearchResult>(stdout, isRecord).map((data) => {
     return {
       name: data.channel ?? data.title ?? 'Unknown',
       channelId: data.channel_id ?? data.id ?? '',
@@ -610,15 +653,12 @@ export async function searchChannels(query: string, limit = 5): Promise<ChannelI
 }
 
 export async function getPlaylistInfo(playlistUrl: string): Promise<PlaylistInfo> {
-  const { stdout } = await execa('yt-dlp', [
-    '--dump-single-json',
-    '--flat-playlist',
-    '--playlist-items',
-    '0',
-    playlistUrl,
-  ]);
+  const stdout = await runYtDlp(
+    ['--dump-single-json', '--flat-playlist', '--playlist-items', '0', playlistUrl],
+    { label: 'get_playlist_info' }
+  );
 
-  const data = JSON.parse(stdout) as YtDlpPlaylistMeta;
+  const data = parseYtDlpJson<YtDlpPlaylistMeta>(stdout, isRecord, 'playlist metadata');
   const modDate = data.modified_date ?? '';
 
   return {
@@ -639,15 +679,12 @@ export async function getChannelInfo(channel: string): Promise<ChannelInfo> {
     ? channel
     : `https://www.youtube.com/${channel.startsWith('@') ? channel : `@${channel}`}`;
 
-  const { stdout } = await execa('yt-dlp', [
-    '--dump-single-json',
-    '--flat-playlist',
-    '--playlist-items',
-    '0',
-    channelUrl,
-  ]);
+  const stdout = await runYtDlp(
+    ['--dump-single-json', '--flat-playlist', '--playlist-items', '0', channelUrl],
+    { label: 'get_channel_info' }
+  );
 
-  const data = JSON.parse(stdout) as YtDlpChannelMeta;
+  const data = parseYtDlpJson<YtDlpChannelMeta>(stdout, isRecord, 'channel metadata');
 
   return {
     name: data.channel ?? 'Unknown',
