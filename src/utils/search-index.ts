@@ -2,10 +2,10 @@
  * Full-text search over the local library.
  *
  * A hand-written BM25 index rather than SQLite FTS5 or an embedding store:
- * `node:sqlite` needs Node 22 and this release still supports Node 20, and
  * embeddings would mean an API key and a heavyweight dependency for a server
  * whose whole appeal is four runtime dependencies. BM25 over a few thousand
- * saved notes is instant and costs nothing.
+ * saved notes is instant and costs nothing. `node:sqlite` is reachable now that
+ * the floor is Node 22, so FTS5 is the move if a library ever outgrows this.
  */
 
 import { z } from 'zod';

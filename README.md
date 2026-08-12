@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/youtube-knowledge-mcp.svg)](https://www.npmjs.com/package/youtube-knowledge-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js](https://img.shields.io/badge/Node.js-20%2B-green.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org/)
 [![GitHub stars](https://img.shields.io/github/stars/teobouancheau/youtube-knowledge-mcp?style=social)](https://github.com/teobouancheau/youtube-knowledge-mcp)
 
 A Model Context Protocol (MCP) server that gives AI assistants the ability to search, analyze, and extract knowledge from YouTube videos. Works with Claude Desktop, Claude Code, Claude.ai, Cursor and any MCP-compatible client.
@@ -50,7 +50,7 @@ Supports both **local** (stdio) and **remote** (Streamable HTTP) transports.
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 22+
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp#installation) — required by every tool.
   `brew install yt-dlp` (macOS) or `pip install -U yt-dlp`
 - [ffmpeg](https://ffmpeg.org/) — required for downloads, clip extraction and frame
@@ -382,7 +382,7 @@ npm run start:http # Run server (HTTP)
 npm run validate   # Typecheck + lint + format check + test
 ```
 
-CI runs the same gate on Node 20, 22 and 24 for every push and pull request,
+CI runs the same gate on Node 22 and 24 for every push and pull request,
 then boots the built server as a real MCP client to verify the manifest.
 
 ## Contributing
