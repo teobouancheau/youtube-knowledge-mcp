@@ -27,6 +27,7 @@ import {
   parseYtDlpJsonLines,
   isRecord,
   concurrencyState,
+  TIMEOUTS,
 } from '../../src/utils/ytdlp.js';
 import { runWithRequestContext } from '../../src/utils/context.js';
 import { YouTubeError } from '../../src/utils/errors.js';
@@ -53,8 +54,22 @@ describe('runYtDlp', () => {
 
     expect(mockedExeca).toHaveBeenCalledWith(
       'yt-dlp',
-      ['--version'],
+      ['--socket-timeout', '30', '--version'],
       expect.objectContaining({ timeout: expect.any(Number) })
+    );
+  });
+
+  it('bounds socket silence even on transfers that have no wall-clock timeout', async () => {
+    // A dead connection is otherwise indistinguishable from a slow one, and it
+    // holds its concurrency slot for as long as it stays silent.
+    mockedExeca.mockResolvedValue(ok('output'));
+
+    await runYtDlp(['--download'], { timeoutMs: TIMEOUTS.download });
+
+    expect(mockedExeca).toHaveBeenCalledWith(
+      'yt-dlp',
+      ['--socket-timeout', '30', '--download'],
+      expect.objectContaining({ timeout: undefined })
     );
   });
 
@@ -245,6 +260,81 @@ describe('concurrency limit', () => {
     // Everything eventually runs; the limit paces them, it does not drop them.
     expect(mockedExeca).toHaveBeenCalledTimes(limit + 2);
     expect(concurrencyState()).toMatchObject({ active: 0, queued: 0 });
+  });
+
+  it('never exceeds the limit while a slot changes hands', async () => {
+    const { limit } = concurrencyState();
+    const releases: (() => void)[] = [];
+    mockedExeca.mockImplementation(
+      (() =>
+        new Promise((resolve) => {
+          releases.push(() => {
+            resolve(ok('done'));
+          });
+        })) as never
+    );
+
+    const inFlight = Array.from({ length: limit * 2 }, () => runYtDlp(['--version']));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Freeing slots used to decrement first and wake a waiter afterwards, so
+    // for one tick the count sat below the ceiling and a fresh caller could
+    // take a slot the queue had already been promised.
+    for (let round = 0; round < limit; round++) {
+      releases.shift()?.();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(concurrencyState().active).toBeLessThanOrEqual(limit);
+    }
+
+    // Anything spawning from here on finishes immediately, so draining the
+    // resolvers already collected is enough to settle every call.
+    mockedExeca.mockImplementation((() => Promise.resolve(ok('done'))) as never);
+    while (releases.length > 0) releases.shift()?.();
+    await Promise.all(inFlight);
+    expect(concurrencyState()).toMatchObject({ active: 0, queued: 0 });
+  });
+
+  it('lets a cancelled request leave the queue instead of waiting for ever', async () => {
+    // Media transfers run without a wall-clock timeout, so stalled ones hold
+    // their slots indefinitely. When the wait itself ignored the abort signal,
+    // every later call queued behind them with no way out and the whole server
+    // stopped answering — not just the tool that stalled.
+    const { limit } = concurrencyState();
+    const releases: (() => void)[] = [];
+    mockedExeca.mockImplementation(
+      (() =>
+        new Promise((resolve) => {
+          releases.push(() => {
+            resolve(ok('done'));
+          });
+        })) as never
+    );
+
+    const stalled = Array.from({ length: limit }, () =>
+      runYtDlp(['--stall'], { timeoutMs: TIMEOUTS.download }).catch(() => undefined)
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(concurrencyState().active).toBe(limit);
+
+    try {
+      const controller = new AbortController();
+      const queued = runWithRequestContext({ signal: controller.signal }, () =>
+        runYtDlp(['--queued'], { timeoutMs: TIMEOUTS.download, retry: false })
+      );
+      await Promise.resolve();
+      controller.abort();
+
+      await expect(queued).rejects.toMatchObject({ code: 'CANCELLED' });
+      expect(concurrencyState().queued).toBe(0);
+    } finally {
+      // The stalled transfers still hold every slot; free them, or the rest of
+      // the file queues behind them exactly as the server did.
+      while (releases.length > 0) releases.shift()?.();
+      await Promise.all(stalled);
+    }
   });
 });
 
