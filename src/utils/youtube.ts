@@ -1,12 +1,19 @@
 import { homedir } from 'os';
 import { join } from 'path';
 import { mkdir, readFile, writeFile, unlink } from 'fs/promises';
-import { existsSync } from 'fs';
+import { existsSync, readdirSync } from 'fs';
 import { formatYouTubeDate } from './format.js';
 import { YouTubeError } from './errors.js';
 import { TIMEOUTS, isRecord, parseYtDlpJson, parseYtDlpJsonLines, runYtDlp } from './ytdlp.js';
 import { assertLanguageTag, resolveOutputDir } from './validate.js';
 import { log } from './context.js';
+import {
+  TRANSCRIPT_CACHE_VERSION,
+  parseVtt,
+  segmentsToText,
+  type CachedTranscript,
+  type TranscriptSegment,
+} from './transcript.js';
 
 const CACHE_DIR = join(homedir(), '.youtube-knowledge', 'transcripts');
 
@@ -36,9 +43,14 @@ export interface VideoListItem {
 }
 
 export interface TranscriptResult {
+  /** The whole transcript as plain text, unchanged from previous releases. */
   transcript: string;
+  /** The same content with cue timings preserved. */
+  segments: TranscriptSegment[];
   language: string;
   videoId: string;
+  /** True when served from the local cache rather than refetched. */
+  cached: boolean;
 }
 
 export interface VideoFormat {
@@ -177,8 +189,8 @@ function extractVideoId(urlOrId: string): string {
   ];
 
   for (const pattern of patterns) {
-    const match = urlOrId.match(pattern);
-    if (match) {
+    const match = pattern.exec(urlOrId);
+    if (match?.[1] !== undefined) {
       return match[1];
     }
   }
@@ -211,19 +223,21 @@ export async function getVideoInfo(urlOrId: string): Promise<VideoInfo> {
     { label: 'get_video_info' }
   );
 
-  const [
-    id,
-    title,
-    channel,
-    durationStr,
-    uploadDate,
-    description,
-    tagsJson,
-    thumbnailUrl,
-    viewCountStr,
-    likeCountStr,
-    commentCountStr,
-  ] = stdout.split('|||');
+  // yt-dlp prints "NA" for absent fields and simply omits trailing ones, so
+  // index access has to tolerate a short row rather than trust its length.
+  const parts = stdout.split('|||');
+  const field = (index: number): string => parts[index] ?? '';
+
+  const [id, title, channel, durationStr, uploadDate, description, tagsJson, thumbnailUrl] = [
+    field(0),
+    field(1),
+    field(2),
+    field(3),
+    field(4),
+    field(5),
+    field(6),
+    field(7),
+  ];
   const duration = parseInt(durationStr, 10) || 0;
 
   let tags: string[] = [];
@@ -247,9 +261,9 @@ export async function getVideoInfo(urlOrId: string): Promise<VideoInfo> {
     tags,
     url,
     thumbnailUrl: thumbnailUrl || '',
-    viewCount: parseInt(viewCountStr, 10) || 0,
-    likeCount: parseInt(likeCountStr, 10) || 0,
-    commentCount: parseInt(commentCountStr, 10) || 0,
+    viewCount: parseInt(field(8), 10) || 0,
+    likeCount: parseInt(field(9), 10) || 0,
+    commentCount: parseInt(field(10), 10) || 0,
   };
 }
 
@@ -270,49 +284,103 @@ export async function listVideos(urlOrChannel: string, limit = 20): Promise<Vide
   const lines = stdout.trim().split('\n').filter(Boolean);
 
   return lines.map((line) => {
-    const [id, title, durationStr, uploadDate] = line.split('|||');
-    const duration = parseInt(durationStr, 10) || 0;
+    const parts = line.split('|||');
+    const field = (index: number): string => parts[index] ?? '';
+
+    const id = field(0);
+    const duration = parseInt(field(2), 10) || 0;
 
     return {
       id,
-      title: title || 'Unknown title',
+      title: field(1) || 'Unknown title',
       duration,
       durationFormatted: formatDuration(duration),
-      uploadDate: formatYouTubeDate(uploadDate),
+      uploadDate: formatYouTubeDate(field(3)),
       url: `https://www.youtube.com/watch?v=${id}`,
     };
   });
 }
 
+export interface GetTranscriptOptions {
+  language?: string;
+  /** Ignore any cached copy and refetch from YouTube. */
+  refresh?: boolean;
+}
+
+/** Captions rarely change, but a cache with no expiry is a cache that goes wrong. */
+const TRANSCRIPT_TTL_MS = Number(process.env.YOUTUBE_MCP_TRANSCRIPT_TTL_MS ?? 30 * 86_400_000);
+
+function cachePath(videoId: string, language: string): string {
+  return join(CACHE_DIR, `${videoId}.${language}.json`);
+}
+
+async function readCachedTranscript(
+  videoId: string,
+  language: string
+): Promise<CachedTranscript | undefined> {
+  const path = cachePath(videoId, language);
+  if (!existsSync(path)) return undefined;
+
+  try {
+    const parsed: unknown = JSON.parse(await readFile(path, 'utf-8'));
+    if (!isRecord(parsed)) return undefined;
+
+    // A cache written by an older version holds untimed text; regenerate it
+    // rather than reading it back as if it had timings.
+    if (parsed.version !== TRANSCRIPT_CACHE_VERSION) return undefined;
+    if (!Array.isArray(parsed.segments)) return undefined;
+
+    const fetchedAt = typeof parsed.fetchedAt === 'string' ? Date.parse(parsed.fetchedAt) : NaN;
+    if (Number.isFinite(fetchedAt) && Date.now() - fetchedAt > TRANSCRIPT_TTL_MS) return undefined;
+
+    return parsed as unknown as CachedTranscript;
+  } catch {
+    return undefined;
+  }
+}
+
+/** True when a usable transcript is already on disk, in any language. */
+export function hasCachedTranscript(videoId: string): boolean {
+  if (!existsSync(CACHE_DIR)) return false;
+  return readdirSync(CACHE_DIR).some(
+    (name) => name.startsWith(`${videoId}.`) && name.endsWith('.json')
+  );
+}
+
 export async function getTranscript(
   urlOrId: string,
-  preferredLang = 'en'
+  preferredLangOrOptions: string | GetTranscriptOptions = 'en'
 ): Promise<TranscriptResult> {
+  const options =
+    typeof preferredLangOrOptions === 'string'
+      ? { language: preferredLangOrOptions }
+      : preferredLangOrOptions;
+  const preferredLang = options.language ?? 'en';
+
   const videoId = extractVideoId(urlOrId);
   assertLanguageTag(preferredLang);
   const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-  // Ensure cache directory exists
   await mkdir(CACHE_DIR, { recursive: true });
 
-  // Check cache first
-  const cachedPath = join(CACHE_DIR, `${videoId}.txt`);
-  if (existsSync(cachedPath)) {
-    const transcript = await readFile(cachedPath, 'utf-8');
-    return {
-      transcript,
-      language: preferredLang,
-      videoId,
-    };
+  if (!options.refresh) {
+    const cached = await readCachedTranscript(videoId, preferredLang);
+    if (cached) {
+      return {
+        transcript: segmentsToText(cached.segments),
+        segments: cached.segments,
+        language: cached.language,
+        videoId,
+        cached: true,
+      };
+    }
   }
 
-  // Use a temp directory for yt-dlp subtitle output
   const tempDir = join(CACHE_DIR, 'temp');
   await mkdir(tempDir, { recursive: true });
   const outputTemplate = join(tempDir, videoId);
 
   try {
-    // Try to get subtitles (auto-generated or manual)
     await runYtDlp(
       [
         '--skip-download',
@@ -331,44 +399,37 @@ export async function getTranscript(
       { label: 'get_transcript', timeoutMs: TIMEOUTS.transcript }
     );
 
-    // Find the generated subtitle file
-    const possibleFiles = [
-      `${outputTemplate}.${preferredLang}.vtt`,
-      `${outputTemplate}.${preferredLang}-orig.vtt`,
-      `${outputTemplate}.en.vtt`,
+    const candidates = [
+      { file: `${outputTemplate}.${preferredLang}.vtt`, language: preferredLang },
+      {
+        file: `${outputTemplate}.${preferredLang}-orig.vtt`,
+        language: `${preferredLang} (auto-generated)`,
+      },
+      { file: `${outputTemplate}.en.vtt`, language: 'en' },
     ];
 
-    let subtitleFile: string | null = null;
-    let detectedLang = preferredLang;
+    const found = candidates.find((candidate) => existsSync(candidate.file));
+    if (!found) throw await noCaptionsError(url, preferredLang);
 
-    for (const file of possibleFiles) {
-      if (existsSync(file)) {
-        subtitleFile = file;
-        if (file.includes('-orig')) {
-          detectedLang = `${preferredLang} (auto-generated)`;
-        }
-        break;
-      }
-    }
+    const segments = parseVtt(await readFile(found.file, 'utf-8'));
+    if (segments.length === 0) throw await noCaptionsError(url, preferredLang);
 
-    if (!subtitleFile) {
-      throw await noCaptionsError(url, preferredLang);
-    }
-
-    // Read and parse VTT file
-    const vttContent = await readFile(subtitleFile, 'utf-8');
-    const transcript = parseVtt(vttContent);
-
-    // Cache the transcript
-    await writeFile(cachedPath, transcript, 'utf-8');
-
-    // Clean up temp file (ignore errors)
-    await unlink(subtitleFile).catch(() => undefined);
+    const entry: CachedTranscript = {
+      version: TRANSCRIPT_CACHE_VERSION,
+      videoId,
+      language: found.language,
+      fetchedAt: new Date().toISOString(),
+      segments,
+    };
+    await writeFile(cachePath(videoId, preferredLang), JSON.stringify(entry), 'utf-8');
+    await unlink(found.file).catch(() => undefined);
 
     return {
-      transcript,
-      language: detectedLang,
+      transcript: segmentsToText(segments),
+      segments,
+      language: found.language,
       videoId,
+      cached: false,
     };
   } catch (error) {
     // Already typed and actionable — pass it through rather than flattening it
@@ -694,35 +755,4 @@ export async function getChannelInfo(channel: string): Promise<ChannelInfo> {
     channelUrl: data.channel_url ?? channelUrl,
     description: data.description ?? '',
   };
-}
-
-function parseVtt(vttContent: string): string {
-  const lines = vttContent.split('\n');
-  const textLines: string[] = [];
-  let lastText = '';
-
-  for (const line of lines) {
-    // Skip VTT headers and timestamps
-    if (
-      line.startsWith('WEBVTT') ||
-      line.startsWith('Kind:') ||
-      line.startsWith('Language:') ||
-      line.includes('-->') ||
-      /^\d{2}:\d{2}/.exec(line) ||
-      line.trim() === ''
-    ) {
-      continue;
-    }
-
-    // Remove VTT tags like <c> </c>
-    const cleanLine = line.replace(/<[^>]+>/g, '').trim();
-
-    // Skip duplicate lines (common in auto-generated subs)
-    if (cleanLine && cleanLine !== lastText) {
-      textLines.push(cleanLine);
-      lastText = cleanLine;
-    }
-  }
-
-  return textLines.join(' ').replace(/\s+/g, ' ').trim();
 }

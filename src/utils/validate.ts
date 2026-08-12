@@ -72,8 +72,6 @@ export function parseTimestamp(value: string | number, field: string): number {
     });
   }
 
-  // The hours group is optional, so it is genuinely absent for "MM:SS" input
-  // even though TypeScript types every capture group as a string.
-  const hours = match[1] as string | undefined;
-  return Number(hours ?? 0) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+  // The hours group is optional, so it is genuinely absent for "MM:SS" input.
+  return Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0);
 }
