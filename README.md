@@ -44,7 +44,7 @@ Supports both **local** (stdio) and **remote** (Streamable HTTP) transports.
 - Typed, actionable errors — "no captions in en, try: fr, es, de" rather than a
   wall of yt-dlp stderr
 - Timeouts, retry with backoff, and a concurrency limit on every yt-dlp call
-- `health_check` diagnoses missing or outdated yt-dlp and ffmpeg
+- `check_health` diagnoses missing or outdated yt-dlp and ffmpeg
 - Structured output on every tool, plus MCP resources, prompts and completions
 
 ## Prerequisites
@@ -55,7 +55,7 @@ Supports both **local** (stdio) and **remote** (Streamable HTTP) transports.
 - [ffmpeg](https://ffmpeg.org/) — required for downloads, clip extraction and frame
   capture. Everything else works without it.
 
-Run the `health_check` tool to confirm both are installed and current. An
+Run the `check_health` tool to confirm both are installed and current. An
 outdated yt-dlp is the most common cause of unexplained failures, since YouTube
 changes frequently; `yt-dlp -U` fixes most of them.
 
@@ -183,7 +183,7 @@ available for this video. Call get_transcript again with one of: fr, es, de.`
 | `get_chapters`      | `video`          | Chapter titles with start/end times and deep links               |
 | `get_comments`      | `video`, `limit` | Top-level comments by popularity                                 |
 | `list_formats`      | `video`          | Available formats grouped by video+audio, video-only, audio-only |
-| `health_check`      | —                | yt-dlp and ffmpeg status, versions, and staleness warnings       |
+| `check_health`      | —                | yt-dlp and ffmpeg status, versions, and staleness warnings       |
 
 ### Transcripts — remote + local
 

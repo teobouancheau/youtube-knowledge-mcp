@@ -5,9 +5,9 @@ import { toolResult } from '../utils/format.js';
 import { z } from 'zod';
 import { binaryStatusSchema } from '../schemas.js';
 
-export const healthCheckSchema = {};
+export const checkHealthSchema = {};
 
-export const healthCheckOutputSchema = {
+export const checkHealthOutputSchema = {
   ok: z.boolean(),
   ytDlp: binaryStatusSchema,
   ffmpeg: binaryStatusSchema,
@@ -24,7 +24,7 @@ export const healthCheckOutputSchema = {
  * When yt-dlp is missing or stale every other tool fails in a way that looks
  * like "YouTube is broken"; this turns that into one readable answer.
  */
-export async function healthCheckHandler(): Promise<CallToolResult> {
+export async function checkHealthHandler(): Promise<CallToolResult> {
   const report = await runPreflight({ force: true });
   const { active, queued, limit } = concurrencyState();
 

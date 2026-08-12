@@ -155,7 +155,7 @@ function translateExecaFailure(error: unknown, timeoutMs: number): YouTubeError 
   if (error.code === 'ENOENT') {
     return new YouTubeError('YTDLP_MISSING', 'yt-dlp is not installed or not on PATH.', {
       nextStep:
-        'Install it with `pip install -U yt-dlp` (or `brew install yt-dlp`) and restart the server. Call health_check to verify.',
+        'Install it with `pip install -U yt-dlp` (or `brew install yt-dlp`) and restart the server. Call check_health to verify.',
       cause: error,
     });
   }

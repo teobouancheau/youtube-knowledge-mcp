@@ -4,6 +4,18 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
 [
   {
     "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "check_health",
+    "parameters": [],
+    "required": [],
+  },
+  {
+    "annotations": {
       "destructiveHint": true,
       "idempotentHint": true,
       "openWorldHint": false,
@@ -321,18 +333,6 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": true,
-      "openWorldHint": false,
-      "readOnlyHint": true,
-    },
-    "hasOutputSchema": true,
-    "name": "health_check",
-    "parameters": [],
-    "required": [],
-  },
-  {
-    "annotations": {
-      "destructiveHint": false,
-      "idempotentHint": true,
       "openWorldHint": true,
       "readOnlyHint": true,
     },
@@ -496,6 +496,18 @@ exports[`tool manifest snapshot > matches the recorded remote surface 1`] = `
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "check_health",
+    "parameters": [],
+    "required": [],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
       "openWorldHint": true,
       "readOnlyHint": true,
     },
@@ -650,18 +662,6 @@ exports[`tool manifest snapshot > matches the recorded remote surface 1`] = `
     "required": [
       "video",
     ],
-  },
-  {
-    "annotations": {
-      "destructiveHint": false,
-      "idempotentHint": true,
-      "openWorldHint": false,
-      "readOnlyHint": true,
-    },
-    "hasOutputSchema": true,
-    "name": "health_check",
-    "parameters": [],
-    "required": [],
   },
   {
     "annotations": {

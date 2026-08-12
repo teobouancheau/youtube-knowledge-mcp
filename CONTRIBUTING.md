@@ -13,7 +13,7 @@ npm run build
 
 You also need [yt-dlp](https://github.com/yt-dlp/yt-dlp) on your `PATH`, and
 [ffmpeg](https://ffmpeg.org/) for downloads, clip extraction and frame capture.
-Run the `health_check` tool at any time to confirm both are present and current
+Run the `check_health` tool at any time to confirm both are present and current
 — an outdated yt-dlp is the most common cause of unexplained failures.
 
 ## Project structure
@@ -74,11 +74,19 @@ scripts/smoke.mjs         # Post-build check that boots the server as a real cli
 - **Validate before you fetch.** Anything checkable locally — a malformed
   timestamp, an inverted range, an output path outside the home directory —
   should fail immediately rather than after a network round trip.
+- **Name tools verb first, and never prefix them with the service.**
+  `search_videos`, `extract_clip`, `check_health` — an action the model is
+  choosing to take, so it should read as one. Not `youtube_search_videos`: MCP
+  clients already namespace tools by server, so a service prefix repeats what
+  the client knows and spends tokens on it in every request. Not `health_check`
+  either — that is a noun, not an action. Both rules are enforced by tests in
+  `tests/protocol.test.ts`.
 
 ## Adding a tool
 
-1. Create or extend a file in `src/tools/`, exporting three things: a Zod input
-   schema, a Zod output schema, and the handler.
+1. Pick the name first: **verb + what it acts on**, snake_case, no service
+   prefix. Then create or extend a file in `src/tools/`, exporting three things:
+   a Zod input schema, a Zod output schema, and the handler.
 
    ```ts
    export const myToolSchema = {
@@ -136,7 +144,7 @@ Explain **why** in the body, not just what — the diff already says what.
 
 ## Reporting bugs
 
-Open an issue with the output of `health_check`, the tool and arguments you
+Open an issue with the output of `check_health`, the tool and arguments you
 called, what you expected, and what happened. If yt-dlp is involved, include its
 version — YouTube changes frequently and many failures are fixed by `yt-dlp -U`.
 

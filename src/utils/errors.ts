@@ -177,7 +177,7 @@ export function classifyYtDlpFailure(stderr: string, cause?: unknown): YouTubeEr
 
   return new YouTubeError('YTDLP_FAILED', 'yt-dlp could not complete this request.', {
     nextStep:
-      'The video may be unavailable, or yt-dlp may be out of date — YouTube changes frequently and yt-dlp needs regular updates. Run `yt-dlp -U`, or call health_check for diagnostics.',
+      'The video may be unavailable, or yt-dlp may be out of date — YouTube changes frequently and yt-dlp needs regular updates. Run `yt-dlp -U`, or call check_health for diagnostics.',
     cause,
   });
 }
@@ -188,7 +188,7 @@ export function asYouTubeError(error: unknown): YouTubeError {
 
   const message = error instanceof Error ? error.message : String(error);
   return new YouTubeError('YTDLP_FAILED', 'This request could not be completed.', {
-    nextStep: 'Call health_check to verify yt-dlp and ffmpeg are installed and current.',
+    nextStep: 'Call check_health to verify yt-dlp and ffmpeg are installed and current.',
     cause: error instanceof Error ? error : new Error(message),
   });
 }
