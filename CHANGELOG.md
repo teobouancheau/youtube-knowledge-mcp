@@ -33,6 +33,11 @@ was locked, and cancelling did not help.
   letting callers race, which used to let the limiter run over its own ceiling
   for a tick.
 
+**`npm run validate` now runs the coverage gate.** It ran the tests without
+coverage while CI ran them with it, so the per-file thresholds — the check that
+actually fails a build — were invisible locally, and the README's claim that CI
+runs the same gate was not true.
+
 **Setting `MCP_ALLOWED_HOSTS` made the service permanently unhealthy.** The SDK
 installs Host validation as global middleware, so `/health` sat behind the
 allowlist too. A probe reaches it over loopback with `Host: 127.0.0.1:<port>`,

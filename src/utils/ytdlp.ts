@@ -58,10 +58,9 @@ const waiting: Waiter[] = [];
  * server was not slow, it was wedged, and no tool could run again.
  */
 async function acquireSlot(signal: AbortSignal | undefined): Promise<void> {
-  if (signal?.aborted === true) {
-    throw new YouTubeError('CANCELLED', 'The request was cancelled.');
-  }
-
+  // No already-aborted check here: `runYtDlp` makes it before every attempt and
+  // nothing awaits in between, so a second one could never fire — an
+  // unreachable guard that reads like a reachable one.
   if (active < MAX_CONCURRENT) {
     active++;
     return;
