@@ -8,14 +8,27 @@
  * saved notes is instant and costs nothing.
  */
 
-export interface IndexedDocument {
-  id: string;
-  videoId: string;
-  title: string;
+import { z } from 'zod';
+
+export const indexedDocumentSchema = z.object({
+  id: z.string(),
+  videoId: z.string(),
+  title: z.string(),
   /** 'summary' | 'skill' | 'transcript' */
-  kind: string;
-  text: string;
-}
+  kind: z.string(),
+  text: z.string(),
+});
+
+export type IndexedDocument = z.infer<typeof indexedDocumentSchema>;
+
+/**
+ * The serialised index. A malformed document costs its own row rather than the
+ * whole index — the index is a cache and is rebuilt from the library, so
+ * dropping one entry degrades ranking rather than losing anything.
+ */
+const serialisedIndexSchema = z.object({
+  documents: z.array(z.unknown()),
+});
 
 export interface SearchHit {
   id: string;
@@ -187,32 +200,16 @@ export class SearchIndex {
 
   static fromJSON(value: unknown): SearchIndex {
     const index = new SearchIndex();
-    if (
-      typeof value !== 'object' ||
-      value === null ||
-      !('documents' in value) ||
-      !Array.isArray(value.documents)
-    ) {
-      return index;
-    }
 
-    for (const document of value.documents) {
-      if (isIndexedDocument(document)) index.add(document);
+    const parsed = serialisedIndexSchema.safeParse(value);
+    if (!parsed.success) return index;
+
+    for (const document of parsed.data.documents) {
+      const row = indexedDocumentSchema.safeParse(document);
+      if (row.success) index.add(row.data);
     }
     return index;
   }
-}
-
-function isIndexedDocument(value: unknown): value is IndexedDocument {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as IndexedDocument).id === 'string' &&
-    typeof (value as IndexedDocument).videoId === 'string' &&
-    typeof (value as IndexedDocument).title === 'string' &&
-    typeof (value as IndexedDocument).kind === 'string' &&
-    typeof (value as IndexedDocument).text === 'string'
-  );
 }
 
 /** A readable window around the first query term found in the document. */

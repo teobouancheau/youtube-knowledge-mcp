@@ -1,5 +1,6 @@
 import { homedir } from 'os';
 import { join } from 'path';
+import { z } from 'zod';
 import { mkdir, readFile, writeFile, unlink } from 'fs/promises';
 import { existsSync, readdirSync } from 'fs';
 import { formatYouTubeDate } from './format.js';
@@ -9,6 +10,7 @@ import { assertLanguageTag, resolveOutputDir } from './validate.js';
 import { log } from './context.js';
 import {
   TRANSCRIPT_CACHE_VERSION,
+  cachedTranscriptSchema,
   parseVtt,
   segmentsToText,
   type CachedTranscript,
@@ -105,17 +107,24 @@ export interface ChannelInfo {
   description: string;
 }
 
-interface YtDlpSearchResult {
-  id: string;
-  title?: string;
-  duration?: number;
-  channel?: string;
-  view_count?: number;
-  url?: string;
-}
+/**
+ * yt-dlp's search rows. Only `id` is required — the rest are absent often
+ * enough (age-gated entries, deleted uploads still in the index) that treating
+ * them as guaranteed is what produced `undefined` in rendered output.
+ */
+const searchResultSchema = z.object({
+  id: z.string(),
+  title: z.string().optional(),
+  duration: z.number().optional(),
+  channel: z.string().optional(),
+  view_count: z.number().optional(),
+  url: z.string().optional(),
+});
+
+type YtDlpSearchResult = z.infer<typeof searchResultSchema>;
 
 function isSearchResult(value: unknown): value is YtDlpSearchResult {
-  return isRecord(value) && typeof value.id === 'string';
+  return searchResultSchema.safeParse(value).success;
 }
 
 interface YtDlpChapter {
@@ -333,18 +342,21 @@ async function readCachedTranscript(
   if (!existsSync(path)) return undefined;
 
   try {
-    const parsed: unknown = JSON.parse(await readFile(path, 'utf-8'));
-    if (!isRecord(parsed)) return undefined;
+    const parsed = cachedTranscriptSchema.safeParse(JSON.parse(await readFile(path, 'utf-8')));
+    // Anything unreadable — an older layout, a truncated write, a hand-edit —
+    // is treated as absent and refetched, rather than half-trusted.
+    if (!parsed.success) return undefined;
+
+    const cached = parsed.data;
 
     // A cache written by an older version holds untimed text; regenerate it
     // rather than reading it back as if it had timings.
-    if (parsed.version !== TRANSCRIPT_CACHE_VERSION) return undefined;
-    if (!Array.isArray(parsed.segments)) return undefined;
+    if (cached.version !== TRANSCRIPT_CACHE_VERSION) return undefined;
 
-    const fetchedAt = typeof parsed.fetchedAt === 'string' ? Date.parse(parsed.fetchedAt) : NaN;
+    const fetchedAt = Date.parse(cached.fetchedAt);
     if (Number.isFinite(fetchedAt) && Date.now() - fetchedAt > TRANSCRIPT_TTL_MS) return undefined;
 
-    return parsed as unknown as CachedTranscript;
+    return cached;
   } catch {
     return undefined;
   }

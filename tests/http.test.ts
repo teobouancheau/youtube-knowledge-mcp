@@ -1,6 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { Request } from 'express';
-import { RateLimiter, bearerToken, clientKey, readHttpConfig, tokenMatches } from '../src/http.js';
+import {
+  RateLimiter,
+  bearerToken,
+  clientKey,
+  readHttpConfig,
+  sessionIdOf,
+  tokenMatches,
+} from '../src/http.js';
 
 describe('RateLimiter', () => {
   it('allows requests up to the limit', () => {
@@ -92,6 +99,26 @@ describe('tokenMatches', () => {
 
   it('rejects a missing token', () => {
     expect(tokenMatches(undefined, 'secret')).toBe(false);
+  });
+});
+
+describe('sessionIdOf', () => {
+  const request = (headers: Record<string, unknown>): Request =>
+    ({ headers, socket: {} }) as unknown as Request;
+
+  it('reads the session ID', () => {
+    expect(sessionIdOf(request({ 'mcp-session-id': 'abc' }))).toBe('abc');
+  });
+
+  it('treats a repeated header as no session rather than as one', () => {
+    // Node parses a repeated header into an array. Asserting it was a string
+    // sent the array on to sessions.get(), which matched nothing and reported
+    // an invalid session ID for what is really an ambiguous request.
+    expect(sessionIdOf(request({ 'mcp-session-id': ['abc', 'def'] }))).toBeUndefined();
+  });
+
+  it('reports no session when the header is absent', () => {
+    expect(sessionIdOf(request({}))).toBeUndefined();
   });
 });
 

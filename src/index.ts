@@ -2,6 +2,7 @@
 
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
+import { z } from 'zod';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -130,9 +131,12 @@ import { registerPrompts } from './prompts.js';
 import { registerResources } from './resources.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')) as {
-  version: string;
-};
+// The version is advertised in the MCP initialize response, so a package.json
+// that has lost it should fail loudly at startup rather than telling every
+// client the server is version `undefined`.
+const pkg = z
+  .object({ version: z.string() })
+  .parse(JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')));
 
 const SERVER_INSTRUCTIONS = `YouTube Knowledge MCP provides tools to search, analyze, and extract knowledge from YouTube videos.
 
@@ -155,26 +159,31 @@ All tools accept YouTube video IDs (e.g., dQw4w9WgXcQ) or full URLs.`;
  * rendered as an `isError` result carrying an actionable message rather than a
  * raw stack trace or yt-dlp command line.
  */
-function guarded<H extends (...args: never[]) => Promise<CallToolResult>>(handler: H): H {
-  const invoke = handler as unknown as (...args: unknown[]) => Promise<CallToolResult>;
+/**
+ * The parts of the SDK's `RequestHandlerExtra` this server uses.
+ *
+ * `sendNotification` is described with `z.custom` because a function is not
+ * something Zod can take apart structurally — the predicate is a real runtime
+ * check, and it is what lets the property be called without asserting a type
+ * over it.
+ */
+const requestExtraSchema = z.object({
+  signal: z.instanceof(AbortSignal).optional(),
+  sendNotification: z
+    .custom<(notification: unknown) => Promise<void>>((value) => typeof value === 'function')
+    .optional(),
+  _meta: z.object({ progressToken: z.union([z.string(), z.number()]).optional() }).optional(),
+});
 
-  const wrapped = async (...args: unknown[]): Promise<CallToolResult> => {
-    // The SDK always passes RequestHandlerExtra last, whatever the tool's arity.
-    const extra: unknown = args[args.length - 1];
-    const signal =
-      typeof extra === 'object' &&
-      extra !== null &&
-      'signal' in extra &&
-      extra.signal instanceof AbortSignal
-        ? extra.signal
-        : undefined;
-
-    const context = extra as
-      | {
-          sendNotification?: (notification: unknown) => Promise<void>;
-          _meta?: { progressToken?: string | number };
-        }
-      | undefined;
+function guarded<A extends unknown[]>(
+  handler: (...args: A) => Promise<CallToolResult>
+): (...args: A) => Promise<CallToolResult> {
+  return async (...args: A): Promise<CallToolResult> => {
+    // Handlers declare only their own parameters; the SDK appends
+    // RequestHandlerExtra to every call, so it is whatever arrived last.
+    const parsed = requestExtraSchema.safeParse(args[args.length - 1]);
+    const context = parsed.success ? parsed.data : undefined;
+    const signal = context?.signal;
 
     return runWithRequestContext(
       {
@@ -206,15 +215,13 @@ function guarded<H extends (...args: never[]) => Promise<CallToolResult>>(handle
       },
       async () => {
         try {
-          return await invoke(...args);
+          return await handler(...args);
         } catch (error) {
           return toToolError(error);
         }
       }
     );
   };
-
-  return wrapped as unknown as H;
 }
 
 /**
