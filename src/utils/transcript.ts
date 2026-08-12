@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import webvtt from 'webvtt-parser';
 
 /**
@@ -10,25 +11,38 @@ import webvtt from 'webvtt-parser';
  * subtitle export, clip cutting — is derived from them.
  */
 
-export interface TranscriptSegment {
+export const transcriptSegmentSchema = z.object({
   /** Seconds from the start of the video. */
-  start: number;
-  end: number;
-  text: string;
-}
+  start: z.number(),
+  end: z.number(),
+  text: z.string(),
+});
+
+export type TranscriptSegment = z.infer<typeof transcriptSegmentSchema>;
 
 export type TranscriptFormat = 'text' | 'timestamped' | 'segments';
 
 /** Bumped whenever the cache representation changes, so old files are refetched. */
 export const TRANSCRIPT_CACHE_VERSION = 2;
 
-export interface CachedTranscript {
-  version: number;
-  videoId: string;
-  language: string;
-  fetchedAt: string;
-  segments: TranscriptSegment[];
-}
+/**
+ * The on-disk cache format.
+ *
+ * Declared as a schema rather than an interface because the cache is read back
+ * from a file the process does not control: it may have been written by an
+ * older version, truncated by a full disk, or hand-edited. Validating it is the
+ * only thing standing between a corrupt file and segments whose `start` is
+ * `undefined`.
+ */
+export const cachedTranscriptSchema = z.object({
+  version: z.number(),
+  videoId: z.string(),
+  language: z.string(),
+  fetchedAt: z.string(),
+  segments: z.array(transcriptSegmentSchema),
+});
+
+export type CachedTranscript = z.infer<typeof cachedTranscriptSchema>;
 
 /** 3723.5 -> "1:02:03", 62 -> "1:02" */
 export function formatTimestamp(totalSeconds: number): string {

@@ -183,6 +183,63 @@ describe('YouTube Utils', () => {
     });
   });
 
+  describe('transcript cache', () => {
+    /** Present the given JSON as the cache file for dQw4w9WgXcQ. */
+    async function withCacheFile(contents: string): Promise<void> {
+      const { existsSync } = await import('fs');
+      const { readFile } = await import('fs/promises');
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFile).mockResolvedValue(contents);
+    }
+
+    const VALID = JSON.stringify({
+      version: 2,
+      videoId: 'dQw4w9WgXcQ',
+      language: 'en',
+      fetchedAt: new Date().toISOString(),
+      segments: [{ start: 0, end: 2, text: 'hello there' }],
+    });
+
+    it('serves a well-formed cache without calling yt-dlp', async () => {
+      await withCacheFile(VALID);
+
+      const { getTranscript } = await import('../../src/utils/youtube.js');
+      const result = await getTranscript('dQw4w9WgXcQ', 'en');
+
+      expect(result).toMatchObject({ transcript: 'hello there', cached: true });
+      const { execa } = await import('execa');
+      expect(execa).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['a segment missing its timing', { start: 0, text: 'hello' }],
+      ['a segment whose start is a string', { start: '0', end: 2, text: 'hello' }],
+      ['a segment that is not an object', 'hello'],
+    ])('refetches rather than trusting %s', async (_label, segment) => {
+      // The old code checked only that `segments` was an array, so a corrupt
+      // file was handed back and `start` reached deep-link building as
+      // undefined. Refetching is the only safe reading of a broken cache.
+      await withCacheFile(
+        JSON.stringify({
+          version: 2,
+          videoId: 'dQw4w9WgXcQ',
+          language: 'en',
+          fetchedAt: new Date().toISOString(),
+          segments: [segment],
+        })
+      );
+
+      const { execa } = await import('execa');
+      // Fail the refetch: what matters is that a refetch was attempted at all.
+      vi.mocked(execa).mockRejectedValue(new Error('refetched'));
+
+      const { getTranscript } = await import('../../src/utils/youtube.js');
+
+      await expect(getTranscript('dQw4w9WgXcQ', 'en')).rejects.toThrow();
+      expect(execa).toHaveBeenCalled();
+    });
+  });
+
   describe('listVideos', () => {
     it('lists videos from a playlist', async () => {
       const { execa } = await import('execa');

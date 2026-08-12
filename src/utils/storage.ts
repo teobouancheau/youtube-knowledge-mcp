@@ -1,5 +1,6 @@
 import { homedir } from 'os';
 import { join } from 'path';
+import { z } from 'zod';
 import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { YouTubeError } from './errors.js';
@@ -10,22 +11,41 @@ const BASE_DIR = join(homedir(), '.youtube-knowledge');
 const LIBRARY_DIR = join(BASE_DIR, 'library');
 const INDEX_FILE = join(BASE_DIR, 'index.json');
 
-export interface LibraryMetadata {
-  videoId: string;
-  title: string;
-  channel: string;
-  url: string;
-  tags: string[];
-  dateSaved: string;
-  hasTranscript: boolean;
-  hasSummary: boolean;
-  hasSkill: boolean;
-}
+/**
+ * Both of these describe files on disk that this process wrote but does not
+ * own: the user's library survives upgrades, gets synced between machines, and
+ * is plain JSON anyone can edit. They are schemas rather than interfaces so
+ * that reading them back validates rather than assumes.
+ */
+export const libraryMetadataSchema = z.object({
+  videoId: z.string(),
+  title: z.string(),
+  channel: z.string(),
+  url: z.string(),
+  tags: z.array(z.string()),
+  dateSaved: z.string(),
+  hasTranscript: z.boolean(),
+  hasSummary: z.boolean(),
+  hasSkill: z.boolean(),
+});
 
-export interface LibraryIndex {
-  version: number;
-  items: Record<string, LibraryMetadata>;
-}
+export type LibraryMetadata = z.infer<typeof libraryMetadataSchema>;
+
+export const libraryIndexSchema = z.object({
+  version: z.number(),
+  // A single corrupt entry should cost that one note, not the whole library, so
+  // unreadable values are dropped rather than failing the parse.
+  items: z.record(z.string(), z.unknown()).transform((items) => {
+    const valid: Record<string, LibraryMetadata> = {};
+    for (const [key, value] of Object.entries(items)) {
+      const parsed = libraryMetadataSchema.safeParse(value);
+      if (parsed.success) valid[key] = parsed.data;
+    }
+    return valid;
+  }),
+});
+
+export type LibraryIndex = z.infer<typeof libraryIndexSchema>;
 
 async function ensureDirectories(): Promise<void> {
   await mkdir(BASE_DIR, { recursive: true });
@@ -41,28 +61,11 @@ async function loadIndex(): Promise<LibraryIndex> {
 
   try {
     const content = await readFile(INDEX_FILE, 'utf-8');
-    const parsed: unknown = JSON.parse(content);
-    if (isLibraryIndex(parsed)) {
-      return parsed;
-    }
-    return { version: 1, items: {} };
+    const parsed = libraryIndexSchema.safeParse(JSON.parse(content));
+    return parsed.success ? parsed.data : { version: 1, items: {} };
   } catch {
     return { version: 1, items: {} };
   }
-}
-
-function isLibraryIndex(value: unknown): value is LibraryIndex {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'version' in value &&
-    'items' in value &&
-    typeof (value as LibraryIndex).version === 'number'
-  );
-}
-
-function isPartialMetadata(value: unknown): value is Partial<LibraryMetadata> {
-  return typeof value === 'object' && value !== null;
 }
 
 async function saveIndex(index: LibraryIndex): Promise<void> {
@@ -101,10 +104,13 @@ export async function saveToLibrary(
 
   if (existsSync(metadataPath)) {
     try {
-      const parsed: unknown = JSON.parse(await readFile(metadataPath, 'utf-8'));
-      if (isPartialMetadata(parsed)) {
-        metadata = parsed;
-      }
+      // Only the fields worth carrying forward need to survive validation, so
+      // this is the metadata schema made optional field by field rather than an
+      // "is an object" check that let anything through as metadata.
+      const parsed = libraryMetadataSchema
+        .partial()
+        .safeParse(JSON.parse(await readFile(metadataPath, 'utf-8')));
+      if (parsed.success) metadata = parsed.data;
     } catch {
       // Ignore parse errors
     }

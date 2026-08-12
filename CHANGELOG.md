@@ -116,6 +116,16 @@ video but never say when something was said.
   before acting, so understating the risk is worse than omitting the hint. A
   test now enforces the underlying invariant: any tool whose description admits
   to overwriting, deleting or discarding must be marked destructive.
+- Everything read back from disk or from yt-dlp is validated with a schema
+  rather than asserted with a type cast. A transcript cache was previously
+  accepted after checking only that `segments` was an array, so a truncated or
+  hand-edited file was returned as if it were sound and its missing timings
+  reached deep-link building as `undefined`; the library index was accepted
+  without validating any entry. A corrupt entry now costs that one note instead
+  of the whole library, and an unreadable cache is refetched.
+- An HTTP request carrying `Mcp-Session-Id` twice is no longer reported as an
+  invalid session. Node parses a repeated header into an array, which was
+  asserted to be a string and then matched no session at all.
 - `get_video_info` no longer mis-parses a short row from yt-dlp; view, like and
   comment counts silently read as 0 when fields were absent.
 - Download format precedence: a quality preset now unambiguously wins over

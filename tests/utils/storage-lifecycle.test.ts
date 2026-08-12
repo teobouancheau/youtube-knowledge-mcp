@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -285,6 +285,38 @@ describe('resilience', () => {
     const base = join(home, '.youtube-knowledge');
     await mkdir(base, { recursive: true });
     await writeFile(join(base, 'index.json'), '{ not json', 'utf-8');
+
+    const { listLibrary } = await storage();
+    expect(await listLibrary()).toEqual([]);
+  });
+
+  it('drops an unreadable index entry and keeps the rest of the library', async () => {
+    const { saveToLibrary, listLibrary, libraryIndexSchema } = await storage();
+    await saveToLibrary(NOTE);
+
+    // A hand-edit or a partial write corrupts one entry. Validating the index
+    // as a whole would lose every note; validating entry by entry loses one.
+    const indexFile = join(home, '.youtube-knowledge', 'index.json');
+    const index = libraryIndexSchema.parse(JSON.parse(await readFile(indexFile, 'utf-8')));
+    await writeFile(
+      indexFile,
+      JSON.stringify({
+        version: index.version,
+        items: { ...index.items, broken: { videoId: 'broken', tags: 'not an array' } },
+      }),
+      'utf-8'
+    );
+
+    const items = await listLibrary();
+
+    expect(items.map((item) => item.videoId)).toEqual([NOTE.videoId]);
+  });
+
+  it('refuses an index whose shape is wrong rather than half-reading it', async () => {
+    const base = join(home, '.youtube-knowledge');
+    await mkdir(base, { recursive: true });
+    // Valid JSON, wrong shape — the case a bare "is it an object" check passed.
+    await writeFile(join(base, 'index.json'), JSON.stringify({ version: 'one' }), 'utf-8');
 
     const { listLibrary } = await storage();
     expect(await listLibrary()).toEqual([]);

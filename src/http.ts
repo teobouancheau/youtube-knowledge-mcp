@@ -129,6 +129,18 @@ export function clientKey(req: Request): string {
   return first?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? 'unknown';
 }
 
+/**
+ * Node parses a repeated header into an array, so this field is genuinely
+ * `string | string[] | undefined`. Asserting it was always a string meant a
+ * request that sent `Mcp-Session-Id` twice reached `sessions.get()` holding an
+ * array, missed every session, and was reported as an invalid session ID.
+ * Ambiguous is treated as absent: two session IDs identify no session.
+ */
+export function sessionIdOf(req: Request): string | undefined {
+  const header = req.headers['mcp-session-id'];
+  return typeof header === 'string' ? header : undefined;
+}
+
 function jsonRpcError(res: Response, status: number, code: number, message: string): void {
   if (res.headersSent) return;
   res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -211,7 +223,7 @@ export function startHttp(
     if (!rateLimit(req, res)) return;
     if (!authorize(req, res)) return;
 
-    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    const sessionId = sessionIdOf(req);
 
     try {
       const existing = sessionId ? sessions.get(sessionId) : undefined;
@@ -260,7 +272,7 @@ export function startHttp(
   const bySession = async (req: Request, res: Response): Promise<void> => {
     if (!authorize(req, res)) return;
 
-    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    const sessionId = sessionIdOf(req);
     const session = sessionId ? sessions.get(sessionId) : undefined;
     if (!session) {
       jsonRpcError(res, 404, -32001, 'Invalid or missing session ID');
