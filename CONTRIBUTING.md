@@ -26,7 +26,8 @@ Run the `check_health` tool at any time to confirm both are present and current
 
 ```
 src/
-├── index.ts              # Server construction, tool registration, stdio entry point
+├── cli.ts                # The executable `bin` entry: calls main(), nothing else
+├── index.ts              # Server construction, tool registration, transport start
 ├── http.ts               # Streamable HTTP transport: auth, sessions, rate limits
 ├── prompts.ts            # Reusable workflow prompts
 ├── resources.ts          # Transcript and library resources
