@@ -41,7 +41,7 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
   {
     "annotations": {
       "destructiveHint": false,
-      "idempotentHint": false,
+      "idempotentHint": true,
       "openWorldHint": true,
       "readOnlyHint": false,
     },
@@ -373,7 +373,7 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
   },
   {
     "annotations": {
-      "destructiveHint": false,
+      "destructiveHint": true,
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": false,
@@ -470,7 +470,7 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
   },
   {
     "annotations": {
-      "destructiveHint": false,
+      "destructiveHint": true,
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": false,

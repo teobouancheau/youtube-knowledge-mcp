@@ -496,7 +496,9 @@ export function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         outputSchema: saveToLibraryOutputSchema,
         annotations: {
           readOnlyHint: false,
-          destructiveHint: false,
+          // Overwrites an existing note of the same type in place, which is a
+          // destructive update: the previous content is not recoverable.
+          destructiveHint: true,
           idempotentHint: true,
           openWorldHint: false,
         },
@@ -563,12 +565,13 @@ export function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       {
         title: 'Update Library Tags',
         description:
-          'Add, remove or replace the tags on a saved library item. Tags are how list_library filters, so this is the way to reorganize a growing library.',
+          'Add, remove or replace the tags on a saved library item. Tags are how list_library filters, so this is the way to reorganize a growing library. The replace parameter discards all existing tags.',
         inputSchema: updateLibraryTagsSchema,
         outputSchema: updateLibraryTagsOutputSchema,
         annotations: {
           readOnlyHint: false,
-          destructiveHint: false,
+          // The replace parameter discards every existing tag.
+          destructiveHint: true,
           idempotentHint: true,
           openWorldHint: false,
         },
@@ -713,7 +716,9 @@ export function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         annotations: {
           readOnlyHint: false,
           destructiveHint: false,
-          idempotentHint: false,
+          // Writes to a deterministic path and overwrites, exactly like the
+          // extract_* tools; repeating the call leaves the same state.
+          idempotentHint: true,
           openWorldHint: true,
         },
       },
