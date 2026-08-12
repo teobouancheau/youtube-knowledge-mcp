@@ -1,15 +1,10 @@
 #!/usr/bin/env node
 
-import { randomUUID } from 'node:crypto';
-import type { Express } from 'express';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
-import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 import { fetchVideosSchema, fetchVideosHandler } from './tools/fetch-videos.js';
@@ -33,6 +28,7 @@ import { healthCheckSchema, healthCheckHandler } from './tools/health-check.js';
 import { runWithRequestContext } from './utils/context.js';
 import { toToolError } from './utils/errors.js';
 import { formatPreflightReport, runPreflight } from './utils/preflight.js';
+import { startHttp } from './http.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')) as {
@@ -352,150 +348,6 @@ async function startStdio(): Promise<void> {
   await server.connect(transport);
 }
 
-// Rate limiting for public HTTP server
-const RATE_LIMIT = 60;
-const RATE_WINDOW_MS = 60_000;
-const rateLimits = new Map<string, { count: number; resetAt: number }>();
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = rateLimits.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimits.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });
-    return true;
-  }
-  entry.count++;
-  return entry.count <= RATE_LIMIT;
-}
-
-function startHttp(): void {
-  const port = parseInt(process.env.PORT ?? '3000', 10);
-
-  // Cleanup stale rate limit entries every 5 minutes
-  setInterval(() => {
-    const now = Date.now();
-    for (const [ip, entry] of rateLimits) {
-      if (now > entry.resetAt) rateLimits.delete(ip);
-    }
-  }, 300_000);
-
-  const app: Express = createMcpExpressApp({ host: '0.0.0.0' });
-
-  const transports = new Map<string, StreamableHTTPServerTransport>();
-
-  app.post('/mcp', async (req, res) => {
-    // Rate limiting
-    const clientIp =
-      (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ??
-      req.socket.remoteAddress ??
-      'unknown';
-    if (!checkRateLimit(clientIp)) {
-      res.writeHead(429, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          jsonrpc: '2.0',
-          error: { code: -32000, message: 'Rate limit exceeded' },
-          id: null,
-        })
-      );
-      return;
-    }
-
-    const sessionId = req.headers['mcp-session-id'] as string | undefined;
-
-    try {
-      const existingTransport = sessionId ? transports.get(sessionId) : undefined;
-      if (existingTransport) {
-        await existingTransport.handleRequest(req, res, req.body);
-        return;
-      }
-
-      if (!sessionId && isInitializeRequest(req.body)) {
-        const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (sid) => {
-            transports.set(sid, transport);
-          },
-        });
-
-        transport.onclose = () => {
-          const sid = transport.sessionId;
-          if (sid) transports.delete(sid);
-        };
-
-        const server = createServer('http');
-        await server.connect(transport);
-        await transport.handleRequest(req, res, req.body);
-        return;
-      }
-
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          jsonrpc: '2.0',
-          error: { code: -32000, message: 'Bad Request: No valid session ID provided' },
-          id: null,
-        })
-      );
-    } catch (error: unknown) {
-      console.error('Error handling MCP request:', error);
-      if (!res.headersSent) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            jsonrpc: '2.0',
-            error: { code: -32603, message: 'Internal server error' },
-            id: null,
-          })
-        );
-      }
-    }
-  });
-
-  app.get('/mcp', async (req, res) => {
-    const sessionId = req.headers['mcp-session-id'] as string | undefined;
-    const transport = sessionId ? transports.get(sessionId) : undefined;
-    if (!transport) {
-      res.writeHead(400, { 'Content-Type': 'text/plain' });
-      res.end('Invalid or missing session ID');
-      return;
-    }
-    await transport.handleRequest(req, res);
-  });
-
-  app.delete('/mcp', async (req, res) => {
-    const sessionId = req.headers['mcp-session-id'] as string | undefined;
-    const transport = sessionId ? transports.get(sessionId) : undefined;
-    if (!transport) {
-      res.writeHead(400, { 'Content-Type': 'text/plain' });
-      res.end('Invalid or missing session ID');
-      return;
-    }
-    await transport.handleRequest(req, res);
-  });
-
-  app.get('/health', (_req, res) => {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok' }));
-  });
-
-  app.listen(port, () => {
-    console.error(`MCP Streamable HTTP server listening on port ${port}`);
-    console.error(`MCP endpoint: http://localhost:${port}/mcp`);
-  });
-
-  process.on('SIGINT', () => {
-    const closeAll = async (): Promise<void> => {
-      for (const [sid, transport] of transports) {
-        await transport.close();
-        transports.delete(sid);
-      }
-      process.exit(0);
-    };
-    void closeAll();
-  });
-}
-
 /**
  * Report missing or stale external binaries at boot.
  *
@@ -515,7 +367,7 @@ async function main(): Promise<void> {
   await announcePreflight();
 
   if (mode === 'http') {
-    startHttp();
+    startHttp(createServer);
   } else {
     await startStdio();
   }
