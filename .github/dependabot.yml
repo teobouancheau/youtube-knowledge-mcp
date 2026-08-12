@@ -1,15 +1,42 @@
 version: 2
+
+# The aim here is a small number of boring pull requests, and none that cannot
+# be merged. Anything a bot cannot judge — an API migration, or a bump that
+# would break the supported Node floor — is left for a person to raise
+# deliberately, rather than opened weekly and closed unread.
+
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 10
+      interval: monthly
+    open-pull-requests-limit: 2
     groups:
-      # Toolchain churn is noisy and always lands together; one PR per week.
-      dev-dependencies:
-        dependency-type: development
+      # One pull request for everything, rather than one per package. The
+      # previous config grouped only dev-dependency minor and patch updates,
+      # which left every other bump to open on its own.
+      npm:
+        patterns: ['*']
         update-types: ['minor', 'patch']
+    ignore:
+      # A major is a migration, not an update. Whether it is worth doing is a
+      # judgement about this codebase that Dependabot cannot make, so majors
+      # are raised by hand. Note this also suppresses a security update that
+      # can only be satisfied by a major — the alert still fires, but no
+      # pull request is opened for it.
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+
+      # Kept explicitly, so that relaxing the rule above does not quietly
+      # reintroduce them: both declare `node: >=22` while this package
+      # supports `>=20`. npm installs them regardless, and the break surfaces
+      # only at runtime on the oldest supported Node, as
+      # `TEXT_ENCODINGS.union is not a function` from inside execa. Raising
+      # the floor is a major of our own, not a dependency bump.
+      - dependency-name: execa
+        versions: ['>=10']
+      - dependency-name: lint-staged
+        versions: ['>=17']
     commit-message:
       prefix: chore
       include: scope
@@ -17,6 +44,13 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 1
+    groups:
+      # Action majors are mechanical rather than a migration, so they are
+      # grouped in rather than ignored — one pull request a month, covering
+      # every action at once.
+      actions:
+        patterns: ['*']
     commit-message:
       prefix: ci
