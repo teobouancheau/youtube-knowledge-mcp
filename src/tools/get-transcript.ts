@@ -138,6 +138,22 @@ export async function getTranscriptHandler(args: GetTranscriptArgs): Promise<Cal
     );
   }
 
+  // Parse and check the explicit bounds before fetching anything: an inverted
+  // range is knowable locally and should not cost a network round trip.
+  const explicitRange = {
+    startTime:
+      args.startTime === undefined ? undefined : parseTimestamp(args.startTime, 'startTime'),
+    endTime: args.endTime === undefined ? undefined : parseTimestamp(args.endTime, 'endTime'),
+  };
+
+  if (
+    explicitRange.startTime !== undefined &&
+    explicitRange.endTime !== undefined &&
+    explicitRange.startTime >= explicitRange.endTime
+  ) {
+    throw new YouTubeError('INVALID_INPUT', 'startTime must be earlier than endTime.');
+  }
+
   const result = await getTranscript(video, { language, refresh });
 
   const resolvedChapter =
@@ -146,19 +162,7 @@ export async function getTranscriptHandler(args: GetTranscriptArgs): Promise<Cal
 
   const range: { startTime?: number; endTime?: number } = resolvedChapter
     ? { startTime: resolvedChapter.startTime, endTime: resolvedChapter.endTime }
-    : {
-        startTime:
-          args.startTime === undefined ? undefined : parseTimestamp(args.startTime, 'startTime'),
-        endTime: args.endTime === undefined ? undefined : parseTimestamp(args.endTime, 'endTime'),
-      };
-
-  if (
-    range.startTime !== undefined &&
-    range.endTime !== undefined &&
-    range.startTime >= range.endTime
-  ) {
-    throw new YouTubeError('INVALID_INPUT', 'startTime must be earlier than endTime.');
-  }
+    : explicitRange;
 
   const sliced =
     range.startTime === undefined && range.endTime === undefined

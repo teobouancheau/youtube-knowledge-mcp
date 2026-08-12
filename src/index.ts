@@ -2,7 +2,7 @@
 
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
@@ -217,7 +217,13 @@ function guarded<H extends (...args: never[]) => Promise<CallToolResult>>(handle
   return wrapped as unknown as H;
 }
 
-function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
+/**
+ * Build a fully configured server.
+ *
+ * Exported so the test suite can drive it over an in-memory transport as a real
+ * MCP client, rather than only testing handlers in isolation.
+ */
+export function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
   const server = new McpServer(
     { name: 'youtube-knowledge-mcp', version: pkg.version },
     { instructions: SERVER_INSTRUCTIONS, capabilities: { logging: {} } }
@@ -759,7 +765,14 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error: unknown) => {
-  console.error('Failed to start MCP server:', error);
-  process.exit(1);
-});
+// Only start when executed directly. Importing this module — which the test
+// suite does — must not spawn a transport or read argv.
+const invokedDirectly =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (invokedDirectly) {
+  main().catch((error: unknown) => {
+    console.error('Failed to start MCP server:', error);
+    process.exit(1);
+  });
+}

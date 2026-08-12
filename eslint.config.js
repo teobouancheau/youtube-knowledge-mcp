@@ -60,6 +60,9 @@ export default tseslint.config(
     plugins: { vitest },
     rules: {
       ...vitest.configs.recommended.rules,
+      // vitest supports expect(value, message); the message is what makes a
+      // failure in a loop over 27 tools identify which tool failed.
+      'vitest/valid-expect': ['error', { maxArgs: 2 }],
       // Tests assert against deliberately loose mock payloads.
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',
