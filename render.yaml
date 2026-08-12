@@ -14,7 +14,15 @@ services:
     runtime: docker
     plan: free
     healthCheckPath: /health
-    autoDeployTrigger: commit
+
+    # The button wires the service to this repository, which the person
+    # deploying does not control. Auto-deploying would run every future commit
+    # pushed here inside their account, under their token, with no review — so
+    # the instance stays on the version they deployed until they ask for a new
+    # one with Manual Deploy.
+    # Quoted: unquoted `off` is a boolean in YAML 1.1, and this must stay the
+    # string the schema names.
+    autoDeployTrigger: 'off'
     envVars:
       # A remote deployment is reachable by anyone who learns its URL, so the
       # HTTP transport requires a bearer token here rather than defaulting to

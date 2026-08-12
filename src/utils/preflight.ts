@@ -28,7 +28,10 @@ export interface PreflightReport {
 const STALE_AFTER_DAYS = 45;
 const PROBE_TIMEOUT_MS = 10_000;
 
+const FAILED_REPORT_TTL_MS = 60_000;
+
 let cached: PreflightReport | undefined;
+let cachedAt = 0;
 
 async function probe(command: string, args: string[]): Promise<string | undefined> {
   try {
@@ -48,7 +51,15 @@ export function parseYtDlpAgeDays(version: string, now: number): number | undefi
 }
 
 export async function runPreflight(options: { force?: boolean } = {}): Promise<PreflightReport> {
-  if (cached && !options.force) return cached;
+  // A successful report holds for the process lifetime; a failed one expires.
+  // The probe spawns a binary with a timeout, and a host under load can miss it
+  // once. Caching that answer forever pins `/health` to 503 for good — the
+  // deployment never goes live, on a platform that would have retried, over a
+  // ten-second blip. Re-probing on every call instead would let a slow host
+  // stack overlapping spawns, so failures get a short life rather than none.
+  if (cached !== undefined && !options.force) {
+    if (cached.ok || Date.now() - cachedAt < FAILED_REPORT_TTL_MS) return cached;
+  }
 
   const [ytDlpVersion, ffmpegVersion] = await Promise.all([
     probe('yt-dlp', ['--version']),
@@ -71,12 +82,14 @@ export async function runPreflight(options: { force?: boolean } = {}): Promise<P
   }
 
   cached = { ok: ytDlp.installed, ytDlp, ffmpeg };
+  cachedAt = Date.now();
   return cached;
 }
 
 /** Test seam — the report is cached for the process lifetime in normal use. */
 export function resetPreflightCache(): void {
   cached = undefined;
+  cachedAt = 0;
 }
 
 /** Throws a typed, actionable error when ffmpeg is needed but absent. */

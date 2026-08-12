@@ -1,3 +1,0 @@
-[mcp_servers.youtube-knowledge]
-command = "node"
-args = ["/Users/tboua/Developer/mcp/youtube-knowledge-mcp/dist/index.js"]

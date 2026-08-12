@@ -43,7 +43,8 @@ src/
     ├── search-index.ts   # BM25 index for the local library
     ├── storage.ts        # Library persistence
     ├── validate.ts       # Path, language and timestamp validation
-    └── format.ts         # Result construction and human-readable formatting
+    ├── format.ts         # Result construction and human-readable formatting
+    └── youtube.ts        # URL and ID parsing
 tests/                    # Unit, protocol-level and filesystem tests
 scripts/smoke.mjs         # Post-build check that boots the server as a real client
 ```

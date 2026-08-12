@@ -64,6 +64,36 @@ describe('runPreflight', () => {
     expect(report.ffmpeg).toMatchObject({ installed: true, version: '6.1.1' });
   });
 
+  it('keeps a successful report without re-probing', async () => {
+    respond({ ytDlp: '2026.08.01', ffmpeg: '6.1.1' });
+
+    await runPreflight();
+    await runPreflight();
+
+    // Two binaries, probed once between them.
+    expect(mockedExeca).toHaveBeenCalledTimes(2);
+  });
+
+  it('re-probes after a failure rather than pinning /health to 503 for good', async () => {
+    // A probe spawns a binary with a timeout, and a loaded host can miss it
+    // once. Caching that answer for the process lifetime meant a deployment
+    // that lost a single probe at boot never reported healthy again.
+    vi.useFakeTimers();
+    try {
+      respond({ ffmpeg: '6.1.1' });
+      expect((await runPreflight()).ok).toBe(false);
+
+      vi.advanceTimersByTime(59_000);
+      respond({ ytDlp: '2026.08.01', ffmpeg: '6.1.1' });
+      expect((await runPreflight()).ok, 'still within the failed report TTL').toBe(false);
+
+      vi.advanceTimersByTime(2_000);
+      expect((await runPreflight()).ok, 'past the TTL, so probed again').toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('is not ok without yt-dlp, since every tool needs it', async () => {
     respond({ ffmpeg: '6.1.1' });
 

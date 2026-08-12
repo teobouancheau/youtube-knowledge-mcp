@@ -60,8 +60,10 @@ temp/
 *.tmp
 *.temp
 
-# Claude Code
+# Agent instructions: local to each machine, like CLAUDE.md always was
 CLAUDE.md
+AGENTS.md
+.codex/
 
 # Local MCP config (use .mcp.json.example instead)
 .mcp.json
