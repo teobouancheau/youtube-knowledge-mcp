@@ -15,9 +15,12 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version-file: .nvmrc
           registry-url: https://registry.npmjs.org
 
+      # OIDC trusted publishing needs npm >= 11.5.1, newer than the npm bundled
+      # with any Node release. Keep .nvmrc on a version npm@latest still
+      # supports, or this step fails before anything is published.
       - run: npm install -g npm@latest
       - run: npm ci
       - run: npm run validate

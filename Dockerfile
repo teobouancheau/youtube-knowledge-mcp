@@ -1,6 +1,6 @@
 # Build in one stage, ship in another: the compiler, dev dependencies and
 # TypeScript sources never reach the published image.
-FROM node:22-slim AS build
+FROM node:24-slim AS build
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ COPY tsconfig.json tsconfig.build.json ./
 COPY src/ ./src/
 RUN npm run build && npm prune --omit=dev
 
-FROM node:22-slim
+FROM node:24-slim
 
 # yt-dlp is pinned so an image rebuild is reproducible. It still needs regular
 # bumping — YouTube changes often and a stale yt-dlp is the most common failure.

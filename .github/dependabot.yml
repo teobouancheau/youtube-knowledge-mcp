@@ -26,17 +26,6 @@ updates:
       # pull request is opened for it.
       - dependency-name: '*'
         update-types: ['version-update:semver-major']
-
-      # Kept explicitly, so that relaxing the rule above does not quietly
-      # reintroduce them: both declare `node: >=22` while this package
-      # supports `>=20`. npm installs them regardless, and the break surfaces
-      # only at runtime on the oldest supported Node, as
-      # `TEXT_ENCODINGS.union is not a function` from inside execa. Raising
-      # the floor is a major of our own, not a dependency bump.
-      - dependency-name: execa
-        versions: ['>=10']
-      - dependency-name: lint-staged
-        versions: ['>=17']
     commit-message:
       prefix: chore
       include: scope

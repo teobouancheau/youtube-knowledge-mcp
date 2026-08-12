@@ -139,7 +139,7 @@ Explain **why** in the body, not just what — the diff already says what.
 
 1. Fork and branch from `main`.
 2. Make the change, with tests.
-3. Run `npm run validate` — CI runs the same gate on Node 20, 22 and 24.
+3. Run `npm run validate` — CI runs the same gate on Node 22 and 24.
 4. Open a PR describing the problem and how you addressed it.
 
 ## Reporting bugs

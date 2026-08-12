@@ -1,0 +1,9 @@
+# Build and coverage output: generated, and `npm run validate` runs
+# `format:check` on the working tree, so a local build would fail the gate on a
+# developer machine while passing in CI, where neither directory exists yet.
+dist
+coverage
+
+# Editor and agent state, kept out of git by a global ignore rather than this
+# repo's .gitignore, which leaves it visible to Prettier.
+.claude

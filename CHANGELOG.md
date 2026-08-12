@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+**Node 22 is the floor.** Node 20 reached end of life in April 2026 and the
+project was still testing against it, which is the one version a security fix
+will never reach. Supporting it also had a running cost: `execa` and
+`lint-staged` were held back at majors that honour `>=20`, and `node:sqlite` was
+off the table.
+
+- `engines.node` is `>=22.0.0`. Installing on Node 20 now fails at install time
+  rather than at runtime, because `.npmrc` sets `engine-strict=true`.
+- CI runs the matrix on Node 22 and 24; the Docker image ships Node 24.
+- `.nvmrc` pins 24 — the active LTS — and is the single source for every
+  single-version job, so the release workflow and the local toolchain cannot
+  drift apart again.
+
+This is breaking for anyone running Node 20, hence the next release is 2.0.0.
+Nothing else about the API changes: no tool, parameter or output is affected.
+
 ## [1.2.0] - 2026-08-12
 
 Additive throughout: every tool from 1.1.1 keeps its name, its parameters and
