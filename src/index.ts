@@ -1,9 +1,7 @@
-#!/usr/bin/env node
-
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { z } from 'zod';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { fileURLToPath } from 'url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
@@ -778,21 +776,5 @@ export async function main(): Promise<void> {
   }
 }
 
-// Only start when executed directly. Importing this module — which the test
-// suite does — must not spawn a transport or read argv.
-//
-// The three lines below run only in a real process launch, which is what
-// `scripts/smoke.mjs` does in CI: it boots `dist/index.js` as a subprocess and
-// completes an MCP handshake against it. That exercises this path for real,
-// but out of process, where the coverage instrumentation cannot see it.
-/* v8 ignore start */
-const invokedDirectly =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-
-if (invokedDirectly) {
-  main().catch((error: unknown) => {
-    console.error('Failed to start MCP server:', error);
-    process.exit(1);
-  });
-}
-/* v8 ignore stop */
+// Nothing starts on import: the test suite imports this module, and the only
+// caller of `main()` is `cli.ts`, the file the `bin` entry points at.

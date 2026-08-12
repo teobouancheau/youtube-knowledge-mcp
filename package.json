@@ -1,6 +1,6 @@
 {
   "name": "youtube-knowledge-mcp",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "MCP Server for extracting and managing YouTube video knowledge",
   "author": "teobouancheau",
   "repository": {
@@ -24,13 +24,13 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "youtube-knowledge-mcp": "dist/index.js"
+    "youtube-knowledge-mcp": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && chmod 755 dist/index.js",
+    "build": "tsc -p tsconfig.build.json && chmod 755 dist/cli.js",
     "dev": "tsc --watch",
-    "start": "node dist/index.js",
-    "start:http": "node dist/index.js --http",
+    "start": "node dist/cli.js",
+    "start:http": "node dist/cli.js --http",
     "clean": "rm -rf dist coverage",
     "rebuild": "npm run clean && npm run build",
     "lint": "eslint . --max-warnings 0",

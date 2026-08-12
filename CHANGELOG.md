@@ -5,6 +5,41 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-08-12
+
+### Fixed
+
+**The server started, then exited without a word.** 1.2.0 and 2.0.0 were unusable
+through `npx` — which is how the README, and every MCP client configuration,
+starts this server. The process connected, received `initialize`, and exited 0
+with nothing on stderr. 1.1.1 was unaffected.
+
+1.2.0 wrapped `main()` in a guard so that importing the module from the test
+suite would not spawn a transport:
+
+```js
+const invokedDirectly =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+```
+
+npm installs a package's `bin` as a symlink in `node_modules/.bin`, and `npx`
+runs that link. Node reports the link in `process.argv[1]` but resolves
+`import.meta.url` to the file it points at, so the two are never equal and
+`main()` never ran. Launching the entry point by its real path — which is what
+the smoke test did — made the comparison succeed, so CI stayed green through
+two releases.
+
+- The `bin` entry is now `dist/cli.js`, a file whose only job is to call
+  `main()`. It has nothing to detect, so there is no comparison left to get
+  wrong. `index.ts` still starts nothing on import, which is what the guard was
+  there for.
+- The smoke test repeats the whole handshake through a symlink to the entry
+  point. Checked against the broken 2.0.0 build: direct launch lists 27 tools,
+  the symlinked launch fails — the new check would have caught this before
+  release.
+- `npm start`, `npm run start:http` and the Docker image's `CMD` follow the
+  entry point to `dist/cli.js`.
+
 ## [2.0.0] - 2026-08-12
 
 ### Changed
@@ -209,7 +244,8 @@ video but never say when something was said.
 
 Initial release.
 
-[unreleased]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v2.0.0...HEAD
+[unreleased]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v1.2.0...v2.0.0
 [1.2.0]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/teobouancheau/youtube-knowledge-mcp/releases/tag/v1.1.1
