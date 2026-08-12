@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { saveToLibrary } from '../utils/storage.js';
 import { textContent } from '../utils/format.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const saveToLibrarySchema = {
   videoId: z.string().describe('YouTube video ID (e.g., dQw4w9WgXcQ)'),
@@ -35,7 +36,7 @@ export async function saveToLibraryHandler({
   contentType: 'summary' | 'skill';
   channel?: string;
   tags?: string[];
-}) {
+}): Promise<CallToolResult> {
   const result = await saveToLibrary({
     videoId,
     title,

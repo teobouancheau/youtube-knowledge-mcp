@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getTranscript } from '../utils/youtube.js';
 import { textContent } from '../utils/format.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const getTranscriptSchema = {
   video: z.string().describe('YouTube video ID (e.g., dQw4w9WgXcQ) or full URL'),
@@ -18,7 +19,7 @@ export async function getTranscriptHandler({
 }: {
   video: string;
   language: string;
-}) {
+}): Promise<CallToolResult> {
   const result = await getTranscript(video, language);
 
   const wordCount = result.transcript.split(/\s+/).length;

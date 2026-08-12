@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { textOf } from '../helpers.js';
 
 vi.mock('../../src/utils/youtube.js', () => ({
   searchVideos: vi.fn(),
@@ -35,7 +36,7 @@ describe('search-videos tool', () => {
     const { searchVideosHandler } = await import('../../src/tools/search-videos.js');
     const result = await searchVideosHandler({ query: 'typescript', limit: 5 });
 
-    const text = result.content[0].text;
+    const text = textOf(result);
     expect(text).toContain('Found 2 results for "typescript"');
     expect(text).toContain('Learn TypeScript');
     expect(text).toContain('CodeChannel');
@@ -50,6 +51,6 @@ describe('search-videos tool', () => {
     const { searchVideosHandler } = await import('../../src/tools/search-videos.js');
     const result = await searchVideosHandler({ query: 'nonexistent', limit: 5 });
 
-    expect(result.content[0].text).toContain('Found 0 results');
+    expect(textOf(result)).toContain('Found 0 results');
   });
 });

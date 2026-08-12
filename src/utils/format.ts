@@ -1,3 +1,5 @@
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+
 export function formatCount(count: number): string {
   if (count >= 1_000_000_000) return `${trimTrailingZero(count / 1_000_000_000)}B`;
   if (count >= 1_000_000) return `${trimTrailingZero(count / 1_000_000)}M`;
@@ -22,8 +24,6 @@ export function formatFilesize(bytes?: number): string {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
-export function textContent(text: string): {
-  content: [{ type: 'text'; text: string }];
-} {
+export function textContent(text: string): CallToolResult {
   return { content: [{ type: 'text' as const, text }] };
 }

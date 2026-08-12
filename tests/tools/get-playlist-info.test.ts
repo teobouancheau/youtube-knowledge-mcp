@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { textOf } from '../helpers.js';
 
 vi.mock('../../src/utils/youtube.js', () => ({
   getPlaylistInfo: vi.fn(),
@@ -28,7 +29,7 @@ describe('get-playlist-info tool', () => {
       url: 'https://www.youtube.com/playlist?list=PLtest123',
     });
 
-    const text = result.content[0].text;
+    const text = textOf(result);
     expect(text).toContain('C++ Tutorial Series');
     expect(text).toContain('by The Cherno');
     expect(text).toContain('115 videos');
@@ -55,7 +56,7 @@ describe('get-playlist-info tool', () => {
       url: 'https://www.youtube.com/playlist?list=PLempty',
     });
 
-    const text = result.content[0].text;
+    const text = textOf(result);
     expect(text).toContain('Empty Playlist');
     expect(text).toContain('0 videos');
   });

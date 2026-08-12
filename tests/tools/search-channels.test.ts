@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { textOf } from '../helpers.js';
 
 vi.mock('../../src/utils/youtube.js', () => ({
   searchChannels: vi.fn(),
@@ -25,7 +26,7 @@ describe('search-channels tool', () => {
     const { searchChannelsHandler } = await import('../../src/tools/search-channels.js');
     const result = await searchChannelsHandler({ query: 'fireship', limit: 5 });
 
-    const text = result.content[0].text;
+    const text = textOf(result);
     expect(text).toContain('Found 1 channel for "fireship"');
     expect(text).toContain('Fireship');
     expect(text).toContain('@Fireship');
@@ -39,6 +40,6 @@ describe('search-channels tool', () => {
     const { searchChannelsHandler } = await import('../../src/tools/search-channels.js');
     const result = await searchChannelsHandler({ query: 'nonexistent', limit: 5 });
 
-    expect(result.content[0].text).toContain('No channels found');
+    expect(textOf(result)).toContain('No channels found');
   });
 });

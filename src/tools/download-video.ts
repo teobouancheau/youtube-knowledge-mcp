@@ -1,13 +1,14 @@
 import { z } from 'zod';
 import { listFormats, downloadVideo, VideoQuality } from '../utils/youtube.js';
 import { formatFilesize, textContent } from '../utils/format.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 // Tool 1: List available formats
 export const listFormatsSchema = {
   video: z.string().describe('YouTube video ID (e.g., dQw4w9WgXcQ) or full URL'),
 };
 
-export async function listFormatsHandler({ video }: { video: string }) {
+export async function listFormatsHandler({ video }: { video: string }): Promise<CallToolResult> {
   const formats = await listFormats(video);
 
   const lines: string[] = [`${formats.length} formats available`, ''];
@@ -84,7 +85,7 @@ export async function downloadVideoHandler({
   quality?: VideoQuality;
   formatId?: string;
   outputDir?: string;
-}) {
+}): Promise<CallToolResult> {
   // Use "best" as default quality if neither quality nor formatId is provided
   const effectiveQuality = quality ?? (formatId ? undefined : 'best');
 
