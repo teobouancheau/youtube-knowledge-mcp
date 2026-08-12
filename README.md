@@ -130,6 +130,12 @@ Restart your client after updating configuration.
 
 The server supports Streamable HTTP transport for remote access via Claude's official connectors.
 
+**Every remote setup is your own deployment.** There is no shared instance to
+point a connector at, by design: every call shells out to yt-dlp, so a single
+host serving other people's traffic is a host YouTube rate-limits for all of
+them. The button below deploys this repository into your own Render account, in
+about two minutes and without cloning anything.
+
 #### Self-hosted
 
 ```bash
@@ -142,24 +148,44 @@ The server listens on `PORT` (default 3000). Set `PORT` environment variable to 
 #### Docker
 
 ```bash
-npm run build
 docker build -t youtube-knowledge-mcp .
-docker run -p 3000:10000 youtube-knowledge-mcp
+docker run -p 3000:10000 -e MCP_AUTH_TOKEN=$(openssl rand -hex 32) youtube-knowledge-mcp
 ```
+
+The image sets `PORT=10000` and exposes it; publish it on whatever host port you
+like. The build happens inside the image, so no local `npm run build` first.
 
 #### Deploy to Render
 
-1. Push to GitHub
-2. Create a **Web Service** on Render with **Docker** runtime
-3. Render sets `PORT` automatically
-4. Add the Render URL as a custom connector in Claude.ai > Settings > Connectors
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/teobouancheau/youtube-knowledge-mcp)
+
+The button opens Render's Blueprint flow against [`render.yaml`](render.yaml) in
+this repository, which builds the Docker image, points the health check at
+`/health` and generates an `MCP_AUTH_TOKEN` for you. No fork, no clone, no
+settings to fill in — the service is yours, on your account.
+
+1. Click the button and confirm. Render builds the image and deploys it.
+2. Open the service's **Environment** tab and copy the generated
+   `MCP_AUTH_TOKEN`. The HTTP transport rejects every request without it, so a
+   URL that leaks is not an open server.
+3. Add `https://<your-service>.onrender.com/mcp` as a custom connector, with
+   `Authorization: Bearer <token>`.
+
+Worth doing once the service exists: set `MCP_ALLOWED_HOSTS` to your service's
+hostname (`<your-service>.onrender.com`). It cannot be filled in from the
+Blueprint, since the hostname does not exist until the service does, and it
+rejects requests arriving under any other name.
+
+The free plan sleeps after inactivity, so the first call after a pause waits for
+a cold start. Any paid plan removes that.
 
 #### Connect via Claude.ai
 
 1. Go to **Settings > Connectors**
 2. Click **Add custom connector**
 3. Enter your server URL (e.g., `https://your-app.onrender.com/mcp`)
-4. Click **Add**
+4. Add the `Authorization: Bearer <token>` header if you set `MCP_AUTH_TOKEN`
+5. Click **Add**
 
 ## MCP Tools
 
@@ -265,7 +291,7 @@ All optional.
 | `MCP_ALLOWED_HOSTS`             | unset     | Comma-separated Host allowlist; enables DNS-rebinding protection                                         |
 | `MCP_ALLOWED_ORIGINS`           | unset     | Comma-separated Origin allowlist                                                                         |
 | `MCP_BIND_HOST`                 | `0.0.0.0` | Interface to bind                                                                                        |
-| `PORT`                          | `3000`    | HTTP port                                                                                                |
+| `PORT`                          | `3000`    | HTTP port. The Docker image sets `10000`; Render and similar platforms inject their own                  |
 | `MCP_RATE_LIMIT`                | `60`      | Requests per window, per client                                                                          |
 | `MCP_RATE_WINDOW_MS`            | `60000`   | Rate-limit window                                                                                        |
 | `MCP_SESSION_IDLE_MS`           | `1800000` | Close HTTP sessions idle this long                                                                       |
