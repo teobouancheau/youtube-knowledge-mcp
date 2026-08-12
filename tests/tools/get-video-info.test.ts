@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { textOf } from '../helpers.js';
 
 // Mock the youtube utility
 vi.mock('../../src/utils/youtube.js', () => ({
@@ -32,9 +33,8 @@ describe('get-video-info tool', () => {
     const result = await getVideoInfoHandler({ video: 'test123' });
 
     expect(result.content).toHaveLength(1);
-    expect(result.content[0].type).toBe('text');
 
-    const text = result.content[0].text;
+    const text = textOf(result);
     expect(text).toContain('Test Video');
     expect(text).toContain('by Test Channel');
     expect(text).toContain('5:00');

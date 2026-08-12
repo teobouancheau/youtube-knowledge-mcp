@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { listVideos } from '../utils/youtube.js';
-import { textContent } from '../utils/format.js';
+import { pageInfo, toolResult } from '../utils/format.js';
+import { paginationShape, videoSummarySchema } from '../schemas.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const fetchVideosSchema = {
   url: z
@@ -16,7 +18,19 @@ export const fetchVideosSchema = {
     .describe('Maximum number of videos to return (1-100, default: 20)'),
 };
 
-export async function fetchVideosHandler({ url, limit }: { url: string; limit: number }) {
+export const fetchVideosOutputSchema = {
+  source: z.string(),
+  videos: z.array(videoSummarySchema),
+  ...paginationShape,
+};
+
+export async function fetchVideosHandler({
+  url,
+  limit,
+}: {
+  url: string;
+  limit: number;
+}): Promise<CallToolResult> {
   const videos = await listVideos(url, limit);
 
   const lines: string[] = [`✓ Found ${videos.length} video${videos.length !== 1 ? 's' : ''}`, ''];
@@ -28,5 +42,16 @@ export async function fetchVideosHandler({ url, limit }: { url: string; limit: n
     lines.push('');
   });
 
-  return textContent(lines.join('\n'));
+  return toolResult(lines.join('\n'), {
+    source: url,
+    videos: videos.map((v) => ({
+      id: v.id,
+      title: v.title,
+      durationSeconds: v.duration,
+      durationFormatted: v.durationFormatted,
+      url: v.url,
+      uploadDate: v.uploadDate,
+    })),
+    ...pageInfo(videos.length, videos.length),
+  });
 }

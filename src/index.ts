@@ -1,38 +1,142 @@
 #!/usr/bin/env node
 
-import { randomUUID } from 'node:crypto';
-import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
+import { z } from 'zod';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
-import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
-import { fetchVideosSchema, fetchVideosHandler } from './tools/fetch-videos.js';
-import { getVideoInfoSchema, getVideoInfoHandler } from './tools/get-video-info.js';
-import { getTranscriptSchema, getTranscriptHandler } from './tools/get-transcript.js';
-import { searchVideosSchema, searchVideosHandler } from './tools/search-videos.js';
-import { getChaptersSchema, getChaptersHandler } from './tools/get-chapters.js';
-import { getCommentsSchema, getCommentsHandler } from './tools/get-comments.js';
-import { getChannelInfoSchema, getChannelInfoHandler } from './tools/get-channel-info.js';
-import { searchChannelsSchema, searchChannelsHandler } from './tools/search-channels.js';
-import { getPlaylistInfoSchema, getPlaylistInfoHandler } from './tools/get-playlist-info.js';
-import { saveToLibrarySchema, saveToLibraryHandler } from './tools/save-to-library.js';
-import { listLibrarySchema, listLibraryHandler } from './tools/list-library.js';
+import {
+  fetchVideosSchema,
+  fetchVideosOutputSchema,
+  fetchVideosHandler,
+} from './tools/fetch-videos.js';
+import {
+  getVideoInfoSchema,
+  getVideoInfoOutputSchema,
+  getVideoInfoHandler,
+} from './tools/get-video-info.js';
+import {
+  getTranscriptSchema,
+  getTranscriptOutputSchema,
+  getTranscriptHandler,
+} from './tools/get-transcript.js';
+import {
+  searchVideosSchema,
+  searchVideosOutputSchema,
+  searchVideosHandler,
+} from './tools/search-videos.js';
+import {
+  getChaptersSchema,
+  getChaptersOutputSchema,
+  getChaptersHandler,
+} from './tools/get-chapters.js';
+import {
+  getCommentsSchema,
+  getCommentsOutputSchema,
+  getCommentsHandler,
+} from './tools/get-comments.js';
+import {
+  getChannelInfoSchema,
+  getChannelInfoOutputSchema,
+  getChannelInfoHandler,
+} from './tools/get-channel-info.js';
+import {
+  searchChannelsSchema,
+  searchChannelsOutputSchema,
+  searchChannelsHandler,
+} from './tools/search-channels.js';
+import {
+  getPlaylistInfoSchema,
+  getPlaylistInfoOutputSchema,
+  getPlaylistInfoHandler,
+} from './tools/get-playlist-info.js';
+import {
+  saveToLibrarySchema,
+  saveToLibraryOutputSchema,
+  saveToLibraryHandler,
+} from './tools/save-to-library.js';
+import {
+  listLibrarySchema,
+  listLibraryOutputSchema,
+  listLibraryHandler,
+} from './tools/list-library.js';
 import {
   listFormatsSchema,
+  listFormatsOutputSchema,
   listFormatsHandler,
   downloadVideoSchema,
+  downloadVideoOutputSchema,
   downloadVideoHandler,
 } from './tools/download-video.js';
+import {
+  checkHealthSchema,
+  checkHealthOutputSchema,
+  checkHealthHandler,
+} from './tools/check-health.js';
+import {
+  searchTranscriptSchema,
+  searchTranscriptOutputSchema,
+  searchTranscriptHandler,
+} from './tools/search-transcript.js';
+import {
+  getTranscriptsSchema,
+  getTranscriptsOutputSchema,
+  getTranscriptsHandler,
+  digestPlaylistSchema,
+  digestPlaylistOutputSchema,
+  digestPlaylistHandler,
+} from './tools/batch.js';
+import {
+  extractClipSchema,
+  extractClipOutputSchema,
+  extractClipHandler,
+  extractAudioClipSchema,
+  extractAudioClipOutputSchema,
+  extractAudioClipHandler,
+  extractClipsSchema,
+  extractClipsOutputSchema,
+  extractClipsHandler,
+  extractFrameSchema,
+  extractFrameOutputSchema,
+  extractFrameHandler,
+  exportSubtitlesSchema,
+  exportSubtitlesOutputSchema,
+  exportSubtitlesHandler,
+} from './tools/clips.js';
+import {
+  getLibraryItemSchema,
+  getLibraryItemOutputSchema,
+  getLibraryItemHandler,
+  searchLibrarySchema,
+  searchLibraryOutputSchema,
+  searchLibraryHandler,
+  deleteLibraryItemSchema,
+  deleteLibraryItemOutputSchema,
+  deleteLibraryItemHandler,
+  updateLibraryTagsSchema,
+  updateLibraryTagsOutputSchema,
+  updateLibraryTagsHandler,
+  rebuildLibraryIndexSchema,
+  rebuildLibraryIndexOutputSchema,
+  rebuildLibraryIndexHandler,
+} from './tools/library.js';
+import { runWithRequestContext } from './utils/context.js';
+import { toToolError } from './utils/errors.js';
+import { formatPreflightReport, runPreflight } from './utils/preflight.js';
+import { startHttp } from './http.js';
+import { registerPrompts } from './prompts.js';
+import { registerResources } from './resources.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')) as {
-  version: string;
-};
+// The version is advertised in the MCP initialize response, so a package.json
+// that has lost it should fail loudly at startup rather than telling every
+// client the server is version `undefined`.
+const pkg = z
+  .object({ version: z.string() })
+  .parse(JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')));
 
 const SERVER_INSTRUCTIONS = `YouTube Knowledge MCP provides tools to search, analyze, and extract knowledge from YouTube videos.
 
@@ -45,10 +149,91 @@ Recommended workflows:
 
 All tools accept YouTube video IDs (e.g., dQw4w9WgXcQ) or full URLs.`;
 
-function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
+/**
+ * Wrap a tool handler so that every call gets a request context and no call can
+ * throw out of the server.
+ *
+ * Two things happen here, once, instead of thirteen times in thirteen files:
+ * the MCP request's AbortSignal is published to the request context so an
+ * in-flight yt-dlp is killed when the client cancels, and anything thrown is
+ * rendered as an `isError` result carrying an actionable message rather than a
+ * raw stack trace or yt-dlp command line.
+ */
+/**
+ * The parts of the SDK's `RequestHandlerExtra` this server uses.
+ *
+ * `sendNotification` is described with `z.custom` because a function is not
+ * something Zod can take apart structurally — the predicate is a real runtime
+ * check, and it is what lets the property be called without asserting a type
+ * over it.
+ */
+const requestExtraSchema = z.object({
+  signal: z.instanceof(AbortSignal).optional(),
+  sendNotification: z
+    .custom<(notification: unknown) => Promise<void>>((value) => typeof value === 'function')
+    .optional(),
+  _meta: z.object({ progressToken: z.union([z.string(), z.number()]).optional() }).optional(),
+});
+
+function guarded<A extends unknown[]>(
+  handler: (...args: A) => Promise<CallToolResult>
+): (...args: A) => Promise<CallToolResult> {
+  return async (...args: A): Promise<CallToolResult> => {
+    // Handlers declare only their own parameters; the SDK appends
+    // RequestHandlerExtra to every call, so it is whatever arrived last.
+    const parsed = requestExtraSchema.safeParse(args[args.length - 1]);
+    const context = parsed.success ? parsed.data : undefined;
+    const signal = context?.signal;
+
+    return runWithRequestContext(
+      {
+        signal,
+        // Progress is only meaningful when the client asked for it by sending a
+        // token; without one the notification would be dropped anyway.
+        reportProgress:
+          context?.sendNotification && context._meta?.progressToken !== undefined
+            ? (progress, total, message) => {
+                void context.sendNotification?.({
+                  method: 'notifications/progress',
+                  params: {
+                    progressToken: context._meta?.progressToken,
+                    progress,
+                    ...(total === undefined ? {} : { total }),
+                    ...(message === undefined ? {} : { message }),
+                  },
+                });
+              }
+            : undefined,
+        log: context?.sendNotification
+          ? (level, message) => {
+              void context.sendNotification?.({
+                method: 'notifications/message',
+                params: { level, logger: 'youtube-knowledge-mcp', data: message },
+              });
+            }
+          : undefined,
+      },
+      async () => {
+        try {
+          return await handler(...args);
+        } catch (error) {
+          return toToolError(error);
+        }
+      }
+    );
+  };
+}
+
+/**
+ * Build a fully configured server.
+ *
+ * Exported so the test suite can drive it over an in-memory transport as a real
+ * MCP client, rather than only testing handlers in isolation.
+ */
+export function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
   const server = new McpServer(
     { name: 'youtube-knowledge-mcp', version: pkg.version },
-    { instructions: SERVER_INSTRUCTIONS }
+    { instructions: SERVER_INSTRUCTIONS, capabilities: { logging: {} } }
   );
 
   // -- Remote-safe tools (registered in all modes) --
@@ -60,6 +245,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Search YouTube for videos by keyword or phrase. Returns video IDs, titles, durations, channels, view counts, and URLs. Results sorted by relevance.',
       inputSchema: searchVideosSchema,
+      outputSchema: searchVideosOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -67,7 +253,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    searchVideosHandler
+    guarded(searchVideosHandler)
   );
 
   server.registerTool(
@@ -77,6 +263,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'List videos from a YouTube playlist or channel. Returns video IDs, titles, durations, upload dates, and URLs. Sorted by playlist or channel order.',
       inputSchema: fetchVideosSchema,
+      outputSchema: fetchVideosOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -84,7 +271,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    fetchVideosHandler
+    guarded(fetchVideosHandler)
   );
 
   server.registerTool(
@@ -94,6 +281,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Get detailed metadata for a single YouTube video. Returns title, channel, duration, upload date, view count, like count, comment count, description, tags, and thumbnail URL.',
       inputSchema: getVideoInfoSchema,
+      outputSchema: getVideoInfoOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -101,7 +289,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    getVideoInfoHandler
+    guarded(getVideoInfoHandler)
   );
 
   server.registerTool(
@@ -111,6 +299,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Extract the full transcript from a YouTube video. Supports auto-generated and manual captions. Returns plain text with word count and detected language. Results are cached locally.',
       inputSchema: getTranscriptSchema,
+      outputSchema: getTranscriptOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -118,7 +307,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    getTranscriptHandler
+    guarded(getTranscriptHandler)
   );
 
   server.registerTool(
@@ -128,6 +317,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Extract chapter markers and timestamps from a YouTube video. Returns chapter titles with start and end times. Not all videos have chapters. Returns empty list if none found.',
       inputSchema: getChaptersSchema,
+      outputSchema: getChaptersOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -135,7 +325,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    getChaptersHandler
+    guarded(getChaptersHandler)
   );
 
   server.registerTool(
@@ -145,6 +335,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Get top comments from a YouTube video sorted by popularity. Returns author, text, like count, and pinned status. Only top-level comments, no replies.',
       inputSchema: getCommentsSchema,
+      outputSchema: getCommentsOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -152,7 +343,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    getCommentsHandler
+    guarded(getCommentsHandler)
   );
 
   server.registerTool(
@@ -162,6 +353,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Get metadata for a YouTube channel. Returns channel name, handle, subscriber count, description, and channel URL.',
       inputSchema: getChannelInfoSchema,
+      outputSchema: getChannelInfoOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -169,7 +361,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    getChannelInfoHandler
+    guarded(getChannelInfoHandler)
   );
 
   server.registerTool(
@@ -179,6 +371,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Search YouTube for channels by keyword or phrase. Returns channel names, handles, subscriber counts, descriptions, and URLs.',
       inputSchema: searchChannelsSchema,
+      outputSchema: searchChannelsOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -186,7 +379,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    searchChannelsHandler
+    guarded(searchChannelsHandler)
   );
 
   server.registerTool(
@@ -196,6 +389,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Get metadata for a YouTube playlist. Returns title, channel, video count, last updated date, and description.',
       inputSchema: getPlaylistInfoSchema,
+      outputSchema: getPlaylistInfoOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -203,7 +397,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    getPlaylistInfoHandler
+    guarded(getPlaylistInfoHandler)
   );
 
   server.registerTool(
@@ -213,6 +407,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'List all available download formats for a YouTube video. Returns format IDs, extensions, resolutions, FPS, codecs, and file sizes. Grouped by video+audio, video-only, and audio-only.',
       inputSchema: listFormatsSchema,
+      outputSchema: listFormatsOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -220,7 +415,79 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    listFormatsHandler
+    guarded(listFormatsHandler)
+  );
+
+  server.registerTool(
+    'search_transcript',
+    {
+      title: 'Search Inside a Transcript',
+      description:
+        'Find a phrase or pattern inside a video transcript and return each match with its timestamp and a link that opens the video at that moment. Use this instead of reading a whole transcript when you need to locate or cite a specific moment.',
+      inputSchema: searchTranscriptSchema,
+      outputSchema: searchTranscriptOutputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    guarded(searchTranscriptHandler)
+  );
+
+  server.registerTool(
+    'get_transcripts',
+    {
+      title: 'Get Transcripts for Several Videos',
+      description:
+        'Fetch transcripts for up to 25 videos in one call, each capped so the batch cannot flood the context. Videos that have no captions are reported individually rather than failing the whole call.',
+      inputSchema: getTranscriptsSchema,
+      outputSchema: getTranscriptsOutputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    guarded(getTranscriptsHandler)
+  );
+
+  server.registerTool(
+    'digest_playlist',
+    {
+      title: 'Digest a Playlist or Channel',
+      description:
+        'Summarize a playlist or channel in one call: per-video metadata, chapter markers, and optionally transcript word counts. Use this to survey a body of content before deciding what to read in full.',
+      inputSchema: digestPlaylistSchema,
+      outputSchema: digestPlaylistOutputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    guarded(digestPlaylistHandler)
+  );
+
+  server.registerTool(
+    'check_health',
+    {
+      title: 'Check Server Health',
+      description:
+        'Report whether yt-dlp and ffmpeg are installed, their versions, and whether yt-dlp is stale. Call this first when tools start failing unexpectedly — an outdated yt-dlp is the most common cause.',
+      inputSchema: checkHealthSchema,
+      outputSchema: checkHealthOutputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    guarded(checkHealthHandler)
   );
 
   // -- Local-only tools (stdio mode only) --
@@ -233,14 +500,17 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         description:
           'Save a summary or skill note to the local YouTube knowledge library. Overwrites existing content of the same type for the same video. Returns the saved file path.',
         inputSchema: saveToLibrarySchema,
+        outputSchema: saveToLibraryOutputSchema,
         annotations: {
           readOnlyHint: false,
-          destructiveHint: false,
+          // Overwrites an existing note of the same type in place, which is a
+          // destructive update: the previous content is not recoverable.
+          destructiveHint: true,
           idempotentHint: true,
           openWorldHint: false,
         },
       },
-      saveToLibraryHandler
+      guarded(saveToLibraryHandler)
     );
 
     server.registerTool(
@@ -250,6 +520,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         description:
           'List all saved items in the local YouTube knowledge library. Returns titles, channels, content types, tags, and save dates. Optionally filter by tag. Sorted by most recently saved.',
         inputSchema: listLibrarySchema,
+        outputSchema: listLibraryOutputSchema,
         annotations: {
           readOnlyHint: true,
           destructiveHint: false,
@@ -257,7 +528,188 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
           openWorldHint: false,
         },
       },
-      listLibraryHandler
+      guarded(listLibraryHandler)
+    );
+
+    server.registerTool(
+      'get_library_item',
+      {
+        title: 'Read a Saved Library Item',
+        description:
+          'Read back a summary or skill note previously saved with save_to_library. Returns the markdown content plus the saved metadata.',
+        inputSchema: getLibraryItemSchema,
+        outputSchema: getLibraryItemOutputSchema,
+        annotations: {
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      guarded(getLibraryItemHandler)
+    );
+
+    server.registerTool(
+      'search_library',
+      {
+        title: 'Search the Knowledge Library',
+        description:
+          'Full-text search across every saved summary and skill note, ranked by relevance. Returns matching excerpts with the video IDs needed to read the full note.',
+        inputSchema: searchLibrarySchema,
+        outputSchema: searchLibraryOutputSchema,
+        annotations: {
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      guarded(searchLibraryHandler)
+    );
+
+    server.registerTool(
+      'update_library_tags',
+      {
+        title: 'Update Library Tags',
+        description:
+          'Add, remove or replace the tags on a saved library item. Tags are how list_library filters, so this is the way to reorganize a growing library. The replace parameter discards all existing tags.',
+        inputSchema: updateLibraryTagsSchema,
+        outputSchema: updateLibraryTagsOutputSchema,
+        annotations: {
+          readOnlyHint: false,
+          // The replace parameter discards every existing tag.
+          destructiveHint: true,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      guarded(updateLibraryTagsHandler)
+    );
+
+    server.registerTool(
+      'delete_library_item',
+      {
+        title: 'Delete a Library Item',
+        description:
+          'Permanently delete a saved summary or skill note, or the entire library entry for a video. This removes files from disk and cannot be undone.',
+        inputSchema: deleteLibraryItemSchema,
+        outputSchema: deleteLibraryItemOutputSchema,
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      guarded(deleteLibraryItemHandler)
+    );
+
+    server.registerTool(
+      'rebuild_library_index',
+      {
+        title: 'Rebuild the Library Search Index',
+        description:
+          'Rebuild the full-text search index from the notes on disk. Use this if search_library results look stale or incomplete, for example after editing files by hand.',
+        inputSchema: rebuildLibraryIndexSchema,
+        outputSchema: rebuildLibraryIndexOutputSchema,
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      guarded(rebuildLibraryIndexHandler)
+    );
+
+    server.registerTool(
+      'extract_clip',
+      {
+        title: 'Extract a Video Clip',
+        description:
+          'Cut a time range out of a YouTube video without downloading the whole thing. Give start and end, or a chapter name. Pair with search_transcript to find the moment first. Requires ffmpeg.',
+        inputSchema: extractClipSchema,
+        outputSchema: extractClipOutputSchema,
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
+      },
+      guarded(extractClipHandler)
+    );
+
+    server.registerTool(
+      'extract_audio_clip',
+      {
+        title: 'Extract an Audio Clip',
+        description:
+          'Cut a time range out of a video as audio only, in an editor-friendly format (mp3, m4a, wav, flac, opus). Use for podcast pulls and voice-over sourcing. Requires ffmpeg.',
+        inputSchema: extractAudioClipSchema,
+        outputSchema: extractAudioClipOutputSchema,
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
+      },
+      guarded(extractAudioClipHandler)
+    );
+
+    server.registerTool(
+      'extract_clips',
+      {
+        title: 'Extract Several Clips',
+        description:
+          'Cut several time ranges out of one video in a single call. A range that fails is reported individually rather than losing the clips that succeeded. Requires ffmpeg.',
+        inputSchema: extractClipsSchema,
+        outputSchema: extractClipsOutputSchema,
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
+      },
+      guarded(extractClipsHandler)
+    );
+
+    server.registerTool(
+      'extract_frame',
+      {
+        title: 'Capture a Frame',
+        description:
+          'Capture a single still image from a video at a given timestamp, without downloading the file. Use for thumbnails and reference frames. Requires ffmpeg.',
+        inputSchema: extractFrameSchema,
+        outputSchema: extractFrameOutputSchema,
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
+      },
+      guarded(extractFrameHandler)
+    );
+
+    server.registerTool(
+      'export_subtitles',
+      {
+        title: 'Export Subtitles',
+        description:
+          'Write a video transcript to disk as SRT, WebVTT or plain text, ready to import into a video editor such as Premiere, Resolve or CapCut.',
+        inputSchema: exportSubtitlesSchema,
+        outputSchema: exportSubtitlesOutputSchema,
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
+      },
+      guarded(exportSubtitlesHandler)
     );
 
     server.registerTool(
@@ -267,21 +719,28 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         description:
           'Download a YouTube video to local disk. Use the quality parameter for automatic format selection with smart fallbacks, or formatId for a specific format from list_formats. Returns the downloaded file path, title, and format details.',
         inputSchema: downloadVideoSchema,
+        outputSchema: downloadVideoOutputSchema,
         annotations: {
           readOnlyHint: false,
           destructiveHint: false,
-          idempotentHint: false,
+          // Writes to a deterministic path and overwrites, exactly like the
+          // extract_* tools; repeating the call leaves the same state.
+          idempotentHint: true,
           openWorldHint: true,
         },
       },
-      downloadVideoHandler
+      guarded(downloadVideoHandler)
     );
   }
+
+  registerPrompts(server, mode);
+  registerResources(server, mode);
 
   return server;
 }
 
-function getTransportMode(): 'stdio' | 'http' {
+/** An explicit flag wins over the environment, so a launcher can always override. */
+export function getTransportMode(): 'stdio' | 'http' {
   if (process.argv.includes('--http')) return 'http';
   if (process.argv.includes('--stdio')) return 'stdio';
   if (process.env.MCP_MODE === 'http') return 'http';
@@ -294,178 +753,46 @@ async function startStdio(): Promise<void> {
   await server.connect(transport);
 }
 
-// Rate limiting for public HTTP server
-const RATE_LIMIT = 60;
-const RATE_WINDOW_MS = 60_000;
-const rateLimits = new Map<string, { count: number; resetAt: number }>();
+/**
+ * Report missing or stale external binaries at boot.
+ *
+ * Deliberately non-fatal: the server still starts and still lists its tools, so
+ * a client can call check_health and be told exactly what to install. Exiting
+ * here would surface as an opaque "server failed to start" in the client.
+ */
+export async function announcePreflight(): Promise<void> {
+  const report = await runPreflight();
+  if (report.ok && !report.ytDlp.warning && report.ffmpeg.installed) return;
 
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = rateLimits.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimits.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });
-    return true;
-  }
-  entry.count++;
-  return entry.count <= RATE_LIMIT;
+  console.error(formatPreflightReport(report));
 }
 
-function startHttp(): void {
-  const port = parseInt(process.env.PORT ?? '3000', 10);
-
-  // Cleanup stale rate limit entries every 5 minutes
-  setInterval(() => {
-    const now = Date.now();
-    for (const [ip, entry] of rateLimits) {
-      if (now > entry.resetAt) rateLimits.delete(ip);
-    }
-  }, 300_000);
-
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- createMcpExpressApp returns untyped Express (no @types/express for v5)
-  const app: {
-    post: (
-      path: string,
-      handler: (req: IncomingMessage & { body?: unknown }, res: ServerResponse) => Promise<void>
-    ) => void;
-    get: (
-      path: string,
-      handler: (
-        req: IncomingMessage & { body?: unknown },
-        res: ServerResponse
-      ) => Promise<void> | void
-    ) => void;
-    delete: (
-      path: string,
-      handler: (req: IncomingMessage & { body?: unknown }, res: ServerResponse) => Promise<void>
-    ) => void;
-    listen: (port: number, cb: () => void) => void;
-  } = createMcpExpressApp({ host: '0.0.0.0' });
-
-  const transports = new Map<string, StreamableHTTPServerTransport>();
-
-  app.post('/mcp', async (req, res) => {
-    // Rate limiting
-    const clientIp =
-      (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ??
-      req.socket.remoteAddress ??
-      'unknown';
-    if (!checkRateLimit(clientIp)) {
-      res.writeHead(429, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          jsonrpc: '2.0',
-          error: { code: -32000, message: 'Rate limit exceeded' },
-          id: null,
-        })
-      );
-      return;
-    }
-
-    const sessionId = req.headers['mcp-session-id'] as string | undefined;
-
-    try {
-      const existingTransport = sessionId ? transports.get(sessionId) : undefined;
-      if (existingTransport) {
-        await existingTransport.handleRequest(req, res, req.body);
-        return;
-      }
-
-      if (!sessionId && isInitializeRequest(req.body)) {
-        const transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (sid) => {
-            transports.set(sid, transport);
-          },
-        });
-
-        transport.onclose = () => {
-          const sid = transport.sessionId;
-          if (sid) transports.delete(sid);
-        };
-
-        const server = createServer('http');
-        await server.connect(transport);
-        await transport.handleRequest(req, res, req.body);
-        return;
-      }
-
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          jsonrpc: '2.0',
-          error: { code: -32000, message: 'Bad Request: No valid session ID provided' },
-          id: null,
-        })
-      );
-    } catch (error: unknown) {
-      console.error('Error handling MCP request:', error);
-      if (!res.headersSent) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            jsonrpc: '2.0',
-            error: { code: -32603, message: 'Internal server error' },
-            id: null,
-          })
-        );
-      }
-    }
-  });
-
-  app.get('/mcp', async (req, res) => {
-    const sessionId = req.headers['mcp-session-id'] as string | undefined;
-    const transport = sessionId ? transports.get(sessionId) : undefined;
-    if (!transport) {
-      res.writeHead(400, { 'Content-Type': 'text/plain' });
-      res.end('Invalid or missing session ID');
-      return;
-    }
-    await transport.handleRequest(req, res);
-  });
-
-  app.delete('/mcp', async (req, res) => {
-    const sessionId = req.headers['mcp-session-id'] as string | undefined;
-    const transport = sessionId ? transports.get(sessionId) : undefined;
-    if (!transport) {
-      res.writeHead(400, { 'Content-Type': 'text/plain' });
-      res.end('Invalid or missing session ID');
-      return;
-    }
-    await transport.handleRequest(req, res);
-  });
-
-  app.get('/health', (_req, res) => {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok' }));
-  });
-
-  app.listen(port, () => {
-    console.error(`MCP Streamable HTTP server listening on port ${port}`);
-    console.error(`MCP endpoint: http://localhost:${port}/mcp`);
-  });
-
-  process.on('SIGINT', () => {
-    const closeAll = async (): Promise<void> => {
-      for (const [sid, transport] of transports) {
-        await transport.close();
-        transports.delete(sid);
-      }
-      process.exit(0);
-    };
-    void closeAll();
-  });
-}
-
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const mode = getTransportMode();
+  await announcePreflight();
+
   if (mode === 'http') {
-    startHttp();
+    startHttp(createServer);
   } else {
     await startStdio();
   }
 }
 
-main().catch((error: unknown) => {
-  console.error('Failed to start MCP server:', error);
-  process.exit(1);
-});
+// Only start when executed directly. Importing this module — which the test
+// suite does — must not spawn a transport or read argv.
+//
+// The three lines below run only in a real process launch, which is what
+// `scripts/smoke.mjs` does in CI: it boots `dist/index.js` as a subprocess and
+// completes an MCP handshake against it. That exercises this path for real,
+// but out of process, where the coverage instrumentation cannot see it.
+/* v8 ignore start */
+const invokedDirectly =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (invokedDirectly) {
+  main().catch((error: unknown) => {
+    console.error('Failed to start MCP server:', error);
+    process.exit(1);
+  });
+}
+/* v8 ignore stop */

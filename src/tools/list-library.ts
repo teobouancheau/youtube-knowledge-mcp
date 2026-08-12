@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { listLibrary } from '../utils/storage.js';
-import { textContent } from '../utils/format.js';
+import { pageInfo, toolResult } from '../utils/format.js';
+import { libraryMetadataSchema, paginationShape } from '../schemas.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const listLibrarySchema = {
   tag: z
@@ -11,8 +13,14 @@ export const listLibrarySchema = {
     ),
 };
 
-export async function listLibraryHandler({ tag }: { tag?: string }) {
+export const listLibraryOutputSchema = {
+  items: z.array(libraryMetadataSchema),
+  ...paginationShape,
+};
+
+export async function listLibraryHandler({ tag }: { tag?: string }): Promise<CallToolResult> {
   const items = await listLibrary(tag ? { tag } : undefined);
+  const structured = { items, ...pageInfo(items.length, items.length) };
 
   const lines: string[] = [];
 
@@ -42,5 +50,5 @@ export async function listLibraryHandler({ tag }: { tag?: string }) {
     });
   }
 
-  return textContent(lines.join('\n'));
+  return toolResult(lines.join('\n'), structured);
 }

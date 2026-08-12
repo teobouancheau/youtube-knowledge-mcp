@@ -1,0 +1,740 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
+[
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "check_health",
+    "parameters": [],
+    "required": [],
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "delete_library_item",
+    "parameters": [
+      "contentType",
+      "videoId",
+    ],
+    "required": [
+      "videoId",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "digest_playlist",
+    "parameters": [
+      "includeChapters",
+      "includeTranscriptStats",
+      "limit",
+      "url",
+    ],
+    "required": [
+      "url",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "download_video",
+    "parameters": [
+      "formatId",
+      "outputDir",
+      "quality",
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "export_subtitles",
+    "parameters": [
+      "format",
+      "language",
+      "outputDir",
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "extract_audio_clip",
+    "parameters": [
+      "audioFormat",
+      "chapter",
+      "end",
+      "outputDir",
+      "start",
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "extract_clip",
+    "parameters": [
+      "chapter",
+      "end",
+      "outputDir",
+      "preciseCuts",
+      "quality",
+      "start",
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "extract_clips",
+    "parameters": [
+      "outputDir",
+      "preciseCuts",
+      "quality",
+      "ranges",
+      "video",
+    ],
+    "required": [
+      "ranges",
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "extract_frame",
+    "parameters": [
+      "format",
+      "outputDir",
+      "timestamp",
+      "video",
+    ],
+    "required": [
+      "timestamp",
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "fetch_videos",
+    "parameters": [
+      "limit",
+      "url",
+    ],
+    "required": [
+      "url",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "get_channel_info",
+    "parameters": [
+      "channel",
+    ],
+    "required": [
+      "channel",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "get_chapters",
+    "parameters": [
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "get_comments",
+    "parameters": [
+      "limit",
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "get_library_item",
+    "parameters": [
+      "contentType",
+      "videoId",
+    ],
+    "required": [
+      "videoId",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "get_playlist_info",
+    "parameters": [
+      "url",
+    ],
+    "required": [
+      "url",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "get_transcript",
+    "parameters": [
+      "chapter",
+      "endTime",
+      "format",
+      "language",
+      "maxChars",
+      "offset",
+      "refresh",
+      "startTime",
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "get_transcripts",
+    "parameters": [
+      "language",
+      "maxCharsPerVideo",
+      "videos",
+    ],
+    "required": [
+      "videos",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "get_video_info",
+    "parameters": [
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "list_formats",
+    "parameters": [
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "list_library",
+    "parameters": [
+      "tag",
+    ],
+    "required": [],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "rebuild_library_index",
+    "parameters": [],
+    "required": [],
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "save_to_library",
+    "parameters": [
+      "channel",
+      "content",
+      "contentType",
+      "tags",
+      "title",
+      "videoId",
+    ],
+    "required": [
+      "content",
+      "title",
+      "videoId",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "search_channels",
+    "parameters": [
+      "limit",
+      "query",
+    ],
+    "required": [
+      "query",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "search_library",
+    "parameters": [
+      "limit",
+      "query",
+    ],
+    "required": [
+      "query",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "search_transcript",
+    "parameters": [
+      "caseSensitive",
+      "contextSeconds",
+      "language",
+      "limit",
+      "query",
+      "regex",
+      "video",
+    ],
+    "required": [
+      "query",
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "search_videos",
+    "parameters": [
+      "limit",
+      "query",
+    ],
+    "required": [
+      "query",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "update_library_tags",
+    "parameters": [
+      "add",
+      "remove",
+      "replace",
+      "videoId",
+    ],
+    "required": [
+      "videoId",
+    ],
+  },
+]
+`;
+
+exports[`tool manifest snapshot > matches the recorded remote surface 1`] = `
+[
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "check_health",
+    "parameters": [],
+    "required": [],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "digest_playlist",
+    "parameters": [
+      "includeChapters",
+      "includeTranscriptStats",
+      "limit",
+      "url",
+    ],
+    "required": [
+      "url",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "fetch_videos",
+    "parameters": [
+      "limit",
+      "url",
+    ],
+    "required": [
+      "url",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "get_channel_info",
+    "parameters": [
+      "channel",
+    ],
+    "required": [
+      "channel",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "get_chapters",
+    "parameters": [
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "get_comments",
+    "parameters": [
+      "limit",
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "get_playlist_info",
+    "parameters": [
+      "url",
+    ],
+    "required": [
+      "url",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "get_transcript",
+    "parameters": [
+      "chapter",
+      "endTime",
+      "format",
+      "language",
+      "maxChars",
+      "offset",
+      "refresh",
+      "startTime",
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "get_transcripts",
+    "parameters": [
+      "language",
+      "maxCharsPerVideo",
+      "videos",
+    ],
+    "required": [
+      "videos",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "get_video_info",
+    "parameters": [
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "list_formats",
+    "parameters": [
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "search_channels",
+    "parameters": [
+      "limit",
+      "query",
+    ],
+    "required": [
+      "query",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "search_transcript",
+    "parameters": [
+      "caseSensitive",
+      "contextSeconds",
+      "language",
+      "limit",
+      "query",
+      "regex",
+      "video",
+    ],
+    "required": [
+      "query",
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "search_videos",
+    "parameters": [
+      "limit",
+      "query",
+    ],
+    "required": [
+      "query",
+    ],
+  },
+]
+`;

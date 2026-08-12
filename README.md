@@ -13,22 +13,52 @@ Supports both **local** (stdio) and **remote** (Streamable HTTP) transports.
 
 ## Features
 
-- **Search videos** by keyword or phrase
-- **Fetch videos** from playlists or channels
-- **Get video info** (title, channel, duration, views, likes, comments, description, tags)
-- **Extract transcripts** (auto-generated or manual captions)
-- **Get chapters** (timestamps and structure)
-- **Get comments** (top comments sorted by popularity)
-- **Get channel info** (name, handle, subscriber count, description)
-- **List formats** (available download resolutions and codecs)
-- **Download videos** with quality selection (local mode only)
-- **Save to library** (summaries, notes, skills) (local mode only)
-- **List library** with tag filtering (local mode only)
+**Find and read**
+
+- **Search** videos and channels by keyword
+- **Fetch** videos from a playlist or channel
+- **Video, channel and playlist metadata**, chapters, and top comments
+- **Transcripts with timestamps**, sliced by time range or chapter, and capped so a
+  three-hour video cannot flood your context
+- **Search inside a transcript** and get back `?t=` links that open the video at
+  the exact moment
+- **Batch tools**: transcripts for many videos at once, or a whole-playlist digest
+
+**Extract for editing**
+
+- **Clip a time range** without downloading the whole video, cut precisely or on
+  keyframes, by timestamp or chapter name
+- **Audio clips** in mp3, m4a, wav, flac or opus
+- **Frame capture** at any timestamp, without downloading the file
+- **Subtitle export** as SRT, WebVTT or plain text for Premiere, Resolve or CapCut
+- **Full downloads** with quality presets
+
+**Keep what you learn** (local mode)
+
+- **Save** summaries and skill notes to a local library
+- **Read them back**, and **search across all of them** with full-text ranking
+- **Tag, retag and delete**
+
+**Built to stay working**
+
+- WebVTT parsed by the W3C reference implementation, not a hand-written matcher
+- Typed, actionable errors — "no captions in en, try: fr, es, de" rather than a
+  wall of yt-dlp stderr
+- Timeouts, retry with backoff, and a concurrency limit on every yt-dlp call
+- `check_health` diagnoses missing or outdated yt-dlp and ffmpeg
+- Structured output on every tool, plus MCP resources, prompts and completions
 
 ## Prerequisites
 
 - Node.js 20+
-- yt-dlp: `brew install yt-dlp` (macOS) or [see installation guide](https://github.com/yt-dlp/yt-dlp#installation)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp#installation) — required by every tool.
+  `brew install yt-dlp` (macOS) or `pip install -U yt-dlp`
+- [ffmpeg](https://ffmpeg.org/) — required for downloads, clip extraction and frame
+  capture. Everything else works without it.
+
+Run the `check_health` tool to confirm both are installed and current. An
+outdated yt-dlp is the most common cause of unexplained failures, since YouTube
+changes frequently; `yt-dlp -U` fixes most of them.
 
 ## Installation
 
@@ -133,146 +163,115 @@ docker run -p 3000:10000 youtube-knowledge-mcp
 
 ## MCP Tools
 
-### Remote + Local (10 tools)
+27 tools. The 14 read-only ones work over both transports; the 13 that touch
+your filesystem are registered only in local (stdio) mode, so a remote
+deployment cannot reach the host's disk.
 
-#### search_videos
+Every tool returns human-readable text **and** typed structured output, and
+reports failures as an actionable message — `[NO_CAPTIONS] No "en" captions are
+available for this video. Call get_transcript again with one of: fr, es, de.`
 
-Search YouTube for videos by keyword or phrase.
+### Discovery — remote + local
 
-| Parameter | Type   | Default  | Description                      |
-| --------- | ------ | -------- | -------------------------------- |
-| `query`   | string | required | Search query                     |
-| `limit`   | number | 5        | Maximum results to return (1-20) |
+| Tool                | Key parameters   | Returns                                                          |
+| ------------------- | ---------------- | ---------------------------------------------------------------- |
+| `search_videos`     | `query`, `limit` | Matching videos with durations, channels and view counts         |
+| `search_channels`   | `query`, `limit` | Matching channels with subscriber counts                         |
+| `fetch_videos`      | `url`, `limit`   | Videos in a playlist or channel                                  |
+| `get_video_info`    | `video`          | Title, channel, duration, views, likes, description, tags        |
+| `get_channel_info`  | `channel`        | Name, handle, subscriber count, description                      |
+| `get_playlist_info` | `url`            | Title, channel, video count, last updated                        |
+| `get_chapters`      | `video`          | Chapter titles with start/end times and deep links               |
+| `get_comments`      | `video`, `limit` | Top-level comments by popularity                                 |
+| `list_formats`      | `video`          | Available formats grouped by video+audio, video-only, audio-only |
+| `check_health`      | —                | yt-dlp and ffmpeg status, versions, and staleness warnings       |
 
-**Returns:** video IDs, titles, durations, channels, view counts, URLs
+### Transcripts — remote + local
 
-#### fetch_videos
+| Tool                | Key parameters                                                                                   | Returns                                                  |
+| ------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
+| `get_transcript`    | `video`, `language`, `format`, `startTime`/`endTime`, `chapter`, `maxChars`, `offset`, `refresh` | Transcript as plain text, timestamped lines, or cues     |
+| `search_transcript` | `video`, `query`, `regex`, `caseSensitive`, `limit`, `contextSeconds`                            | Matches with timestamps and `?t=` deep links             |
+| `get_transcripts`   | `videos` (up to 25), `language`, `maxCharsPerVideo`                                              | Transcripts for many videos; failures reported per video |
+| `digest_playlist`   | `url`, `limit`, `includeChapters`, `includeTranscriptStats`                                      | Per-video metadata, chapters and transcript stats        |
 
-List videos from a YouTube playlist or channel.
+`format: "timestamped"` prefixes each line with `[MM:SS]` — use it when you need
+to cite or link to a moment. `maxChars` with `offset` reads a long transcript in
+pieces instead of returning 100,000+ tokens at once.
 
-| Parameter | Type   | Default  | Description                          |
-| --------- | ------ | -------- | ------------------------------------ |
-| `url`     | string | required | Playlist URL, channel URL, or handle |
-| `limit`   | number | 20       | Maximum videos to return (1-100)     |
+### Extraction for editing — local only
 
-#### get_video_info
+| Tool                 | Key parameters                                                             | Returns                      |
+| -------------------- | -------------------------------------------------------------------------- | ---------------------------- |
+| `extract_clip`       | `video`, `start`+`end` or `chapter`, `quality`, `preciseCuts`, `outputDir` | Path to the cut video        |
+| `extract_audio_clip` | `video`, `start`+`end` or `chapter`, `audioFormat`, `outputDir`            | Path to the audio file       |
+| `extract_clips`      | `video`, `ranges` (up to 20), `quality`, `preciseCuts`, `outputDir`        | One file per range           |
+| `extract_frame`      | `video`, `timestamp`, `format`, `outputDir`                                | Path to a PNG or JPG still   |
+| `export_subtitles`   | `video`, `format` (srt/vtt/txt), `language`, `outputDir`                   | Path to the subtitle file    |
+| `download_video`     | `video`, `quality`, `formatId`, `outputDir`                                | Path to the downloaded video |
 
-Get detailed metadata for a single YouTube video.
+Clips are cut with `--download-sections`, so only the byte range covering the
+window is fetched rather than the whole file. `preciseCuts` (default `true`)
+cuts exactly at the requested times; set it to `false` for a faster
+keyframe-aligned cut. All of these require ffmpeg.
 
-| Parameter | Type   | Description     |
-| --------- | ------ | --------------- |
-| `video`   | string | Video ID or URL |
+### Knowledge library — local only
 
-**Returns:** title, channel, duration, upload date, view count, like count, comment count, description, tags, thumbnail URL
+| Tool                    | Key parameters                                                  | Returns                             |
+| ----------------------- | --------------------------------------------------------------- | ----------------------------------- |
+| `save_to_library`       | `videoId`, `title`, `content`, `contentType`, `channel`, `tags` | Path to the saved note              |
+| `list_library`          | `tag`                                                           | Saved items, newest first           |
+| `get_library_item`      | `videoId`, `contentType`                                        | The saved markdown and its metadata |
+| `search_library`        | `query`, `limit`                                                | Ranked matches with excerpts        |
+| `update_library_tags`   | `videoId`, `add`, `remove`, `replace`                           | The updated tags                    |
+| `delete_library_item`   | `videoId`, `contentType`                                        | What was deleted                    |
+| `rebuild_library_index` | —                                                               | Number of notes reindexed           |
 
-#### get_transcript
+## Prompts
 
-Extract the full transcript from a YouTube video.
+Reusable workflows your client can invoke directly: `summarize_video`,
+`extract_skill`, `compare_videos`, `research_topic`, `channel_deep_dive`,
+`clip_from_quote` (find a phrase, then cut the clip around it), and
+`review_library` (local only).
 
-| Parameter  | Type   | Default  | Description                    |
-| ---------- | ------ | -------- | ------------------------------ |
-| `video`    | string | required | Video ID or URL                |
-| `language` | string | "en"     | Preferred language (ISO 639-1) |
+## Resources
 
-**Returns:** plain text transcript with word count and detected language
+- `youtube://transcript/{videoId}` — a timestamped transcript, fetched and cached on first read
+- `youtube://library/{videoId}/{summary|skill}` — a saved note (local only, and enumerable)
 
-#### get_chapters
+## Error codes
 
-Extract chapter markers and timestamps from a YouTube video.
+Failures are reported inside the result so the model can read and recover from
+them, each prefixed with a code and followed by a next step.
 
-| Parameter | Type   | Description     |
-| --------- | ------ | --------------- |
-| `video`   | string | Video ID or URL |
+| Code                                                                | Meaning                                                                      |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `PRIVATE`, `AGE_GATED`, `MEMBERS_ONLY`, `PREMIUM_ONLY`, `NOT_FOUND` | The video cannot be accessed                                                 |
+| `LOGIN_REQUIRED`                                                    | yt-dlp reports the video needs a signed-in account                           |
+| `NO_CAPTIONS`                                                       | No captions in the requested language; the message lists the ones that exist |
+| `LIVE_NOT_ENDED`                                                    | An upcoming stream, or one whose recording is still processing               |
+| `RATE_LIMITED`, `TIMEOUT`                                           | Transient; retried automatically with backoff before surfacing               |
+| `YTDLP_MISSING`, `FFMPEG_MISSING`, `YTDLP_FAILED`                   | A tooling problem; the message says how to fix it                            |
+| `INVALID_INPUT`                                                     | A bad argument, caught before any network call                               |
+| `CANCELLED`                                                         | The client cancelled the request                                             |
 
-**Returns:** chapter titles with start and end times. Empty list if no chapters found.
+## Environment variables
 
-#### get_comments
+All optional.
 
-Get top comments from a YouTube video sorted by popularity.
-
-| Parameter | Type   | Default  | Description                                 |
-| --------- | ------ | -------- | ------------------------------------------- |
-| `video`   | string | required | Video ID or URL                             |
-| `limit`   | number | 20       | Maximum top-level comments to return (1-50) |
-
-**Returns:** author, text, like count, pinned status
-
-#### get_channel_info
-
-Get metadata for a YouTube channel.
-
-| Parameter | Type   | Description                                    |
-| --------- | ------ | ---------------------------------------------- |
-| `channel` | string | Channel URL, handle (e.g., @Fireship), or name |
-
-**Returns:** channel name, handle, subscriber count, description, channel URL
-
-#### search_channels
-
-Search YouTube for channels by keyword or phrase.
-
-| Parameter | Type   | Default  | Description                       |
-| --------- | ------ | -------- | --------------------------------- |
-| `query`   | string | required | Search query for channels         |
-| `limit`   | number | 5        | Maximum channels to return (1-20) |
-
-**Returns:** channel names, handles, subscriber counts, descriptions, URLs
-
-#### get_playlist_info
-
-Get metadata for a YouTube playlist.
-
-| Parameter | Type   | Description          |
-| --------- | ------ | -------------------- |
-| `url`     | string | YouTube playlist URL |
-
-**Returns:** title, channel, video count, last updated date, description
-
-#### list_formats
-
-List all available download formats for a YouTube video.
-
-| Parameter | Type   | Description     |
-| --------- | ------ | --------------- |
-| `video`   | string | Video ID or URL |
-
-**Returns:** format IDs, extensions, resolutions, FPS, codecs, file sizes
-
-### Local Only (3 tools, stdio mode)
-
-These tools operate on the local filesystem and are only available in stdio mode.
-
-#### download_video
-
-Download a YouTube video to local disk.
-
-| Parameter   | Type   | Default  | Description                                                         |
-| ----------- | ------ | -------- | ------------------------------------------------------------------- |
-| `video`     | string | required | Video ID or URL                                                     |
-| `quality`   | string | "best"   | Quality preset (best, 2160p, 1440p, 1080p, 720p, 480p, 360p, audio) |
-| `formatId`  | string | -        | Specific format code from list_formats                              |
-| `outputDir` | string | -        | Custom output directory                                             |
-
-#### save_to_library
-
-Save a summary or skill note to your local YouTube knowledge library.
-
-| Parameter     | Type     | Description                        |
-| ------------- | -------- | ---------------------------------- |
-| `videoId`     | string   | YouTube video ID                   |
-| `title`       | string   | Video title                        |
-| `content`     | string   | Content to save (markdown format)  |
-| `contentType` | string   | "summary" or "skill"               |
-| `tags`        | string[] | Tags for categorization (optional) |
-| `channel`     | string   | Channel name (optional)            |
-
-#### list_library
-
-List all saved items in your local knowledge library.
-
-| Parameter | Type   | Description                             |
-| --------- | ------ | --------------------------------------- |
-| `tag`     | string | Filter by tag (optional, partial match) |
+| Variable                        | Default   | Purpose                                                                                                  |
+| ------------------------------- | --------- | -------------------------------------------------------------------------------------------------------- |
+| `MCP_AUTH_TOKEN`                | unset     | Require this bearer token on the HTTP transport. **Set this if you expose the server beyond localhost.** |
+| `MCP_ALLOWED_HOSTS`             | unset     | Comma-separated Host allowlist; enables DNS-rebinding protection                                         |
+| `MCP_ALLOWED_ORIGINS`           | unset     | Comma-separated Origin allowlist                                                                         |
+| `MCP_BIND_HOST`                 | `0.0.0.0` | Interface to bind                                                                                        |
+| `PORT`                          | `3000`    | HTTP port                                                                                                |
+| `MCP_RATE_LIMIT`                | `60`      | Requests per window, per client                                                                          |
+| `MCP_RATE_WINDOW_MS`            | `60000`   | Rate-limit window                                                                                        |
+| `MCP_SESSION_IDLE_MS`           | `1800000` | Close HTTP sessions idle this long                                                                       |
+| `MCP_MAX_SESSIONS`              | `1000`    | Reject new sessions past this many                                                                       |
+| `YOUTUBE_MCP_MAX_CONCURRENCY`   | `3`       | Concurrent yt-dlp processes                                                                              |
+| `YOUTUBE_MCP_TRANSCRIPT_TTL_MS` | 30 days   | Transcript cache lifetime                                                                                |
 
 ## Library Storage
 
@@ -280,57 +279,97 @@ Content is stored in `~/.youtube-knowledge/`:
 
 ```
 ~/.youtube-knowledge/
-├── transcripts/          # Cached transcripts
-│   └── {video_id}.txt
-├── library/              # Saved content
+├── transcripts/          # Cached timestamped transcripts
+│   └── {video_id}.{lang}.json
+├── library/              # Saved notes
 │   └── {video_id}/
 │       ├── metadata.json
 │       ├── summary.md
 │       └── skill.md
-├── downloads/            # Downloaded videos
-│   └── {video_title}.{ext}
-└── index.json            # Searchable index
+├── downloads/            # Full downloads
+├── clips/                # Extracted clips
+├── frames/               # Captured stills
+├── subtitles/            # Exported SRT / VTT / TXT
+├── index.json            # Library index
+└── search-index.json     # Full-text search index
 ```
+
+Transcripts are cached for 30 days by default; pass `refresh: true` to any
+transcript tool to bypass the cache, or set `YOUTUBE_MCP_TRANSCRIPT_TTL_MS`.
+
+Every tool that writes files confines its output to your home directory, and
+`outputDir` is rejected if it points anywhere else.
 
 ## Usage Examples
 
-### Search and analyze
+### Find a moment and cite it
 
 ```
-"Search YouTube for 'transformer architecture explained' and summarize the top result"
+"Find where this video talks about rate limiting and give me the timestamp:
+ https://youtube.com/watch?v=..."
 ```
 
-### Explore a channel
+`search_transcript` returns each match with a link that opens the video at that
+second, so the claim can be checked rather than taken on trust.
+
+### Find a moment and clip it
 
 ```
-"Show me the latest videos from @ThePrimeagen and get the chapters for the most recent one"
+"Find where she says 'the real bottleneck was the database' and cut me a
+ 30-second clip around it"
 ```
 
-### Deep content analysis
+`search_transcript` locates the moment, `extract_clip` cuts it. Only the byte
+range covering the clip is downloaded.
+
+### Read one section of a long video
 
 ```
-"Get the transcript and chapters for this video, then create a structured summary"
+"Summarize just the 'Benchmarks' chapter of this 3-hour podcast"
 ```
 
-### Audience sentiment
+`get_chapters` finds the section, then `get_transcript` with `chapter:
+"Benchmarks"` reads only that part instead of the whole thing.
+
+### Survey a playlist cheaply
 
 ```
-"What are the top comments on this video? What does the audience think?"
+"What does this 40-video course cover, and which three videos should I watch?"
 ```
 
-### Download a video (local only)
+`digest_playlist` returns metadata and chapters for every video in one call.
+
+### Prepare footage for an edit
 
 ```
-"Download this video in 1080p: https://youtube.com/watch?v=ABC123"
+"Pull these four moments as separate clips and export the subtitles as SRT"
 ```
+
+`extract_clips` cuts all four in one call; `export_subtitles` writes a file your
+editor can import.
+
+### Build and query a knowledge base
+
+```
+"Summarize this video and save it to my library tagged 'databases'"
+"What have I saved about connection pooling?"
+```
+
+`save_to_library` stores it; `search_library` searches across everything saved
+with full-text ranking.
 
 ## Testing
 
 ```bash
 npm test              # Run all tests
 npm run test:watch    # Watch mode
-npm run test:coverage # Coverage report
+npm run test:coverage # Coverage report, with thresholds enforced
 ```
+
+The suite covers the pure logic directly, drives the real server through an MCP
+client over an in-memory transport, exercises the library against a real
+temporary filesystem, and snapshots the tool manifest so any change to the
+public surface shows up as a reviewable diff.
 
 ## Development
 
@@ -340,17 +379,22 @@ npm run build      # Build for production
 npm run rebuild    # Clean and rebuild
 npm start          # Run server (stdio)
 npm run start:http # Run server (HTTP)
-npm run validate   # Typecheck + lint + test
+npm run validate   # Typecheck + lint + format check + test
 ```
+
+CI runs the same gate on Node 20, 22 and 24 for every push and pull request,
+then boots the built server as a real MCP client to verify the manifest.
 
 ## Contributing
 
-Contributions are welcome! Please:
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the
+project layout, coding standards, and how to add a tool.
 
-1. Fork the repository
-2. Create a feature branch
-3. Run tests (`npm run validate`)
-4. Submit a pull request
+## Security
+
+The HTTP transport is unauthenticated unless you set `MCP_AUTH_TOKEN`. See
+[SECURITY.md](SECURITY.md) before exposing it beyond localhost, and to report a
+vulnerability.
 
 ## License
 

@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { getPlaylistInfo } from '../utils/youtube.js';
-import { formatCount, textContent } from '../utils/format.js';
+import { formatCount, toolResult } from '../utils/format.js';
+import { playlistInfoSchema } from '../schemas.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const getPlaylistInfoSchema = {
   url: z
@@ -10,7 +12,9 @@ export const getPlaylistInfoSchema = {
     ),
 };
 
-export async function getPlaylistInfoHandler({ url }: { url: string }) {
+export const getPlaylistInfoOutputSchema = playlistInfoSchema.shape;
+
+export async function getPlaylistInfoHandler({ url }: { url: string }): Promise<CallToolResult> {
   const info = await getPlaylistInfo(url);
 
   const lines: string[] = [
@@ -27,5 +31,5 @@ export async function getPlaylistInfoHandler({ url }: { url: string }) {
     lines.push(info.description);
   }
 
-  return textContent(lines.join('\n'));
+  return toolResult(lines.join('\n'), { ...info });
 }

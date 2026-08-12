@@ -1,0 +1,51 @@
+name: Bump pinned yt-dlp
+
+# YouTube changes frequently and a stale yt-dlp is the most common cause of
+# this server failing in the field. The Dockerfile pins a version for
+# reproducibility, so something has to keep that pin moving.
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Resolve the latest yt-dlp release
+        id: latest
+        run: |
+          version=$(curl -fsSL https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest | jq -r .tag_name)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Update the pin
+        id: update
+        run: |
+          current=$(grep -oP 'ARG YT_DLP_VERSION=\K.*' Dockerfile)
+          latest="${{ steps.latest.outputs.version }}"
+          if [ "$current" = "$latest" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            sed -i "s/ARG YT_DLP_VERSION=.*/ARG YT_DLP_VERSION=$latest/" Dockerfile
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "from=$current" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open a pull request
+        if: steps.update.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: 'chore: bump pinned yt-dlp to ${{ steps.latest.outputs.version }}'
+          branch: chore/bump-yt-dlp
+          title: 'chore: bump pinned yt-dlp to ${{ steps.latest.outputs.version }}'
+          body: |
+            Updates the yt-dlp pin in the Dockerfile from
+            `${{ steps.update.outputs.from }}` to `${{ steps.latest.outputs.version }}`.
+
+            Opened automatically; see the [yt-dlp release notes](https://github.com/yt-dlp/yt-dlp/releases/tag/${{ steps.latest.outputs.version }}).

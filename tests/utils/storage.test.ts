@@ -93,7 +93,7 @@ describe('Storage Utils', () => {
       const result = await listLibrary({ tag: 'programming' });
 
       expect(result).toHaveLength(1);
-      expect(result[0].videoId).toBe('vid1');
+      expect(result[0]?.videoId).toBe('vid1');
     });
   });
 });
