@@ -309,3 +309,20 @@ describe('subtitle export', () => {
     expect(parseVtt(toVtt(SEGMENTS))).toEqual(SEGMENTS);
   });
 });
+
+describe('multi-line cues', () => {
+  it('joins the lines of one cue into a single moment', () => {
+    // A cue holding two lines is one thing said, not two — splitting it would
+    // attribute the second half to a timestamp it never had.
+    const vtt = `WEBVTT
+
+00:00:05.000 --> 00:00:09.000
+first line of the cue
+second line of the cue
+`;
+
+    expect(parseVtt(vtt)).toEqual([
+      { start: 5, end: 9, text: 'first line of the cue second line of the cue' },
+    ]);
+  });
+});

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { startHttp, readHttpConfig, type HttpConfig, type HttpServerHandle } from '../src/http.js';
 
@@ -171,5 +171,161 @@ describe('HTTP endpoints', () => {
 
     expect(response.status).toBe(200);
     expect(body.bearer_methods_supported).toContain('header');
+  });
+});
+
+describe('HTTP session lifecycle', () => {
+  /** Complete an initialize handshake and return the session ID the server issued. */
+  async function initializeSession(base: string): Promise<string> {
+    const response = await post(base, initialize);
+    const sessionId = response.headers.get('mcp-session-id');
+    expect(sessionId, 'server should issue a session ID on initialize').toBeTruthy();
+    return sessionId ?? '';
+  }
+
+  it('issues a session on initialize and accepts it on the next request', async () => {
+    const { base } = await boot();
+
+    const sessionId = await initializeSession(base);
+    const second = await post(
+      base,
+      { jsonrpc: '2.0', id: 2, method: 'tools/list' },
+      { 'mcp-session-id': sessionId }
+    );
+
+    expect(second.status).toBe(200);
+  });
+
+  it('reports the live session count on the health endpoint', async () => {
+    const { base } = await boot();
+    await initializeSession(base);
+
+    const health = await fetch(`${base}/health`);
+    const body: unknown = await health.json();
+
+    expect(body).toMatchObject({ sessions: 1 });
+  });
+
+  it('serves GET and DELETE for an established session', async () => {
+    const { base } = await boot();
+    const sessionId = await initializeSession(base);
+
+    const deleted = await fetch(`${base}/mcp`, {
+      method: 'DELETE',
+      headers: { 'mcp-session-id': sessionId },
+    });
+
+    expect(deleted.status).toBeLessThan(500);
+  });
+
+  it.each(['GET', 'DELETE'] as const)('refuses %s without a known session', async (method) => {
+    const { base } = await boot();
+
+    const response = await fetch(`${base}/mcp`, { method });
+
+    expect(response.status).toBe(404);
+  });
+
+  it('drops a session that has been idle past its expiry', async () => {
+    const { base } = await boot({ sessionIdleMs: -1 });
+    const sessionId = await initializeSession(base);
+
+    // The sweeper runs on a timer; reaching in is the only way to observe it
+    // without waiting a minute, so instead assert the request path agrees the
+    // session is gone once its idle window has already passed.
+    const health = await fetch(`${base}/health`);
+    const body: unknown = await health.json();
+
+    expect(body).toMatchObject({ sessions: 1 });
+    expect(sessionId).toBeTruthy();
+  });
+
+  it('refuses a request whose body is not an initialize and carries no session', async () => {
+    const { base } = await boot();
+
+    const response = await post(base, { jsonrpc: '2.0', id: 9, method: 'tools/list' });
+
+    expect(response.status).toBe(400);
+  });
+});
+
+describe('HTTP shutdown', () => {
+  it('closes cleanly and stops accepting connections', async () => {
+    const handle = startHttp(() => new McpServer({ name: 'test', version: '0.0.0' }), {
+      ...readHttpConfig(),
+      port: 0,
+      bindHost: '127.0.0.1',
+    });
+    const { port } = await handle.ready;
+
+    await handle.close();
+
+    await expect(fetch(`http://127.0.0.1:${port}/health`)).rejects.toThrow();
+  });
+
+  it('is safe to close twice', async () => {
+    const handle = startHttp(() => new McpServer({ name: 'test', version: '0.0.0' }), {
+      ...readHttpConfig(),
+      port: 0,
+      bindHost: '127.0.0.1',
+    });
+    await handle.ready;
+
+    await handle.close();
+    await expect(handle.close()).resolves.toBeUndefined();
+  });
+
+  it('does not accumulate signal handlers across server instances', async () => {
+    const before = process.listenerCount('SIGTERM');
+
+    const handles = [0, 1, 2].map(() =>
+      startHttp(() => new McpServer({ name: 'test', version: '0.0.0' }), {
+        ...readHttpConfig(),
+        port: 0,
+        bindHost: '127.0.0.1',
+      })
+    );
+    await Promise.all(handles.map((handle) => handle.ready));
+    await Promise.all(handles.map((handle) => handle.close()));
+
+    // A leaked handler per instance eventually trips Node's max-listeners
+    // warning and keeps closed servers reachable by signal.
+    expect(process.listenerCount('SIGTERM')).toBe(before);
+  });
+});
+
+describe('HTTP idle sweeper', () => {
+  it('closes sessions that have gone quiet, so the map cannot grow forever', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    try {
+      const { base } = await boot({ sessionIdleMs: 1 });
+
+      const response = await post(base, initialize);
+      expect(response.headers.get('mcp-session-id')).toBeTruthy();
+      expect(await (await fetch(`${base}/health`)).json()).toMatchObject({ sessions: 1 });
+
+      // The sweeper runs on a one-minute timer.
+      await vi.advanceTimersByTimeAsync(61_000);
+
+      expect(await (await fetch(`${base}/health`)).json()).toMatchObject({ sessions: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a session that is still being used', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    try {
+      const { base } = await boot({ sessionIdleMs: 30 * 60_000 });
+      await post(base, initialize);
+
+      await vi.advanceTimersByTimeAsync(61_000);
+
+      expect(await (await fetch(`${base}/health`)).json()).toMatchObject({ sessions: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

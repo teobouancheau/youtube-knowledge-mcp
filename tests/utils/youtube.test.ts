@@ -986,3 +986,55 @@ describe('hasCachedTranscript', () => {
     expect(hasCachedTranscript('dQw4w9WgXcQ')).toBe(false);
   });
 });
+
+describe('duration and tag rendering', () => {
+  it('shows hours for a video longer than an hour', async () => {
+    vi.mocked(execa).mockResolvedValue(execaSuccess(videoInfoStdout({ duration: '3723' })));
+
+    const { getVideoInfo } = await import('../../src/utils/youtube.js');
+
+    expect((await getVideoInfo('dQw4w9WgXcQ')).durationFormatted).toBe('1:02:03');
+  });
+
+  it('treats unreadable tags as none rather than failing the whole lookup', async () => {
+    vi.mocked(execa).mockResolvedValue(execaSuccess(videoInfoStdout({ tagsJson: '{not json' })));
+
+    const { getVideoInfo } = await import('../../src/utils/youtube.js');
+
+    expect((await getVideoInfo('dQw4w9WgXcQ')).tags).toEqual([]);
+  });
+
+  it('drops tag entries that are not strings', async () => {
+    vi.mocked(execa).mockResolvedValue(
+      execaSuccess(videoInfoStdout({ tagsJson: '["ok", 42, null]' }))
+    );
+
+    const { getVideoInfo } = await import('../../src/utils/youtube.js');
+
+    expect((await getVideoInfo('dQw4w9WgXcQ')).tags).toEqual(['ok']);
+  });
+
+  it('ignores tags that are not a list at all', async () => {
+    vi.mocked(execa).mockResolvedValue(execaSuccess(videoInfoStdout({ tagsJson: '{"a":1}' })));
+
+    const { getVideoInfo } = await import('../../src/utils/youtube.js');
+
+    expect((await getVideoInfo('dQw4w9WgXcQ')).tags).toEqual([]);
+  });
+
+  it('refetches when the cache file cannot be read at all', async () => {
+    const { existsSync } = await import('fs');
+    const { readFile } = await import('fs/promises');
+    vi.mocked(existsSync).mockImplementation((path) => String(path).endsWith('.json'));
+    vi.mocked(readFile).mockRejectedValue(new Error('EIO'));
+    vi.mocked(execa).mockResolvedValue(execaSuccess(''));
+
+    const { getTranscript } = await import('../../src/utils/youtube.js');
+
+    // An unreadable cache must behave as no cache, not as a failed request.
+    await expect(getTranscript('dQw4w9WgXcQ', 'en')).rejects.toMatchObject({
+      code: 'NO_CAPTIONS',
+    });
+    expect(execa).toHaveBeenCalled();
+  });
+});

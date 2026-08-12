@@ -145,9 +145,12 @@ video but never say when something was said.
 
 - CI on every push and pull request across Node 20, 22 and 24, with a
   post-build smoke test that boots the server as a real MCP client.
-- 24 tests to 328, including protocol-level tests over an in-memory transport, a
-  manifest snapshot, and library tests against a real filesystem. Coverage
-  thresholds are enforced.
+- 24 tests to 627, including protocol-level tests over an in-memory transport, a
+  manifest snapshot, and library tests against a real filesystem. Coverage is
+  99% of lines and 98% of statements, enforced per file as a ratchet. What is
+  left uncovered is the process entry point — exercised out of process by the
+  post-build smoke test — and a few defensive guards against states that cannot
+  occur.
 - Dependabot, CODEOWNERS, SECURITY.md, a scheduled yt-dlp bump, and this
   changelog.
 
