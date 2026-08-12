@@ -33,6 +33,18 @@ import {
   digestPlaylistHandler,
 } from './tools/batch.js';
 import {
+  extractClipSchema,
+  extractClipHandler,
+  extractAudioClipSchema,
+  extractAudioClipHandler,
+  extractClipsSchema,
+  extractClipsHandler,
+  extractFrameSchema,
+  extractFrameHandler,
+  exportSubtitlesSchema,
+  exportSubtitlesHandler,
+} from './tools/clips.js';
+import {
   getLibraryItemSchema,
   getLibraryItemHandler,
   searchLibrarySchema,
@@ -467,6 +479,91 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         },
       },
       guarded(rebuildLibraryIndexHandler)
+    );
+
+    server.registerTool(
+      'extract_clip',
+      {
+        title: 'Extract a Video Clip',
+        description:
+          'Cut a time range out of a YouTube video without downloading the whole thing. Give start and end, or a chapter name. Pair with search_transcript to find the moment first. Requires ffmpeg.',
+        inputSchema: extractClipSchema,
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
+      },
+      guarded(extractClipHandler)
+    );
+
+    server.registerTool(
+      'extract_audio_clip',
+      {
+        title: 'Extract an Audio Clip',
+        description:
+          'Cut a time range out of a video as audio only, in an editor-friendly format (mp3, m4a, wav, flac, opus). Use for podcast pulls and voice-over sourcing. Requires ffmpeg.',
+        inputSchema: extractAudioClipSchema,
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
+      },
+      guarded(extractAudioClipHandler)
+    );
+
+    server.registerTool(
+      'extract_clips',
+      {
+        title: 'Extract Several Clips',
+        description:
+          'Cut several time ranges out of one video in a single call. A range that fails is reported individually rather than losing the clips that succeeded. Requires ffmpeg.',
+        inputSchema: extractClipsSchema,
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
+      },
+      guarded(extractClipsHandler)
+    );
+
+    server.registerTool(
+      'extract_frame',
+      {
+        title: 'Capture a Frame',
+        description:
+          'Capture a single still image from a video at a given timestamp, without downloading the file. Use for thumbnails and reference frames. Requires ffmpeg.',
+        inputSchema: extractFrameSchema,
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
+      },
+      guarded(extractFrameHandler)
+    );
+
+    server.registerTool(
+      'export_subtitles',
+      {
+        title: 'Export Subtitles',
+        description:
+          'Write a video transcript to disk as SRT, WebVTT or plain text, ready to import into a video editor such as Premiere, Resolve or CapCut.',
+        inputSchema: exportSubtitlesSchema,
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: true,
+        },
+      },
+      guarded(exportSubtitlesHandler)
     );
 
     server.registerTool(
