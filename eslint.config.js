@@ -2,6 +2,7 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import vitest from '@vitest/eslint-plugin';
 import prettier from 'eslint-config-prettier';
+import globals from 'globals';
 
 export default tseslint.config(
   eslint.configs.recommended,
@@ -11,7 +12,11 @@ export default tseslint.config(
   {
     languageOptions: {
       parserOptions: {
-        projectService: true,
+        projectService: {
+          // Plain-JS build scripts are not part of any tsconfig; lint them
+          // without type information rather than excluding them.
+          allowDefaultProject: ['scripts/*.mjs'],
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -34,6 +39,20 @@ export default tseslint.config(
       eqeqeq: ['error', 'always'],
       'prefer-const': 'error',
       'no-param-reassign': 'error',
+    },
+  },
+  {
+    files: ['scripts/**/*.mjs'],
+    ...tseslint.configs.disableTypeChecked,
+    languageOptions: {
+      globals: globals.node,
+    },
+    rules: {
+      ...tseslint.configs.disableTypeChecked.rules,
+      // Build scripts report progress to the operator, not over a JSON-RPC stream.
+      'no-console': 'off',
+      '@typescript-eslint/explicit-function-return-type': 'off',
+      '@typescript-eslint/explicit-module-boundary-types': 'off',
     },
   },
   {
