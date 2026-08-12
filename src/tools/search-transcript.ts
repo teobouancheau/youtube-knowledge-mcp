@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getTranscript } from '../utils/youtube.js';
-import { textContent } from '../utils/format.js';
+import { toolResult } from '../utils/format.js';
+import { transcriptMatchSchema } from '../schemas.js';
 import { YouTubeError } from '../utils/errors.js';
 import { deepLink, formatTimestamp, searchSegments } from '../utils/transcript.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
@@ -32,6 +33,15 @@ export const searchTranscriptSchema = {
     .describe(
       'Include surrounding transcript within this many seconds of each match, for reading the moment in context. Default: 0'
     ),
+};
+
+export const searchTranscriptOutputSchema = {
+  videoId: z.string(),
+  query: z.string(),
+  language: z.string(),
+  matches: z.array(transcriptMatchSchema),
+  matchCount: z.number().int(),
+  segmentsSearched: z.number().int(),
 };
 
 export interface SearchTranscriptArgs {
@@ -68,14 +78,29 @@ export async function searchTranscriptHandler(args: SearchTranscriptArgs): Promi
   const transcript = await getTranscript(video, { language });
   const matches = searchSegments(transcript.segments, query, { regex, caseSensitive, limit });
 
+  const structured = {
+    videoId: transcript.videoId,
+    query,
+    language: transcript.language,
+    matches: matches.map(({ segment }) => ({
+      startSeconds: segment.start,
+      startFormatted: formatTimestamp(segment.start),
+      text: segment.text,
+      url: deepLink(transcript.videoId, segment.start),
+    })),
+    matchCount: matches.length,
+    segmentsSearched: transcript.segments.length,
+  };
+
   if (matches.length === 0) {
-    return textContent(
+    return toolResult(
       [
         `No matches for "${query}" in this transcript.`,
         '',
         `Searched ${transcript.segments.length.toLocaleString()} caption segments in ${transcript.language}.`,
         'Try a shorter phrase, a different language, or get_transcript to read it in full.',
-      ].join('\n')
+      ].join('\n'),
+      structured
     );
   }
 
@@ -103,5 +128,5 @@ export async function searchTranscriptHandler(args: SearchTranscriptArgs): Promi
     lines.push('');
   }
 
-  return textContent(lines.join('\n').trimEnd());
+  return toolResult(lines.join('\n').trimEnd(), structured);
 }

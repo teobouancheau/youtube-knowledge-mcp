@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getComments } from '../utils/youtube.js';
-import { textContent } from '../utils/format.js';
+import { pageInfo, toolResult } from '../utils/format.js';
+import { commentSchema, paginationShape } from '../schemas.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const getCommentsSchema = {
@@ -13,6 +14,11 @@ export const getCommentsSchema = {
     .describe('Maximum number of top-level comments to return (1-50, default: 20)'),
 };
 
+export const getCommentsOutputSchema = {
+  comments: z.array(commentSchema),
+  ...paginationShape,
+};
+
 export async function getCommentsHandler({
   video,
   limit,
@@ -21,9 +27,10 @@ export async function getCommentsHandler({
   limit: number;
 }): Promise<CallToolResult> {
   const comments = await getComments(video, limit);
+  const structured = { comments, ...pageInfo(comments.length, comments.length) };
 
   if (comments.length === 0) {
-    return textContent('No comments found for this video.');
+    return toolResult('No comments found for this video.', structured);
   }
 
   const lines: string[] = [`${comments.length} top comments`, ''];
@@ -36,5 +43,5 @@ export async function getCommentsHandler({
     lines.push('');
   });
 
-  return textContent(lines.join('\n'));
+  return toolResult(lines.join('\n'), structured);
 }

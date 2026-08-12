@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { getChapters, getTranscript, getVideoInfo, listVideos } from '../utils/youtube.js';
-import { textContent } from '../utils/format.js';
+import { toolResult } from '../utils/format.js';
 import { asYouTubeError } from '../utils/errors.js';
 import { reportProgress, throwIfAborted } from '../utils/context.js';
 import { formatTimestamp, segmentsToText, windowText } from '../utils/transcript.js';
@@ -34,6 +34,22 @@ export const getTranscriptsSchema = {
     ),
 };
 
+export const getTranscriptsOutputSchema = {
+  results: z.array(
+    z.object({
+      video: z.string(),
+      videoId: z.string().optional(),
+      language: z.string().optional(),
+      text: z.string().optional(),
+      truncated: z.boolean().optional(),
+      totalChars: z.number().int().optional(),
+      error: z.string().optional(),
+    })
+  ),
+  requested: z.number().int(),
+  succeeded: z.number().int(),
+};
+
 export async function getTranscriptsHandler({
   videos,
   language,
@@ -44,6 +60,7 @@ export async function getTranscriptsHandler({
   maxCharsPerVideo: number;
 }): Promise<CallToolResult> {
   const sections: string[] = [];
+  const results: Record<string, unknown>[] = [];
   let succeeded = 0;
 
   for (const [index, video] of videos.entries()) {
@@ -66,18 +83,28 @@ export async function getTranscriptsHandler({
           .filter((line): line is string => line !== undefined)
           .join('\n')
       );
+      results.push({
+        video,
+        videoId: result.videoId,
+        language: result.language,
+        text: windowed.text,
+        truncated: windowed.truncated,
+        totalChars: windowed.totalChars,
+      });
       succeeded++;
     } catch (error) {
       // One unavailable video must not lose the other twenty-four.
       const failure = asYouTubeError(error);
       sections.push(`## ${video}\n[${failure.code}] ${failure.message}`);
+      results.push({ video, error: failure.code });
     }
   }
 
   reportProgress(videos.length, videos.length);
 
-  return textContent(
-    [`${succeeded} of ${videos.length} transcripts retrieved`, '', ...sections].join('\n\n')
+  return toolResult(
+    [`${succeeded} of ${videos.length} transcripts retrieved`, '', ...sections].join('\n\n'),
+    { results, requested: videos.length, succeeded }
   );
 }
 
@@ -104,6 +131,24 @@ export const digestPlaylistSchema = {
     ),
 };
 
+export const digestPlaylistOutputSchema = {
+  source: z.string(),
+  videos: z.array(
+    z.object({
+      id: z.string(),
+      title: z.string(),
+      durationFormatted: z.string(),
+      url: z.string(),
+      viewCount: z.number().optional(),
+      uploadDate: z.string().optional(),
+      chapters: z.array(z.object({ title: z.string(), startSeconds: z.number() })).optional(),
+      transcriptWords: z.number().int().optional(),
+      transcriptError: z.string().optional(),
+    })
+  ),
+  count: z.number().int(),
+};
+
 export async function digestPlaylistHandler({
   url,
   limit,
@@ -118,20 +163,33 @@ export async function digestPlaylistHandler({
   const videos = await listVideos(url, limit);
 
   if (videos.length === 0) {
-    return textContent('That playlist or channel has no videos.');
+    return toolResult('That playlist or channel has no videos.', {
+      source: url,
+      videos: [],
+      count: 0,
+    });
   }
 
   const sections: string[] = [];
+  const structuredVideos: Record<string, unknown>[] = [];
 
   for (const [index, video] of videos.entries()) {
     throwIfAborted();
     reportProgress(index, videos.length, `Inspecting ${index + 1} of ${videos.length}`);
 
     const lines: string[] = [`### ${video.title}`, `${video.durationFormatted} · ${video.url}`];
+    const entry: Record<string, unknown> = {
+      id: video.id,
+      title: video.title,
+      durationFormatted: video.durationFormatted,
+      url: video.url,
+    };
 
     try {
       const info = await getVideoInfo(video.id);
       lines.push(`${info.viewCount.toLocaleString()} views · ${info.uploadDate}`);
+      entry.viewCount = info.viewCount;
+      entry.uploadDate = info.uploadDate;
     } catch {
       // Metadata is a nicety here; the listing already carries the essentials.
     }
@@ -145,6 +203,10 @@ export async function digestPlaylistHandler({
               .map((chapter) => `${formatTimestamp(chapter.startTime)} ${chapter.title}`)
               .join(' · ')}`
           );
+          entry.chapters = chapters.map((chapter) => ({
+            title: chapter.title,
+            startSeconds: chapter.startTime,
+          }));
         }
       } catch {
         // Not all videos have chapters, and that is not an error worth surfacing.
@@ -156,15 +218,23 @@ export async function digestPlaylistHandler({
         const transcript = await getTranscript(video.id);
         const words = segmentsToText(transcript.segments).split(/\s+/).filter(Boolean).length;
         lines.push(`transcript: ${words.toLocaleString()} words (${transcript.language})`);
+        entry.transcriptWords = words;
       } catch (error) {
-        lines.push(`transcript: unavailable (${asYouTubeError(error).code})`);
+        const failure = asYouTubeError(error);
+        lines.push(`transcript: unavailable (${failure.code})`);
+        entry.transcriptError = failure.code;
       }
     }
 
     sections.push(lines.join('\n'));
+    structuredVideos.push(entry);
   }
 
   reportProgress(videos.length, videos.length);
 
-  return textContent([`${videos.length} videos`, '', ...sections].join('\n\n'));
+  return toolResult([`${videos.length} videos`, '', ...sections].join('\n\n'), {
+    source: url,
+    videos: structuredVideos,
+    count: videos.length,
+  });
 }

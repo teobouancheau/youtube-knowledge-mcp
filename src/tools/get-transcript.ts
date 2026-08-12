@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getChapters, getTranscript } from '../utils/youtube.js';
-import { textContent } from '../utils/format.js';
+import { toolResult } from '../utils/format.js';
+import { transcriptSegmentSchema } from '../schemas.js';
 import { YouTubeError } from '../utils/errors.js';
 import { parseTimestamp } from '../utils/validate.js';
 import {
@@ -60,6 +61,19 @@ export const getTranscriptSchema = {
     .boolean()
     .default(false)
     .describe('Bypass the local cache and refetch from YouTube. Default: false'),
+};
+
+export const getTranscriptOutputSchema = {
+  videoId: z.string(),
+  language: z.string(),
+  text: z.string(),
+  segments: z.array(transcriptSegmentSchema),
+  wordCount: z.number().int(),
+  chapter: z.string().optional(),
+  truncated: z.boolean(),
+  nextOffset: z.number().int().optional(),
+  totalChars: z.number().int(),
+  cached: z.boolean(),
 };
 
 export interface GetTranscriptArgs {
@@ -179,5 +193,20 @@ export async function getTranscriptHandler(args: GetTranscriptArgs): Promise<Cal
       : undefined,
   ].filter((line): line is string => line !== undefined);
 
-  return textContent([...header, '', windowed.text].join('\n'));
+  return toolResult([...header, '', windowed.text].join('\n'), {
+    videoId: result.videoId,
+    language: result.language,
+    text: windowed.text,
+    segments: sliced.map((segment) => ({
+      startSeconds: segment.start,
+      endSeconds: segment.end,
+      text: segment.text,
+    })),
+    wordCount,
+    ...(chapterTitle === undefined ? {} : { chapter: chapterTitle }),
+    truncated: windowed.truncated,
+    ...(windowed.nextOffset === undefined ? {} : { nextOffset: windowed.nextOffset }),
+    totalChars: windowed.totalChars,
+    cached: result.cached,
+  });
 }

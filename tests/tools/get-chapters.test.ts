@@ -3,6 +3,7 @@ import { textOf } from '../helpers.js';
 
 vi.mock('../../src/utils/youtube.js', () => ({
   getChapters: vi.fn(),
+  extractVideoId: vi.fn((value: string) => value),
 }));
 
 describe('get-chapters tool', () => {

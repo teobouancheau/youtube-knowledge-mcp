@@ -1,11 +1,14 @@
 import { z } from 'zod';
 import { getVideoInfo } from '../utils/youtube.js';
-import { formatCount, textContent } from '../utils/format.js';
+import { formatCount, toolResult } from '../utils/format.js';
+import { videoInfoSchema } from '../schemas.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const getVideoInfoSchema = {
   video: z.string().describe('YouTube video ID (e.g., dQw4w9WgXcQ) or full URL'),
 };
+
+export const getVideoInfoOutputSchema = videoInfoSchema.shape;
 
 export async function getVideoInfoHandler({ video }: { video: string }): Promise<CallToolResult> {
   const info = await getVideoInfo(video);
@@ -37,5 +40,6 @@ export async function getVideoInfoHandler({ video }: { video: string }): Promise
     lines.push(info.description);
   }
 
-  return textContent(lines.join('\n'));
+  const { duration, ...rest } = info;
+  return toolResult(lines.join('\n'), { ...rest, durationSeconds: duration });
 }
