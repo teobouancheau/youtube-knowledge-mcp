@@ -436,7 +436,7 @@ export async function getTranscript(
     // into a generic string, which is what the old wrapper did to every failure.
     if (error instanceof YouTubeError) throw error;
     throw new YouTubeError('YTDLP_FAILED', `Could not read the transcript for ${videoId}.`, {
-      nextStep: 'Verify the video exists and has captions, or call health_check.',
+      nextStep: 'Verify the video exists and has captions, or call check_health.',
       cause: error,
     });
   }

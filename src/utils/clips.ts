@@ -256,7 +256,7 @@ export async function extractFrame(
 
   if (mediaUrl === undefined || mediaUrl === '') {
     throw new YouTubeError('YTDLP_FAILED', 'Could not resolve a video stream for this video.', {
-      nextStep: 'Check the video is playable, or call health_check.',
+      nextStep: 'Check the video is playable, or call check_health.',
     });
   }
 

@@ -71,10 +71,10 @@ import {
   downloadVideoHandler,
 } from './tools/download-video.js';
 import {
-  healthCheckSchema,
-  healthCheckOutputSchema,
-  healthCheckHandler,
-} from './tools/health-check.js';
+  checkHealthSchema,
+  checkHealthOutputSchema,
+  checkHealthHandler,
+} from './tools/check-health.js';
 import {
   searchTranscriptSchema,
   searchTranscriptOutputSchema,
@@ -466,13 +466,13 @@ export function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
   );
 
   server.registerTool(
-    'health_check',
+    'check_health',
     {
       title: 'Check Server Health',
       description:
         'Report whether yt-dlp and ffmpeg are installed, their versions, and whether yt-dlp is stale. Call this first when tools start failing unexpectedly — an outdated yt-dlp is the most common cause.',
-      inputSchema: healthCheckSchema,
-      outputSchema: healthCheckOutputSchema,
+      inputSchema: checkHealthSchema,
+      outputSchema: checkHealthOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -480,7 +480,7 @@ export function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: false,
       },
     },
-    guarded(healthCheckHandler)
+    guarded(checkHealthHandler)
   );
 
   // -- Local-only tools (stdio mode only) --
@@ -749,7 +749,7 @@ async function startStdio(): Promise<void> {
  * Report missing or stale external binaries at boot.
  *
  * Deliberately non-fatal: the server still starts and still lists its tools, so
- * a client can call health_check and be told exactly what to install. Exiting
+ * a client can call check_health and be told exactly what to install. Exiting
  * here would surface as an opaque "server failed to start" in the client.
  */
 async function announcePreflight(): Promise<void> {

@@ -43,6 +43,42 @@ describe('tool manifest', () => {
     }
   });
 
+  it('names every tool verb first', () => {
+    // A tool name is an action the model is choosing to take, so it reads as
+    // one: verb + what it acts on. `health_check` was the sole noun-first name
+    // and became `check_health` before it ever shipped.
+    const VERBS = new Set([
+      'search',
+      'fetch',
+      'get',
+      'list',
+      'check',
+      'download',
+      'save',
+      'update',
+      'delete',
+      'rebuild',
+      'extract',
+      'export',
+      'digest',
+    ]);
+
+    for (const tool of stdioTools) {
+      const verb = tool.name.split('_')[0];
+      expect(VERBS.has(verb ?? ''), `${tool.name} does not start with a verb`).toBe(true);
+    }
+  });
+
+  it('never prefixes a tool name with the service name', () => {
+    // Clients already namespace tools by server, so a `youtube_` prefix repeats
+    // what the client knows and spends tokens on it in every request.
+    for (const tool of stdioTools) {
+      expect(tool.name, `${tool.name} carries a redundant service prefix`).not.toMatch(
+        /^(youtube|yt|ytdlp)_/
+      );
+    }
+  });
+
   it('gives every tool a title, description, input schema and annotations', () => {
     for (const tool of stdioTools) {
       expect(tool.title, `${tool.name} title`).toBeTruthy();
@@ -171,7 +207,7 @@ describe('transport-mode gating', () => {
       'list_formats',
       'get_transcripts',
       'digest_playlist',
-      'health_check',
+      'check_health',
     ];
 
     const remoteNames = httpTools.map((tool) => tool.name);

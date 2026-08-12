@@ -48,7 +48,7 @@ video but never say when something was said.
 
 **Reliability.**
 
-- `health_check` reports yt-dlp and ffmpeg presence, version and staleness. The
+- `check_health` reports yt-dlp and ffmpeg presence, version and staleness. The
   same check runs at startup and reports to stderr without blocking the server.
 - Typed error codes with an actionable next step, replacing raw yt-dlp stderr.
 
@@ -77,6 +77,12 @@ video but never say when something was said.
 
 ### Fixed
 
+- Tool names are now uniformly verb-first. `health_check` was the one noun-first
+  name and is `check_health`; it was introduced in this release and never
+  published, so nothing external depended on it. Tests now enforce both halves
+  of the convention: every name starts with a verb, and no name carries a
+  service prefix — MCP clients already namespace tools by server, so a
+  `youtube_` prefix would repeat what the client knows on every request.
 - Tool annotations no longer understate what a tool does. `save_to_library` and
   `update_library_tags` are now marked `destructiveHint: true` — the first
   overwrites an existing note in place, the second discards every tag when
