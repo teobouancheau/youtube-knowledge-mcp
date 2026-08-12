@@ -203,3 +203,71 @@ describe('isRecord', () => {
     expect(isRecord(value)).toBe(expected);
   });
 });
+
+describe('cancellation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('reports a cancelled child as CANCELLED rather than a generic failure', async () => {
+    mockedExeca.mockRejectedValue(failWith({ isCanceled: true }));
+
+    const error = (await runYtDlp(['--version'], { retry: false }).catch(
+      (e: unknown) => e
+    )) as YouTubeError;
+
+    expect(error.code).toBe('CANCELLED');
+  });
+
+  it('abandons the retry backoff when the request is cancelled mid-wait', async () => {
+    const controller = new AbortController();
+    mockedExeca.mockImplementation((() => {
+      // Cancel while the first failure is backing off, so the wait is what gets
+      // interrupted rather than the child.
+      queueMicrotask(() => {
+        controller.abort();
+      });
+      return Promise.reject(failWith({ stderr: 'HTTP Error 429: Too Many Requests' }));
+    }) as never);
+
+    const error = await runWithRequestContext({ signal: controller.signal }, () =>
+      runYtDlp(['--version']).catch((e: unknown) => e)
+    );
+
+    expect(error).toMatchObject({ code: 'CANCELLED' });
+    // The backoff was cut short rather than slept through to the attempt cap.
+    expect(mockedExeca).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('backoff interruption', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('cuts the backoff short the moment the request is cancelled', async () => {
+    const controller = new AbortController();
+    let attempts = 0;
+
+    mockedExeca.mockImplementation((() => {
+      attempts++;
+      // Abort once the failure is in flight, so the abort lands while the
+      // retry is sleeping rather than before the attempt starts.
+      setTimeout(() => {
+        controller.abort();
+      }, 0);
+      return Promise.reject(failWith({ stderr: 'HTTP Error 429: Too Many Requests' }));
+    }) as never);
+
+    const started = Date.now();
+    const error = await runWithRequestContext({ signal: controller.signal }, () =>
+      runYtDlp(['--version']).catch((e: unknown) => e)
+    );
+
+    expect(error).toMatchObject({ code: 'CANCELLED' });
+    expect(attempts).toBe(1);
+    // The first backoff is measured in hundreds of ms; waking immediately is
+    // the whole point of threading the signal into the sleep.
+    expect(Date.now() - started).toBeLessThan(400);
+  });
+});
