@@ -7,59 +7,127 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
-import { fetchVideosSchema, fetchVideosHandler } from './tools/fetch-videos.js';
-import { getVideoInfoSchema, getVideoInfoHandler } from './tools/get-video-info.js';
-import { getTranscriptSchema, getTranscriptHandler } from './tools/get-transcript.js';
-import { searchVideosSchema, searchVideosHandler } from './tools/search-videos.js';
-import { getChaptersSchema, getChaptersHandler } from './tools/get-chapters.js';
-import { getCommentsSchema, getCommentsHandler } from './tools/get-comments.js';
-import { getChannelInfoSchema, getChannelInfoHandler } from './tools/get-channel-info.js';
-import { searchChannelsSchema, searchChannelsHandler } from './tools/search-channels.js';
-import { getPlaylistInfoSchema, getPlaylistInfoHandler } from './tools/get-playlist-info.js';
-import { saveToLibrarySchema, saveToLibraryHandler } from './tools/save-to-library.js';
-import { listLibrarySchema, listLibraryHandler } from './tools/list-library.js';
+import {
+  fetchVideosSchema,
+  fetchVideosOutputSchema,
+  fetchVideosHandler,
+} from './tools/fetch-videos.js';
+import {
+  getVideoInfoSchema,
+  getVideoInfoOutputSchema,
+  getVideoInfoHandler,
+} from './tools/get-video-info.js';
+import {
+  getTranscriptSchema,
+  getTranscriptOutputSchema,
+  getTranscriptHandler,
+} from './tools/get-transcript.js';
+import {
+  searchVideosSchema,
+  searchVideosOutputSchema,
+  searchVideosHandler,
+} from './tools/search-videos.js';
+import {
+  getChaptersSchema,
+  getChaptersOutputSchema,
+  getChaptersHandler,
+} from './tools/get-chapters.js';
+import {
+  getCommentsSchema,
+  getCommentsOutputSchema,
+  getCommentsHandler,
+} from './tools/get-comments.js';
+import {
+  getChannelInfoSchema,
+  getChannelInfoOutputSchema,
+  getChannelInfoHandler,
+} from './tools/get-channel-info.js';
+import {
+  searchChannelsSchema,
+  searchChannelsOutputSchema,
+  searchChannelsHandler,
+} from './tools/search-channels.js';
+import {
+  getPlaylistInfoSchema,
+  getPlaylistInfoOutputSchema,
+  getPlaylistInfoHandler,
+} from './tools/get-playlist-info.js';
+import {
+  saveToLibrarySchema,
+  saveToLibraryOutputSchema,
+  saveToLibraryHandler,
+} from './tools/save-to-library.js';
+import {
+  listLibrarySchema,
+  listLibraryOutputSchema,
+  listLibraryHandler,
+} from './tools/list-library.js';
 import {
   listFormatsSchema,
+  listFormatsOutputSchema,
   listFormatsHandler,
   downloadVideoSchema,
+  downloadVideoOutputSchema,
   downloadVideoHandler,
 } from './tools/download-video.js';
-import { healthCheckSchema, healthCheckHandler } from './tools/health-check.js';
-import { searchTranscriptSchema, searchTranscriptHandler } from './tools/search-transcript.js';
+import {
+  healthCheckSchema,
+  healthCheckOutputSchema,
+  healthCheckHandler,
+} from './tools/health-check.js';
+import {
+  searchTranscriptSchema,
+  searchTranscriptOutputSchema,
+  searchTranscriptHandler,
+} from './tools/search-transcript.js';
 import {
   getTranscriptsSchema,
+  getTranscriptsOutputSchema,
   getTranscriptsHandler,
   digestPlaylistSchema,
+  digestPlaylistOutputSchema,
   digestPlaylistHandler,
 } from './tools/batch.js';
 import {
   extractClipSchema,
+  extractClipOutputSchema,
   extractClipHandler,
   extractAudioClipSchema,
+  extractAudioClipOutputSchema,
   extractAudioClipHandler,
   extractClipsSchema,
+  extractClipsOutputSchema,
   extractClipsHandler,
   extractFrameSchema,
+  extractFrameOutputSchema,
   extractFrameHandler,
   exportSubtitlesSchema,
+  exportSubtitlesOutputSchema,
   exportSubtitlesHandler,
 } from './tools/clips.js';
 import {
   getLibraryItemSchema,
+  getLibraryItemOutputSchema,
   getLibraryItemHandler,
   searchLibrarySchema,
+  searchLibraryOutputSchema,
   searchLibraryHandler,
   deleteLibraryItemSchema,
+  deleteLibraryItemOutputSchema,
   deleteLibraryItemHandler,
   updateLibraryTagsSchema,
+  updateLibraryTagsOutputSchema,
   updateLibraryTagsHandler,
   rebuildLibraryIndexSchema,
+  rebuildLibraryIndexOutputSchema,
   rebuildLibraryIndexHandler,
 } from './tools/library.js';
 import { runWithRequestContext } from './utils/context.js';
 import { toToolError } from './utils/errors.js';
 import { formatPreflightReport, runPreflight } from './utils/preflight.js';
 import { startHttp } from './http.js';
+import { registerPrompts } from './prompts.js';
+import { registerResources } from './resources.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')) as {
@@ -101,13 +169,49 @@ function guarded<H extends (...args: never[]) => Promise<CallToolResult>>(handle
         ? extra.signal
         : undefined;
 
-    return runWithRequestContext({ signal }, async () => {
-      try {
-        return await invoke(...args);
-      } catch (error) {
-        return toToolError(error);
+    const context = extra as
+      | {
+          sendNotification?: (notification: unknown) => Promise<void>;
+          _meta?: { progressToken?: string | number };
+        }
+      | undefined;
+
+    return runWithRequestContext(
+      {
+        signal,
+        // Progress is only meaningful when the client asked for it by sending a
+        // token; without one the notification would be dropped anyway.
+        reportProgress:
+          context?.sendNotification && context._meta?.progressToken !== undefined
+            ? (progress, total, message) => {
+                void context.sendNotification?.({
+                  method: 'notifications/progress',
+                  params: {
+                    progressToken: context._meta?.progressToken,
+                    progress,
+                    ...(total === undefined ? {} : { total }),
+                    ...(message === undefined ? {} : { message }),
+                  },
+                });
+              }
+            : undefined,
+        log: context?.sendNotification
+          ? (level, message) => {
+              void context.sendNotification?.({
+                method: 'notifications/message',
+                params: { level, logger: 'youtube-knowledge-mcp', data: message },
+              });
+            }
+          : undefined,
+      },
+      async () => {
+        try {
+          return await invoke(...args);
+        } catch (error) {
+          return toToolError(error);
+        }
       }
-    });
+    );
   };
 
   return wrapped as unknown as H;
@@ -116,7 +220,7 @@ function guarded<H extends (...args: never[]) => Promise<CallToolResult>>(handle
 function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
   const server = new McpServer(
     { name: 'youtube-knowledge-mcp', version: pkg.version },
-    { instructions: SERVER_INSTRUCTIONS }
+    { instructions: SERVER_INSTRUCTIONS, capabilities: { logging: {} } }
   );
 
   // -- Remote-safe tools (registered in all modes) --
@@ -128,6 +232,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Search YouTube for videos by keyword or phrase. Returns video IDs, titles, durations, channels, view counts, and URLs. Results sorted by relevance.',
       inputSchema: searchVideosSchema,
+      outputSchema: searchVideosOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -145,6 +250,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'List videos from a YouTube playlist or channel. Returns video IDs, titles, durations, upload dates, and URLs. Sorted by playlist or channel order.',
       inputSchema: fetchVideosSchema,
+      outputSchema: fetchVideosOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -162,6 +268,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Get detailed metadata for a single YouTube video. Returns title, channel, duration, upload date, view count, like count, comment count, description, tags, and thumbnail URL.',
       inputSchema: getVideoInfoSchema,
+      outputSchema: getVideoInfoOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -179,6 +286,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Extract the full transcript from a YouTube video. Supports auto-generated and manual captions. Returns plain text with word count and detected language. Results are cached locally.',
       inputSchema: getTranscriptSchema,
+      outputSchema: getTranscriptOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -196,6 +304,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Extract chapter markers and timestamps from a YouTube video. Returns chapter titles with start and end times. Not all videos have chapters. Returns empty list if none found.',
       inputSchema: getChaptersSchema,
+      outputSchema: getChaptersOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -213,6 +322,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Get top comments from a YouTube video sorted by popularity. Returns author, text, like count, and pinned status. Only top-level comments, no replies.',
       inputSchema: getCommentsSchema,
+      outputSchema: getCommentsOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -230,6 +340,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Get metadata for a YouTube channel. Returns channel name, handle, subscriber count, description, and channel URL.',
       inputSchema: getChannelInfoSchema,
+      outputSchema: getChannelInfoOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -247,6 +358,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Search YouTube for channels by keyword or phrase. Returns channel names, handles, subscriber counts, descriptions, and URLs.',
       inputSchema: searchChannelsSchema,
+      outputSchema: searchChannelsOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -264,6 +376,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Get metadata for a YouTube playlist. Returns title, channel, video count, last updated date, and description.',
       inputSchema: getPlaylistInfoSchema,
+      outputSchema: getPlaylistInfoOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -281,6 +394,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'List all available download formats for a YouTube video. Returns format IDs, extensions, resolutions, FPS, codecs, and file sizes. Grouped by video+audio, video-only, and audio-only.',
       inputSchema: listFormatsSchema,
+      outputSchema: listFormatsOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -298,6 +412,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Find a phrase or pattern inside a video transcript and return each match with its timestamp and a link that opens the video at that moment. Use this instead of reading a whole transcript when you need to locate or cite a specific moment.',
       inputSchema: searchTranscriptSchema,
+      outputSchema: searchTranscriptOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -315,6 +430,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Fetch transcripts for up to 25 videos in one call, each capped so the batch cannot flood the context. Videos that have no captions are reported individually rather than failing the whole call.',
       inputSchema: getTranscriptsSchema,
+      outputSchema: getTranscriptsOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -332,6 +448,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Summarize a playlist or channel in one call: per-video metadata, chapter markers, and optionally transcript word counts. Use this to survey a body of content before deciding what to read in full.',
       inputSchema: digestPlaylistSchema,
+      outputSchema: digestPlaylistOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -349,6 +466,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       description:
         'Report whether yt-dlp and ffmpeg are installed, their versions, and whether yt-dlp is stale. Call this first when tools start failing unexpectedly — an outdated yt-dlp is the most common cause.',
       inputSchema: healthCheckSchema,
+      outputSchema: healthCheckOutputSchema,
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -369,6 +487,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         description:
           'Save a summary or skill note to the local YouTube knowledge library. Overwrites existing content of the same type for the same video. Returns the saved file path.',
         inputSchema: saveToLibrarySchema,
+        outputSchema: saveToLibraryOutputSchema,
         annotations: {
           readOnlyHint: false,
           destructiveHint: false,
@@ -386,6 +505,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         description:
           'List all saved items in the local YouTube knowledge library. Returns titles, channels, content types, tags, and save dates. Optionally filter by tag. Sorted by most recently saved.',
         inputSchema: listLibrarySchema,
+        outputSchema: listLibraryOutputSchema,
         annotations: {
           readOnlyHint: true,
           destructiveHint: false,
@@ -403,6 +523,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         description:
           'Read back a summary or skill note previously saved with save_to_library. Returns the markdown content plus the saved metadata.',
         inputSchema: getLibraryItemSchema,
+        outputSchema: getLibraryItemOutputSchema,
         annotations: {
           readOnlyHint: true,
           destructiveHint: false,
@@ -420,6 +541,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         description:
           'Full-text search across every saved summary and skill note, ranked by relevance. Returns matching excerpts with the video IDs needed to read the full note.',
         inputSchema: searchLibrarySchema,
+        outputSchema: searchLibraryOutputSchema,
         annotations: {
           readOnlyHint: true,
           destructiveHint: false,
@@ -437,6 +559,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         description:
           'Add, remove or replace the tags on a saved library item. Tags are how list_library filters, so this is the way to reorganize a growing library.',
         inputSchema: updateLibraryTagsSchema,
+        outputSchema: updateLibraryTagsOutputSchema,
         annotations: {
           readOnlyHint: false,
           destructiveHint: false,
@@ -454,6 +577,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         description:
           'Permanently delete a saved summary or skill note, or the entire library entry for a video. This removes files from disk and cannot be undone.',
         inputSchema: deleteLibraryItemSchema,
+        outputSchema: deleteLibraryItemOutputSchema,
         annotations: {
           readOnlyHint: false,
           destructiveHint: true,
@@ -471,6 +595,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         description:
           'Rebuild the full-text search index from the notes on disk. Use this if search_library results look stale or incomplete, for example after editing files by hand.',
         inputSchema: rebuildLibraryIndexSchema,
+        outputSchema: rebuildLibraryIndexOutputSchema,
         annotations: {
           readOnlyHint: false,
           destructiveHint: false,
@@ -488,6 +613,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         description:
           'Cut a time range out of a YouTube video without downloading the whole thing. Give start and end, or a chapter name. Pair with search_transcript to find the moment first. Requires ffmpeg.',
         inputSchema: extractClipSchema,
+        outputSchema: extractClipOutputSchema,
         annotations: {
           readOnlyHint: false,
           destructiveHint: false,
@@ -505,6 +631,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         description:
           'Cut a time range out of a video as audio only, in an editor-friendly format (mp3, m4a, wav, flac, opus). Use for podcast pulls and voice-over sourcing. Requires ffmpeg.',
         inputSchema: extractAudioClipSchema,
+        outputSchema: extractAudioClipOutputSchema,
         annotations: {
           readOnlyHint: false,
           destructiveHint: false,
@@ -522,6 +649,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         description:
           'Cut several time ranges out of one video in a single call. A range that fails is reported individually rather than losing the clips that succeeded. Requires ffmpeg.',
         inputSchema: extractClipsSchema,
+        outputSchema: extractClipsOutputSchema,
         annotations: {
           readOnlyHint: false,
           destructiveHint: false,
@@ -539,6 +667,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         description:
           'Capture a single still image from a video at a given timestamp, without downloading the file. Use for thumbnails and reference frames. Requires ffmpeg.',
         inputSchema: extractFrameSchema,
+        outputSchema: extractFrameOutputSchema,
         annotations: {
           readOnlyHint: false,
           destructiveHint: false,
@@ -556,6 +685,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         description:
           'Write a video transcript to disk as SRT, WebVTT or plain text, ready to import into a video editor such as Premiere, Resolve or CapCut.',
         inputSchema: exportSubtitlesSchema,
+        outputSchema: exportSubtitlesOutputSchema,
         annotations: {
           readOnlyHint: false,
           destructiveHint: false,
@@ -573,6 +703,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         description:
           'Download a YouTube video to local disk. Use the quality parameter for automatic format selection with smart fallbacks, or formatId for a specific format from list_formats. Returns the downloaded file path, title, and format details.',
         inputSchema: downloadVideoSchema,
+        outputSchema: downloadVideoOutputSchema,
         annotations: {
           readOnlyHint: false,
           destructiveHint: false,
@@ -583,6 +714,9 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       guarded(downloadVideoHandler)
     );
   }
+
+  registerPrompts(server, mode);
+  registerResources(server, mode);
 
   return server;
 }

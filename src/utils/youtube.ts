@@ -176,7 +176,7 @@ interface YtDlpPlaylistMeta {
   description?: string;
 }
 
-function extractVideoId(urlOrId: string): string {
+export function extractVideoId(urlOrId: string): string {
   // If it's already an ID (11 characters, no special chars except - and _)
   if (/^[a-zA-Z0-9_-]{11}$/.test(urlOrId)) {
     return urlOrId;

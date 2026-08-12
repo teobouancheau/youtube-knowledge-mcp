@@ -6,7 +6,8 @@ import {
   searchLibrary,
   updateLibraryTags,
 } from '../utils/storage.js';
-import { textContent } from '../utils/format.js';
+import { pageInfo, toolResult } from '../utils/format.js';
+import { libraryMetadataSchema, librarySearchHitSchema, paginationShape } from '../schemas.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 /**
@@ -24,6 +25,12 @@ export const getLibraryItemSchema = {
     .enum(['summary', 'skill'])
     .optional()
     .describe('Which note to read. Omit to return both.'),
+};
+
+export const getLibraryItemOutputSchema = {
+  metadata: libraryMetadataSchema,
+  summary: z.string().optional(),
+  skill: z.string().optional(),
 };
 
 export async function getLibraryItemHandler({
@@ -47,7 +54,11 @@ export async function getLibraryItemHandler({
   if (item.summary !== undefined) lines.push('', '## Summary', '', item.summary);
   if (item.skill !== undefined) lines.push('', '## Skill', '', item.skill);
 
-  return textContent(lines.join('\n'));
+  return toolResult(lines.join('\n'), {
+    metadata,
+    ...(item.summary === undefined ? {} : { summary: item.summary }),
+    ...(item.skill === undefined ? {} : { skill: item.skill }),
+  });
 }
 
 // -- search_library ------------------------------------------------------
@@ -60,6 +71,12 @@ export const searchLibrarySchema = {
   limit: z.number().int().min(1).max(50).default(10).describe('Maximum results. Default: 10'),
 };
 
+export const searchLibraryOutputSchema = {
+  query: z.string(),
+  hits: z.array(librarySearchHitSchema),
+  ...paginationShape,
+};
+
 export async function searchLibraryHandler({
   query,
   limit,
@@ -68,14 +85,20 @@ export async function searchLibraryHandler({
   limit: number;
 }): Promise<CallToolResult> {
   const hits = await searchLibrary(query, limit);
+  const structured = {
+    query,
+    hits: hits.map(({ id: _id, ...hit }) => hit),
+    ...pageInfo(hits.length, hits.length),
+  };
 
   if (hits.length === 0) {
-    return textContent(
+    return toolResult(
       [
         `No saved notes match "${query}".`,
         '',
         'Try different words, or call list_library to see everything saved.',
-      ].join('\n')
+      ].join('\n'),
+      structured
     );
   }
 
@@ -88,7 +111,7 @@ export async function searchLibraryHandler({
     lines.push('');
   }
 
-  return textContent(lines.join('\n').trimEnd());
+  return toolResult(lines.join('\n').trimEnd(), structured);
 }
 
 // -- delete_library_item -------------------------------------------------
@@ -101,6 +124,11 @@ export const deleteLibraryItemSchema = {
     .describe('Delete only this note. Omit to delete the entire library entry.'),
 };
 
+export const deleteLibraryItemOutputSchema = {
+  videoId: z.string(),
+  deleted: z.array(z.string()),
+};
+
 export async function deleteLibraryItemHandler({
   videoId,
   contentType,
@@ -109,7 +137,7 @@ export async function deleteLibraryItemHandler({
   contentType?: 'summary' | 'skill';
 }): Promise<CallToolResult> {
   const { deleted } = await deleteLibraryItem(videoId, contentType);
-  return textContent(`Deleted ${deleted.join(', ')} for ${videoId}.`);
+  return toolResult(`Deleted ${deleted.join(', ')} for ${videoId}.`, { videoId, deleted });
 }
 
 // -- update_library_tags -------------------------------------------------
@@ -124,6 +152,8 @@ export const updateLibraryTagsSchema = {
     .describe('Replace all existing tags with this list. Applied before add and remove.'),
 };
 
+export const updateLibraryTagsOutputSchema = libraryMetadataSchema.shape;
+
 export async function updateLibraryTagsHandler(args: {
   videoId: string;
   add?: string[];
@@ -131,10 +161,11 @@ export async function updateLibraryTagsHandler(args: {
   replace?: string[];
 }): Promise<CallToolResult> {
   const updated = await updateLibraryTags(args.videoId, args);
-  return textContent(
+  return toolResult(
     [updated.title, updated.tags.length > 0 ? `tags: ${updated.tags.join(', ')}` : 'no tags'].join(
       '\n'
-    )
+    ),
+    { ...updated }
   );
 }
 
@@ -142,7 +173,9 @@ export async function updateLibraryTagsHandler(args: {
 
 export const rebuildLibraryIndexSchema = {};
 
+export const rebuildLibraryIndexOutputSchema = { documents: z.number().int() };
+
 export async function rebuildLibraryIndexHandler(): Promise<CallToolResult> {
   const { documents } = await rebuildSearchIndex();
-  return textContent(`Rebuilt the search index over ${documents} saved note(s).`);
+  return toolResult(`Rebuilt the search index over ${documents} saved note(s).`, { documents });
 }

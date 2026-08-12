@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { searchVideos } from '../utils/youtube.js';
-import { formatCount, textContent } from '../utils/format.js';
+import { formatCount, pageInfo, toolResult } from '../utils/format.js';
+import { paginationShape, videoSummarySchema } from '../schemas.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const searchVideosSchema = {
@@ -13,6 +14,12 @@ export const searchVideosSchema = {
     .max(20)
     .default(5)
     .describe('Maximum number of results to return (1-20, default: 5)'),
+};
+
+export const searchVideosOutputSchema = {
+  query: z.string(),
+  videos: z.array(videoSummarySchema),
+  ...paginationShape,
 };
 
 export async function searchVideosHandler({
@@ -37,5 +44,17 @@ export async function searchVideosHandler({
     lines.push('');
   });
 
-  return textContent(lines.join('\n'));
+  return toolResult(lines.join('\n'), {
+    query,
+    videos: results.map((v) => ({
+      id: v.id,
+      title: v.title,
+      durationSeconds: v.duration,
+      durationFormatted: v.durationFormatted,
+      url: v.url,
+      channel: v.channel,
+      viewCount: v.viewCount,
+    })),
+    ...pageInfo(results.length, results.length),
+  });
 }

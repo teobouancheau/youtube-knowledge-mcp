@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { join } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { textContent } from '../utils/format.js';
+import { fileResult, toolResult } from '../utils/format.js';
+import { clipResultSchema } from '../schemas.js';
 import { parseTimestamp, resolveOutputDir } from '../utils/validate.js';
 import { extractClip, extractFrame, safeStem, subtitlesDir } from '../utils/clips.js';
 import { getTranscript } from '../utils/youtube.js';
@@ -77,6 +78,8 @@ export const extractClipSchema = {
     ),
 };
 
+export const extractClipOutputSchema = clipResultSchema.shape;
+
 export interface ExtractClipArgs {
   video: string;
   start?: string;
@@ -95,7 +98,7 @@ export async function extractClipHandler(args: ExtractClipArgs): Promise<CallToo
     container: 'mp4',
   });
 
-  return textContent(
+  return fileResult(
     [
       '✓ Clip extracted',
       '',
@@ -103,7 +106,16 @@ export async function extractClipHandler(args: ExtractClipArgs): Promise<CallToo
       `${formatTimestamp(result.start)} – ${formatTimestamp(result.end)} (${Math.round(result.duration)}s)`,
       '',
       result.filePath,
-    ].join('\n')
+    ].join('\n'),
+    {
+      videoId: result.videoId,
+      title: result.title,
+      filePath: result.filePath,
+      startSeconds: result.start,
+      endSeconds: result.end,
+      durationSeconds: result.duration,
+    },
+    { path: result.filePath, name: `${result.title} clip`, mimeType: 'video/mp4' }
   );
 }
 
@@ -117,6 +129,8 @@ export const extractAudioClipSchema = {
     .default('mp3')
     .describe('Output container. Use wav for editing, mp3 for sharing. Default: mp3'),
 };
+
+export const extractAudioClipOutputSchema = clipResultSchema.shape;
 
 export interface ExtractAudioClipArgs {
   video: string;
@@ -137,7 +151,7 @@ export async function extractAudioClipHandler(args: ExtractAudioClipArgs): Promi
     audioFormat: args.audioFormat,
   });
 
-  return textContent(
+  return fileResult(
     [
       '✓ Audio clip extracted',
       '',
@@ -145,7 +159,16 @@ export async function extractAudioClipHandler(args: ExtractAudioClipArgs): Promi
       `${formatTimestamp(result.start)} – ${formatTimestamp(result.end)} (${Math.round(result.duration)}s, ${args.audioFormat})`,
       '',
       result.filePath,
-    ].join('\n')
+    ].join('\n'),
+    {
+      videoId: result.videoId,
+      title: result.title,
+      filePath: result.filePath,
+      startSeconds: result.start,
+      endSeconds: result.end,
+      durationSeconds: result.duration,
+    },
+    { path: result.filePath, name: `${result.title} audio`, mimeType: `audio/${args.audioFormat}` }
   );
 }
 
@@ -174,6 +197,13 @@ export const extractClipsSchema = {
     .describe('Where to write the files. Must be inside your home directory.'),
 };
 
+export const extractClipsOutputSchema = {
+  clips: z.array(clipResultSchema),
+  failures: z.array(z.object({ start: z.string(), end: z.string(), error: z.string() })),
+  requested: z.number().int(),
+  succeeded: z.number().int(),
+};
+
 export interface ExtractClipsArgs {
   video: string;
   ranges: { start: string; end: string }[];
@@ -184,6 +214,8 @@ export interface ExtractClipsArgs {
 
 export async function extractClipsHandler(args: ExtractClipsArgs): Promise<CallToolResult> {
   const lines: string[] = [];
+  const clips: Record<string, unknown>[] = [];
+  const failures: { start: string; end: string; error: string }[] = [];
   let succeeded = 0;
 
   for (const [index, range] of args.ranges.entries()) {
@@ -204,18 +236,28 @@ export async function extractClipsHandler(args: ExtractClipsArgs): Promise<CallT
       lines.push(
         `✓ ${formatTimestamp(result.start)}–${formatTimestamp(result.end)}  ${result.filePath}`
       );
+      clips.push({
+        videoId: result.videoId,
+        title: result.title,
+        filePath: result.filePath,
+        startSeconds: result.start,
+        endSeconds: result.end,
+        durationSeconds: result.duration,
+      });
       succeeded++;
     } catch (error) {
       // One bad range should not discard the clips that did cut.
       const failure = asYouTubeError(error);
       lines.push(`✗ ${range.start}–${range.end}  [${failure.code}] ${failure.message}`);
+      failures.push({ start: range.start, end: range.end, error: failure.code });
     }
   }
 
   reportProgress(args.ranges.length, args.ranges.length);
 
-  return textContent(
-    [`${succeeded} of ${args.ranges.length} clips extracted`, '', ...lines].join('\n')
+  return toolResult(
+    [`${succeeded} of ${args.ranges.length} clips extracted`, '', ...lines].join('\n'),
+    { clips, failures, requested: args.ranges.length, succeeded }
   );
 }
 
@@ -231,6 +273,13 @@ export const extractFrameSchema = {
     .describe('Where to write the image. Must be inside your home directory.'),
 };
 
+export const extractFrameOutputSchema = {
+  videoId: z.string(),
+  title: z.string(),
+  filePath: z.string(),
+  timestampSeconds: z.number(),
+};
+
 export async function extractFrameHandler(args: {
   video: string;
   timestamp: string;
@@ -243,7 +292,7 @@ export async function extractFrameHandler(args: {
     format: args.format,
   });
 
-  return textContent(
+  return fileResult(
     [
       '✓ Frame captured',
       '',
@@ -251,7 +300,18 @@ export async function extractFrameHandler(args: {
       `at ${formatTimestamp(result.timestamp)}`,
       '',
       result.filePath,
-    ].join('\n')
+    ].join('\n'),
+    {
+      videoId: result.videoId,
+      title: result.title,
+      filePath: result.filePath,
+      timestampSeconds: result.timestamp,
+    },
+    {
+      path: result.filePath,
+      name: `${result.title} frame`,
+      mimeType: args.format === 'png' ? 'image/png' : 'image/jpeg',
+    }
   );
 }
 
@@ -270,6 +330,14 @@ export const exportSubtitlesSchema = {
     .string()
     .optional()
     .describe('Where to write the file. Must be inside your home directory.'),
+};
+
+export const exportSubtitlesOutputSchema = {
+  videoId: z.string(),
+  language: z.string(),
+  format: z.enum(['srt', 'vtt', 'txt']),
+  filePath: z.string(),
+  cueCount: z.number().int(),
 };
 
 export async function exportSubtitlesHandler(args: {
@@ -299,13 +367,25 @@ export async function exportSubtitlesHandler(args: {
   );
   await writeFile(filePath, body, 'utf-8');
 
-  return textContent(
+  return fileResult(
     [
       `✓ Subtitles exported (${args.format.toUpperCase()})`,
       '',
       `${transcript.segments.length.toLocaleString()} cues · ${transcript.language}`,
       '',
       filePath,
-    ].join('\n')
+    ].join('\n'),
+    {
+      videoId: transcript.videoId,
+      language: transcript.language,
+      format: args.format,
+      filePath,
+      cueCount: transcript.segments.length,
+    },
+    {
+      path: filePath,
+      name: `${transcript.videoId}.${args.format}`,
+      mimeType: args.format === 'txt' ? 'text/plain' : `text/${args.format}`,
+    }
   );
 }

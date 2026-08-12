@@ -1,11 +1,14 @@
 import { z } from 'zod';
 import { getChannelInfo } from '../utils/youtube.js';
-import { formatCount, textContent } from '../utils/format.js';
+import { formatCount, toolResult } from '../utils/format.js';
+import { channelInfoSchema } from '../schemas.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const getChannelInfoSchema = {
   channel: z.string().describe('YouTube channel URL, handle (e.g., @Fireship), or channel name'),
 };
+
+export const getChannelInfoOutputSchema = channelInfoSchema.shape;
 
 export async function getChannelInfoHandler({
   channel,
@@ -26,5 +29,5 @@ export async function getChannelInfoHandler({
     lines.push(info.description);
   }
 
-  return textContent(lines.join('\n'));
+  return toolResult(lines.join('\n'), { ...info });
 }

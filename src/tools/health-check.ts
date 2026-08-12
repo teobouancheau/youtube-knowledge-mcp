@@ -1,9 +1,22 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { formatPreflightReport, runPreflight } from '../utils/preflight.js';
 import { concurrencyState } from '../utils/ytdlp.js';
-import { textContent } from '../utils/format.js';
+import { toolResult } from '../utils/format.js';
+import { z } from 'zod';
+import { binaryStatusSchema } from '../schemas.js';
 
 export const healthCheckSchema = {};
+
+export const healthCheckOutputSchema = {
+  ok: z.boolean(),
+  ytDlp: binaryStatusSchema,
+  ffmpeg: binaryStatusSchema,
+  concurrency: z.object({
+    active: z.number().int(),
+    queued: z.number().int(),
+    limit: z.number().int(),
+  }),
+};
 
 /**
  * Diagnostics for the two external binaries everything here depends on.
@@ -21,5 +34,10 @@ export async function healthCheckHandler(): Promise<CallToolResult> {
     `yt-dlp concurrency: ${active}/${limit} active, ${queued} queued`,
   ];
 
-  return textContent(lines.join('\n'));
+  return toolResult(lines.join('\n'), {
+    ok: report.ok,
+    ytDlp: report.ytDlp,
+    ffmpeg: report.ffmpeg,
+    concurrency: { active, queued, limit },
+  });
 }
