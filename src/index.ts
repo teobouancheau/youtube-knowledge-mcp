@@ -10,6 +10,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 import { fetchVideosSchema, fetchVideosHandler } from './tools/fetch-videos.js';
 import { getVideoInfoSchema, getVideoInfoHandler } from './tools/get-video-info.js';
@@ -28,6 +29,10 @@ import {
   downloadVideoSchema,
   downloadVideoHandler,
 } from './tools/download-video.js';
+import { healthCheckSchema, healthCheckHandler } from './tools/health-check.js';
+import { runWithRequestContext } from './utils/context.js';
+import { toToolError } from './utils/errors.js';
+import { formatPreflightReport, runPreflight } from './utils/preflight.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')) as {
@@ -44,6 +49,42 @@ Recommended workflows:
 - Combine transcript + chapters for structured, timestamped summaries
 
 All tools accept YouTube video IDs (e.g., dQw4w9WgXcQ) or full URLs.`;
+
+/**
+ * Wrap a tool handler so that every call gets a request context and no call can
+ * throw out of the server.
+ *
+ * Two things happen here, once, instead of thirteen times in thirteen files:
+ * the MCP request's AbortSignal is published to the request context so an
+ * in-flight yt-dlp is killed when the client cancels, and anything thrown is
+ * rendered as an `isError` result carrying an actionable message rather than a
+ * raw stack trace or yt-dlp command line.
+ */
+function guarded<H extends (...args: never[]) => Promise<CallToolResult>>(handler: H): H {
+  const invoke = handler as unknown as (...args: unknown[]) => Promise<CallToolResult>;
+
+  const wrapped = async (...args: unknown[]): Promise<CallToolResult> => {
+    // The SDK always passes RequestHandlerExtra last, whatever the tool's arity.
+    const extra: unknown = args[args.length - 1];
+    const signal =
+      typeof extra === 'object' &&
+      extra !== null &&
+      'signal' in extra &&
+      extra.signal instanceof AbortSignal
+        ? extra.signal
+        : undefined;
+
+    return runWithRequestContext({ signal }, async () => {
+      try {
+        return await invoke(...args);
+      } catch (error) {
+        return toToolError(error);
+      }
+    });
+  };
+
+  return wrapped as unknown as H;
+}
 
 function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
   const server = new McpServer(
@@ -67,7 +108,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    searchVideosHandler
+    guarded(searchVideosHandler)
   );
 
   server.registerTool(
@@ -84,7 +125,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    fetchVideosHandler
+    guarded(fetchVideosHandler)
   );
 
   server.registerTool(
@@ -101,7 +142,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    getVideoInfoHandler
+    guarded(getVideoInfoHandler)
   );
 
   server.registerTool(
@@ -118,7 +159,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    getTranscriptHandler
+    guarded(getTranscriptHandler)
   );
 
   server.registerTool(
@@ -135,7 +176,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    getChaptersHandler
+    guarded(getChaptersHandler)
   );
 
   server.registerTool(
@@ -152,7 +193,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    getCommentsHandler
+    guarded(getCommentsHandler)
   );
 
   server.registerTool(
@@ -169,7 +210,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    getChannelInfoHandler
+    guarded(getChannelInfoHandler)
   );
 
   server.registerTool(
@@ -186,7 +227,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    searchChannelsHandler
+    guarded(searchChannelsHandler)
   );
 
   server.registerTool(
@@ -203,7 +244,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    getPlaylistInfoHandler
+    guarded(getPlaylistInfoHandler)
   );
 
   server.registerTool(
@@ -220,7 +261,24 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         openWorldHint: true,
       },
     },
-    listFormatsHandler
+    guarded(listFormatsHandler)
+  );
+
+  server.registerTool(
+    'health_check',
+    {
+      title: 'Check Server Health',
+      description:
+        'Report whether yt-dlp and ffmpeg are installed, their versions, and whether yt-dlp is stale. Call this first when tools start failing unexpectedly — an outdated yt-dlp is the most common cause.',
+      inputSchema: healthCheckSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    guarded(healthCheckHandler)
   );
 
   // -- Local-only tools (stdio mode only) --
@@ -240,7 +298,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
           openWorldHint: false,
         },
       },
-      saveToLibraryHandler
+      guarded(saveToLibraryHandler)
     );
 
     server.registerTool(
@@ -257,7 +315,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
           openWorldHint: false,
         },
       },
-      listLibraryHandler
+      guarded(listLibraryHandler)
     );
 
     server.registerTool(
@@ -274,7 +332,7 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
           openWorldHint: true,
         },
       },
-      downloadVideoHandler
+      guarded(downloadVideoHandler)
     );
   }
 
@@ -438,8 +496,24 @@ function startHttp(): void {
   });
 }
 
+/**
+ * Report missing or stale external binaries at boot.
+ *
+ * Deliberately non-fatal: the server still starts and still lists its tools, so
+ * a client can call health_check and be told exactly what to install. Exiting
+ * here would surface as an opaque "server failed to start" in the client.
+ */
+async function announcePreflight(): Promise<void> {
+  const report = await runPreflight();
+  if (report.ok && !report.ytDlp.warning && report.ffmpeg.installed) return;
+
+  console.error(formatPreflightReport(report));
+}
+
 async function main(): Promise<void> {
   const mode = getTransportMode();
+  await announcePreflight();
+
   if (mode === 'http') {
     startHttp();
   } else {
