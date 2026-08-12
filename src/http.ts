@@ -1,4 +1,5 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
+import express from 'express';
 import type { Express, Request, Response } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
@@ -162,10 +163,19 @@ export function startHttp(
   createServer: (mode: 'http') => McpServer,
   config: HttpConfig = readHttpConfig()
 ): HttpServerHandle {
-  const app: Express = createMcpExpressApp({
+  const mcpApp: Express = createMcpExpressApp({
     host: config.bindHost,
     ...(config.allowedHosts.length > 0 ? { allowedHosts: config.allowedHosts } : {}),
   });
+
+  // The SDK installs Host validation as global middleware, so everything
+  // mounted on its app is behind the allowlist — including the health check,
+  // which a probe reaches over loopback with `Host: 127.0.0.1:<port>`. Setting
+  // MCP_ALLOWED_HOSTS to a public hostname would then 403 the container's own
+  // HEALTHCHECK and every platform probe, and the service would never go live.
+  // The health route is therefore mounted here, ahead of that middleware, and
+  // the MCP app handles everything else with its allowlist intact.
+  const app: Express = express();
 
   const limiter = new RateLimiter(config.rateLimit, config.rateWindowMs);
   const sessions = new Map<string, Session>();
@@ -219,7 +229,7 @@ export function startHttp(
     return `${String(proto)}://${host}/.well-known/oauth-protected-resource`;
   }
 
-  app.post('/mcp', async (req: Request, res: Response) => {
+  mcpApp.post('/mcp', async (req: Request, res: Response) => {
     if (!rateLimit(req, res)) return;
     if (!authorize(req, res)) return;
 
@@ -282,12 +292,12 @@ export function startHttp(
     await session.transport.handleRequest(req, res);
   };
 
-  app.get('/mcp', bySession);
-  app.delete('/mcp', bySession);
+  mcpApp.get('/mcp', bySession);
+  mcpApp.delete('/mcp', bySession);
 
   // RFC 9728 protected-resource metadata, so OAuth-capable clients can discover
   // how to authenticate instead of guessing.
-  app.get('/.well-known/oauth-protected-resource', (req: Request, res: Response) => {
+  mcpApp.get('/.well-known/oauth-protected-resource', (req: Request, res: Response) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(
       JSON.stringify({
@@ -299,6 +309,9 @@ export function startHttp(
   });
 
   // Unauthenticated on purpose: platform health probes cannot carry a token.
+  // Registered before the MCP app so it also sits ahead of that app's Host
+  // validation; it exposes binary versions and a session count, nothing a Host
+  // allowlist protects.
   app.get('/health', (_req: Request, res: Response) => {
     void runPreflight().then((report) => {
       res.writeHead(report.ok ? 200 : 503, { 'Content-Type': 'application/json' });
@@ -312,6 +325,10 @@ export function startHttp(
       );
     });
   });
+
+  // Everything else — /mcp and the resource metadata — is served by the SDK's
+  // app, so its Host allowlist and JSON body parsing still apply in full.
+  app.use(mcpApp);
 
   let announceReady: (value: { port: number }) => void = () => undefined;
   const ready = new Promise<{ port: number }>((resolve) => {

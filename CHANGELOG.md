@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+**Setting `MCP_ALLOWED_HOSTS` made the service permanently unhealthy.** The SDK
+installs Host validation as global middleware, so `/health` sat behind the
+allowlist too. A probe reaches it over loopback with `Host: 127.0.0.1:<port>`,
+which an allowlist naming a public hostname does not contain — so the container's
+own `HEALTHCHECK`, and every platform probe, got 403 while the server answered
+real traffic perfectly. The advice to set that variable, added in the same
+breath as the Blueprint, would have bricked the deployment it was meant to
+harden.
+
+`/health` is now mounted ahead of the MCP app, so it answers probes while
+everything else keeps the allowlist intact. It exposes binary versions and a
+session count, which is not what a Host allowlist protects. Covered by a test
+that fails against the previous arrangement.
+
+**A single lost probe pinned `/health` to 503 for the process lifetime.**
+`runPreflight` cached failures with no expiry, so a `yt-dlp --version` that
+timed out once at boot — plausible on a cold, small instance — left the report
+`ok: false` for good. The deploy then never went live on a platform that would
+have retried. Successful reports still hold for the process lifetime; failed
+ones expire after a minute, rather than re-probing on every request and letting
+a slow host stack overlapping spawns.
+
 **The Docker image could never report healthy.** The `HEALTHCHECK` polled
 `PORT || 10000` while the application defaults to 3000, so outside a platform
 that injects `PORT` the check failed forever and the container sat `unhealthy`
@@ -31,6 +53,12 @@ open and waiting to be secured.
 There is no shared instance of this server, and the README now says so: every
 call shells out to yt-dlp, so one host serving everyone's traffic is one host
 YouTube rate-limits for everyone.
+
+The Blueprint sets `autoDeployTrigger: off`. The button wires the service to
+this repository, which the person deploying does not control; auto-deploying
+would run every future commit pushed here inside their account, under their
+generated token, with nobody reading it first. Taking a newer version is a
+Manual Deploy they choose.
 
 ## [2.0.1] - 2026-08-12
 

@@ -1,3 +1,5 @@
+import { request } from 'node:http';
+
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { startHttp, readHttpConfig, type HttpConfig, type HttpServerHandle } from '../src/http.js';
@@ -46,6 +48,41 @@ function post(
       ...headers,
     },
     body: JSON.stringify(body),
+  });
+}
+
+/**
+ * `fetch` drops a caller-supplied Host header — it is forbidden in the spec, and
+ * undici silently replaces it with the target authority. Anything asserting on
+ * Host validation has to go through node:http, which sends what it is given.
+ */
+function postWithHost(base: string, hostHeader: string): Promise<{ status: number }> {
+  const { hostname, port } = new URL(base);
+  const payload = JSON.stringify(initialize);
+
+  return new Promise((resolve, reject) => {
+    const req = request(
+      {
+        hostname,
+        port,
+        path: '/mcp',
+        method: 'POST',
+        headers: {
+          Host: hostHeader,
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+          'Content-Length': Buffer.byteLength(payload),
+        },
+      },
+      (res) => {
+        res.resume();
+        res.on('end', () => {
+          resolve({ status: res.statusCode ?? 0 });
+        });
+      }
+    );
+    req.on('error', reject);
+    req.end(payload);
   });
 }
 
@@ -152,6 +189,23 @@ describe('HTTP transport sessions', () => {
 });
 
 describe('HTTP endpoints', () => {
+  it('serves health from behind a Host allowlist that does not name the prober', async () => {
+    // The SDK mounts Host validation globally, so a health route registered on
+    // its app answers 403 to the loopback probe as soon as MCP_ALLOWED_HOSTS
+    // names a public hostname — which is what a container HEALTHCHECK and every
+    // platform probe use. That combination once left the service permanently
+    // unhealthy while it served traffic perfectly.
+    const { base } = await boot({ allowedHosts: ['my-service.onrender.com'] });
+
+    const health = await fetch(`${base}/health`);
+    expect([200, 503]).toContain(health.status);
+
+    // The allowlist must still apply to everything else, in both directions:
+    // a foreign Host is refused, the allowed one reaches the transport.
+    expect((await postWithHost(base, 'evil.example')).status).toBe(403);
+    expect((await postWithHost(base, 'my-service.onrender.com')).status).not.toBe(403);
+  });
+
   it('serves health without a token, since probes cannot carry one', async () => {
     const { base } = await boot({ authToken: 'secret' });
 

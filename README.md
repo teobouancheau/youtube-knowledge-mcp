@@ -149,8 +149,13 @@ The server listens on `PORT` (default 3000). Set `PORT` environment variable to 
 
 ```bash
 docker build -t youtube-knowledge-mcp .
-docker run -p 3000:10000 -e MCP_AUTH_TOKEN=$(openssl rand -hex 32) youtube-knowledge-mcp
+
+TOKEN=$(openssl rand -hex 32) && echo "MCP_AUTH_TOKEN=$TOKEN"
+docker run -p 3000:10000 -e MCP_AUTH_TOKEN="$TOKEN" youtube-knowledge-mcp
 ```
+
+The token is printed because nothing else will print it: the server logs that a
+token is required, never its value. Send it as `Authorization: Bearer $TOKEN`.
 
 The image sets `PORT=10000` and exposes it; publish it on whatever host port you
 like. The build happens inside the image, so no local `npm run build` first.
@@ -175,6 +180,11 @@ Worth doing once the service exists: set `MCP_ALLOWED_HOSTS` to your service's
 hostname (`<your-service>.onrender.com`). It cannot be filled in from the
 Blueprint, since the hostname does not exist until the service does, and it
 rejects requests arriving under any other name.
+
+Your instance does not follow this repository. The Blueprint sets
+`autoDeployTrigger: off`, because auto-deploying would run code pushed here
+inside your account, under your token, without you reading it first. To take a
+newer version, use **Manual Deploy** on the service.
 
 The free plan sleeps after inactivity, so the first call after a pause waits for
 a cold start. Any paid plan removes that.
