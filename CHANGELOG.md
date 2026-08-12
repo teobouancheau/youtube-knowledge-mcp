@@ -123,6 +123,10 @@ video but never say when something was said.
   reached deep-link building as `undefined`; the library index was accepted
   without validating any entry. A corrupt entry now costs that one note instead
   of the whole library, and an unreadable cache is refetched.
+- A cancelled request is reported as `CANCELLED`. The abort escaped as a bare
+  `AbortError`, which was normalised into a generic tooling failure telling the
+  client to check its yt-dlp install — for a request the client itself
+  cancelled.
 - An HTTP request carrying `Mcp-Session-Id` twice is no longer reported as an
   invalid session. Node parses a repeated header into an array, which was
   asserted to be a string and then matched no session at all.

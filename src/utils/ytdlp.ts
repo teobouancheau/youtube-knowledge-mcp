@@ -92,7 +92,12 @@ export async function runYtDlp(args: string[], options: RunOptions = {}): Promis
   const maxAttempts = retry ? MAX_ATTEMPTS : 1;
 
   for (let attempt = 1; ; attempt++) {
-    signal?.throwIfAborted();
+    // Not `signal.throwIfAborted()`: that throws a bare DOMException, which
+    // reaches the client as a generic YTDLP_FAILED telling it to check its
+    // yt-dlp install — for a request the client itself cancelled.
+    if (signal?.aborted === true) {
+      throw new YouTubeError('CANCELLED', 'The request was cancelled.');
+    }
 
     try {
       return await spawnOnce(args, timeoutMs, signal);
