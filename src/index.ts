@@ -739,7 +739,8 @@ export function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
   return server;
 }
 
-function getTransportMode(): 'stdio' | 'http' {
+/** An explicit flag wins over the environment, so a launcher can always override. */
+export function getTransportMode(): 'stdio' | 'http' {
   if (process.argv.includes('--http')) return 'http';
   if (process.argv.includes('--stdio')) return 'stdio';
   if (process.env.MCP_MODE === 'http') return 'http';
@@ -759,14 +760,14 @@ async function startStdio(): Promise<void> {
  * a client can call check_health and be told exactly what to install. Exiting
  * here would surface as an opaque "server failed to start" in the client.
  */
-async function announcePreflight(): Promise<void> {
+export async function announcePreflight(): Promise<void> {
   const report = await runPreflight();
   if (report.ok && !report.ytDlp.warning && report.ffmpeg.installed) return;
 
   console.error(formatPreflightReport(report));
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const mode = getTransportMode();
   await announcePreflight();
 
@@ -779,6 +780,12 @@ async function main(): Promise<void> {
 
 // Only start when executed directly. Importing this module — which the test
 // suite does — must not spawn a transport or read argv.
+//
+// The three lines below run only in a real process launch, which is what
+// `scripts/smoke.mjs` does in CI: it boots `dist/index.js` as a subprocess and
+// completes an MCP handshake against it. That exercises this path for real,
+// but out of process, where the coverage instrumentation cannot see it.
+/* v8 ignore start */
 const invokedDirectly =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 
@@ -788,3 +795,4 @@ if (invokedDirectly) {
     process.exit(1);
   });
 }
+/* v8 ignore stop */
