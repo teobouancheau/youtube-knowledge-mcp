@@ -77,6 +77,15 @@ video but never say when something was said.
 
 ### Fixed
 
+- Tool annotations no longer understate what a tool does. `save_to_library` and
+  `update_library_tags` are now marked `destructiveHint: true` — the first
+  overwrites an existing note in place, the second discards every tag when
+  `replace` is used — and `download_video` is marked `idempotentHint: true` to
+  agree with the `extract_*` tools, which write to a deterministic path in
+  exactly the same way. A client uses these hints to decide whether to confirm
+  before acting, so understating the risk is worse than omitting the hint. A
+  test now enforces the underlying invariant: any tool whose description admits
+  to overwriting, deleting or discarding must be marked destructive.
 - `get_video_info` no longer mis-parses a short row from yt-dlp; view, like and
   comment counts silently read as 0 when fields were absent.
 - Download format precedence: a quality preset now unambiguously wins over

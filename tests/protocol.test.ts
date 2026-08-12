@@ -76,9 +76,42 @@ describe('tool manifest', () => {
   it('marks only genuinely destructive tools as destructive', () => {
     const destructive = stdioTools
       .filter((tool) => tool.annotations?.destructiveHint === true)
-      .map((tool) => tool.name);
+      .map((tool) => tool.name)
+      .sort();
 
-    expect(destructive).toEqual(['delete_library_item']);
+    // Overwriting a saved note and replacing a tag set both discard content the
+    // user cannot recover, so they belong here alongside the outright delete.
+    expect(destructive).toEqual(['delete_library_item', 'save_to_library', 'update_library_tags']);
+  });
+
+  it('never describes destructive behaviour while claiming to be non-destructive', () => {
+    // The invariant behind the annotation, rather than a hand-maintained list:
+    // a client uses destructiveHint to decide whether to confirm before acting,
+    // so an annotation that understates the risk is worse than a missing one.
+    const admitsDataLoss = /\boverwrit\w*|\bdelete[sd]?\b|\bdiscard\w*|\breplaces? all\b/i;
+
+    for (const tool of stdioTools) {
+      if (!admitsDataLoss.test(tool.description ?? '')) continue;
+
+      expect(
+        tool.annotations?.destructiveHint,
+        `${tool.name} describes destructive behaviour but is not marked destructive`
+      ).toBe(true);
+    }
+  });
+
+  it('agrees on idempotency between tools that behave the same way', () => {
+    // All of these write to a deterministic path and overwrite it, so repeating
+    // the call leaves the same state. download_video disagreed until 1.2.0.
+    for (const name of [
+      'download_video',
+      'extract_clip',
+      'extract_audio_clip',
+      'export_subtitles',
+    ]) {
+      const tool = stdioTools.find((candidate) => candidate.name === name);
+      expect(tool?.annotations?.idempotentHint, name).toBe(true);
+    }
   });
 
   it('never marks a writing tool as read-only', () => {
