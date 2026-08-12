@@ -126,6 +126,10 @@ video but never say when something was said.
 - An HTTP request carrying `Mcp-Session-Id` twice is no longer reported as an
   invalid session. Node parses a repeated header into an array, which was
   asserted to be a string and then matched no session at all.
+- Prompt argument completion now works. `review_library` offers completions over
+  the tags actually saved, but the marker was attached to the optional wrapper
+  rather than to the schema inside it, so the capability was never advertised
+  and a client asking for completions got "method not found".
 - `get_video_info` no longer mis-parses a short row from yt-dlp; view, like and
   comment counts silently read as 0 when fields were absent.
 - Download format precedence: a quality preset now unambiguously wins over
