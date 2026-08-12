@@ -7,9 +7,15 @@ Thanks for your interest in improving youtube-knowledge-mcp.
 ```bash
 git clone https://github.com/teobouancheau/youtube-knowledge-mcp.git
 cd youtube-knowledge-mcp
+nvm use          # or any Node matching .nvmrc
 npm install
 npm run build
 ```
+
+The package itself runs on Node 22 or later, but the development toolchain
+needs a little more: `lint-staged` requires 22.22.1. `.nvmrc` pins the active
+LTS, and `engine-strict` in `.npmrc` means a Node older than a dependency
+declares fails at install time rather than halfway through a commit.
 
 You also need [yt-dlp](https://github.com/yt-dlp/yt-dlp) on your `PATH`, and
 [ffmpeg](https://ffmpeg.org/) for downloads, clip extraction and frame capture.

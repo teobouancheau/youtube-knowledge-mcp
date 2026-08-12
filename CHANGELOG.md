@@ -25,6 +25,17 @@ off the table.
 This is breaking for anyone running Node 20, hence the next release is 2.0.0.
 Nothing else about the API changes: no tool, parameter or output is affected.
 
+**Dependencies held back by that floor moved up.** `execa` 10 and `lint-staged`
+17 both require Node 22 and were pinned to older majors — and blocked in
+Dependabot — for as long as the package claimed to run on 20.
+
+- `execa` 10 removes `execaCommand()` and stops exposing `ChildProcess`
+  directly. Neither is used here: every call is `execa(command, args, options)`
+  reading `stdout`, and failures are read off `ExecaError`. Verified against
+  real yt-dlp runs, since the unit suite mocks execa: metadata comes back
+  intact, and a missing binary still surfaces as `YTDLP_MISSING` rather than a
+  raw spawn error.
+
 ## [1.2.0] - 2026-08-12
 
 Additive throughout: every tool from 1.1.1 keeps its name, its parameters and
