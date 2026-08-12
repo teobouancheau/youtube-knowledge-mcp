@@ -1,0 +1,28 @@
+# Blueprint for deploying your own instance.
+#
+# There is no shared instance of this server to point a connector at: the
+# remote transport shells out to yt-dlp on every call, so one host serving
+# other people's traffic is a host getting rate-limited by YouTube for all of
+# them. Deploying your own is the supported path, and this file is what makes
+# it one click — see the Deploy to Render button in the README.
+#
+# Schema: https://render.com/schema/render.yaml.json
+
+services:
+  - type: web
+    name: youtube-knowledge-mcp
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      # A remote deployment is reachable by anyone who learns its URL, so the
+      # HTTP transport requires a bearer token here rather than defaulting to
+      # open. Render generates it; read it under Environment in the dashboard
+      # and send it as `Authorization: Bearer <token>`.
+      #
+      # This is the only variable the deploy needs. MCP_ALLOWED_HOSTS is worth
+      # adding afterwards — the README says how — but it cannot be filled in
+      # from here, since the hostname does not exist until the service does.
+      - key: MCP_AUTH_TOKEN
+        generateValue: true

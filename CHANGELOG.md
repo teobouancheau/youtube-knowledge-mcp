@@ -5,6 +5,33 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+**The Docker image could never report healthy.** The `HEALTHCHECK` polled
+`PORT || 10000` while the application defaults to 3000, so outside a platform
+that injects `PORT` the check failed forever and the container sat `unhealthy`
+while serving traffic normally. The same mismatch made the documented
+`docker run -p 3000:10000` publish a port nothing listened on.
+
+The image now sets `PORT=10000`, matching its own `EXPOSE` and health check;
+platforms that inject a port still override it. Verified by running the health
+check command exactly as written inside the container — it exited 1 before this
+change and 0 after, and `docker inspect` reports `healthy`.
+
+### Added
+
+**One-click deployment of your own instance.** [`render.yaml`](render.yaml) and a
+Deploy to Render button in the README. The Blueprint builds the image, points
+the health check at `/health` and generates an `MCP_AUTH_TOKEN`, so a remote
+deployment requires a bearer token from the first request rather than starting
+open and waiting to be secured.
+
+There is no shared instance of this server, and the README now says so: every
+call shells out to yt-dlp, so one host serving everyone's traffic is one host
+YouTube rate-limits for everyone.
+
 ## [2.0.1] - 2026-08-12
 
 ### Fixed

@@ -35,6 +35,12 @@ COPY package.json ./
 ENV HOME=/home/node
 USER node
 
+# The application defaults to 3000, which is a sensible default for `npm run
+# start:http` on a laptop and the wrong one for an image that documents 10000
+# in EXPOSE and in its health check. Setting it here gives the image one port,
+# and platforms that inject their own PORT still override it.
+ENV PORT=10000
+
 EXPOSE 10000
 
 # Reports unhealthy when yt-dlp is missing, so an orchestrator sees a broken
