@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { ReadResourceResult } from '@modelcontextprotocol/sdk/types.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { LoggingMessageNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
 
 /**
  * The resource read callbacks, driven through a real MCP client.
@@ -23,6 +24,7 @@ vi.mock('../src/utils/storage.js', async (importOriginal) => {
 import { getTranscript } from '../src/utils/youtube.js';
 import { getLibraryItem, listLibrary, listTags } from '../src/utils/storage.js';
 import { createServer } from '../src/index.js';
+import { YouTubeError } from '../src/utils/errors.js';
 
 async function connect(mode: 'stdio' | 'http' = 'stdio'): Promise<Client> {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -351,21 +353,22 @@ describe('request context', () => {
 
   it('emits log messages to a client that asked for them', async () => {
     const client = await connect();
-    const levels: string[] = [];
+    const messages: { level: string; data: unknown }[] = [];
 
-    client.setNotificationHandler(
-      (await import('@modelcontextprotocol/sdk/types.js')).LoggingMessageNotificationSchema,
-      (notification) => {
-        levels.push(notification.params.level);
-      }
-    );
-
-    await client.callTool({
-      name: 'get_transcripts',
-      arguments: { videos: ['aaaaaaaaaaa'] },
+    client.setNotificationHandler(LoggingMessageNotificationSchema, (notification) => {
+      messages.push({ level: notification.params.level, data: notification.params.data });
     });
 
-    expect(levels.length).toBeGreaterThanOrEqual(0);
+    // A retry inside yt-dlp logs a warning; the notification only reaches the
+    // client if the request context carried a sender through `guarded`.
+    vi.mocked(getTranscript).mockRejectedValue(
+      new YouTubeError('RATE_LIMITED', 'rate limited', { retryable: true })
+    );
+    await client.callTool({ name: 'get_transcripts', arguments: { videos: ['aaaaaaaaaaa'] } });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(messages.every((message) => message.level.length > 0)).toBe(true);
   });
 
   it('reports a tool failure as an isError result rather than throwing', async () => {

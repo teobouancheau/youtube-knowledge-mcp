@@ -21,7 +21,13 @@ vi.mock('execa', () => ({
 type FakeExecaError = InstanceType<typeof FakeExecaError>;
 
 import { execa } from 'execa';
-import { runYtDlp, parseYtDlpJson, parseYtDlpJsonLines, isRecord } from '../../src/utils/ytdlp.js';
+import {
+  runYtDlp,
+  parseYtDlpJson,
+  parseYtDlpJsonLines,
+  isRecord,
+  concurrencyState,
+} from '../../src/utils/ytdlp.js';
 import { runWithRequestContext } from '../../src/utils/context.js';
 import { YouTubeError } from '../../src/utils/errors.js';
 
@@ -143,7 +149,7 @@ describe('runYtDlp', () => {
 
     await expect(
       runWithRequestContext({ signal: controller.signal }, () => runYtDlp(['--version']))
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: 'CANCELLED' });
     expect(mockedExeca).not.toHaveBeenCalled();
   });
 });
@@ -204,6 +210,44 @@ describe('isRecord', () => {
   });
 });
 
+describe('concurrency limit', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('starts idle', () => {
+    expect(concurrencyState()).toMatchObject({ active: 0, queued: 0 });
+    expect(concurrencyState().limit).toBeGreaterThan(0);
+  });
+
+  it('queues calls beyond the limit instead of spawning them all at once', async () => {
+    const { limit } = concurrencyState();
+
+    // Hold every slot open, so the next call has to wait rather than spawn.
+    let releaseAll = (): void => undefined;
+    const held = new Promise<void>((resolve) => {
+      releaseAll = resolve;
+    });
+    mockedExeca.mockImplementation((() => held.then(() => ok('done'))) as never);
+
+    const inFlight = Array.from({ length: limit + 2 }, () => runYtDlp(['--version']));
+
+    // Let the scheduler run so the first `limit` calls have taken their slots.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(concurrencyState().queued).toBeGreaterThan(0);
+    expect(mockedExeca.mock.calls.length).toBeLessThanOrEqual(limit);
+
+    releaseAll();
+    await Promise.all(inFlight);
+
+    // Everything eventually runs; the limit paces them, it does not drop them.
+    expect(mockedExeca).toHaveBeenCalledTimes(limit + 2);
+    expect(concurrencyState()).toMatchObject({ active: 0, queued: 0 });
+  });
+});
+
 describe('cancellation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -237,6 +281,41 @@ describe('cancellation', () => {
     expect(error).toMatchObject({ code: 'CANCELLED' });
     // The backoff was cut short rather than slept through to the attempt cap.
     expect(mockedExeca).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('stderr shapes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('reads stderr delivered as an array of lines', async () => {
+    // execa types stderr by output mode, so it is not always a string.
+    mockedExeca.mockRejectedValue(
+      failWith({ stderr: ['ERROR: something', 'HTTP Error 429: Too Many Requests'] as never })
+    );
+
+    await expect(runYtDlp(['--version'], { retry: false })).rejects.toMatchObject({
+      code: 'RATE_LIMITED',
+    });
+  });
+
+  it('falls back to the summary when stderr is empty', async () => {
+    mockedExeca.mockRejectedValue(
+      failWith({ stderr: '', shortMessage: 'HTTP Error 429: Too Many Requests' })
+    );
+
+    await expect(runYtDlp(['--version'], { retry: false })).rejects.toMatchObject({
+      code: 'RATE_LIMITED',
+    });
+  });
+
+  it('ignores a stderr shape it cannot read at all', async () => {
+    mockedExeca.mockRejectedValue(failWith({ stderr: 42 as never, shortMessage: '' }));
+
+    await expect(runYtDlp(['--version'], { retry: false })).rejects.toMatchObject({
+      code: 'YTDLP_FAILED',
+    });
   });
 });
 

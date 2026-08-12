@@ -14,20 +14,28 @@ export default defineConfig({
       thresholds: {
         // Global floor. These are a ratchet, not a target: raise them as
         // coverage improves, never lower them to make a build pass.
-        lines: 70,
-        functions: 64,
-        branches: 54,
-        statements: 70,
+        //
+        // What is left uncovered is deliberate and small: the process entry
+        // point (exercised out of process by scripts/smoke.mjs), a handful of
+        // defensive guards against internal states that cannot occur, and two
+        // error handlers that need a transport to fail mid-response.
+        lines: 99,
+        functions: 97,
+        branches: 90,
+        statements: 98,
 
-        // The pure logic every other module depends on is held to a much higher
-        // bar, because it is where a silent wrong answer would originate.
-        'src/utils/transcript.ts': { lines: 95, functions: 95, branches: 85, statements: 95 },
-        'src/utils/search-index.ts': { lines: 95, functions: 95, branches: 90, statements: 95 },
-        'src/utils/validate.ts': { lines: 95, functions: 95, branches: 90, statements: 95 },
-        'src/utils/preflight.ts': { lines: 95, functions: 95, branches: 90, statements: 95 },
-        'src/utils/errors.ts': { lines: 90, functions: 90, branches: 85, statements: 90 },
-        'src/utils/ytdlp.ts': { lines: 80, functions: 75, branches: 70, statements: 80 },
-        'src/http.ts': { lines: 85, functions: 85, branches: 78, statements: 85 },
+        // The pure logic every other module depends on is held higher still,
+        // because it is where a silent wrong answer would originate.
+        'src/utils/transcript.ts': { lines: 100, functions: 100, branches: 95, statements: 98 },
+        'src/utils/search-index.ts': { lines: 100, functions: 100, branches: 92, statements: 97 },
+        'src/utils/validate.ts': { lines: 100, functions: 100, branches: 93, statements: 100 },
+        'src/utils/preflight.ts': { lines: 100, functions: 100, branches: 93, statements: 100 },
+        'src/utils/errors.ts': { lines: 100, functions: 100, branches: 95, statements: 100 },
+        'src/utils/youtube.ts': { lines: 100, functions: 97, branches: 93, statements: 98 },
+        'src/utils/ytdlp.ts': { lines: 100, functions: 100, branches: 93, statements: 97 },
+        'src/utils/storage.ts': { lines: 100, functions: 96, branches: 91, statements: 99 },
+        'src/tools': { lines: 100, functions: 100, branches: 84, statements: 99 },
+        'src/http.ts': { lines: 97, functions: 91, branches: 88, statements: 95 },
       },
     },
     testTimeout: 30000,

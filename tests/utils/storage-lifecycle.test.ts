@@ -332,3 +332,16 @@ describe('resilience', () => {
     expect(await searchLibrary('throttling')).toEqual([]);
   });
 });
+
+describe('getLibraryItem when the requested note is missing', () => {
+  it('reports which content type is absent rather than returning an empty item', async () => {
+    const { saveToLibrary, getLibraryItem } = await storage();
+    await saveToLibrary(NOTE);
+
+    // The index knows the video, but the skill note was never written.
+    const error = await getLibraryItem(NOTE.videoId, 'skill').catch((e: unknown) => e);
+
+    expect(error).toMatchObject({ code: 'NOT_FOUND' });
+    expect((error as Error).message).toContain('skill');
+  });
+});

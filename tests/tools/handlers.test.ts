@@ -24,7 +24,7 @@ vi.mock('../../src/utils/storage.js', () => ({
   rebuildSearchIndex: vi.fn(),
 }));
 
-import { getTranscript, getVideoInfo, listVideos } from '../../src/utils/youtube.js';
+import { getChapters, getTranscript, getVideoInfo, listVideos } from '../../src/utils/youtube.js';
 import {
   deleteLibraryItem,
   getLibraryItem,
@@ -316,5 +316,169 @@ describe('library handlers', () => {
 
     expect(textOf(result)).toContain('7 saved note(s)');
     expect(result.structuredContent).toMatchObject({ documents: 7 });
+  });
+});
+
+describe('digest_playlist chapters and transcript stats', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(listVideos).mockResolvedValue(VIDEO_LIST);
+    vi.mocked(getVideoInfo).mockRejectedValue(new Error('metadata unavailable'));
+  });
+
+  const args = {
+    url: 'https://youtube.com/playlist?list=x',
+    limit: 10,
+    includeChapters: true,
+    includeTranscriptStats: false,
+  };
+
+  it('lists each chapter with its start time when asked', async () => {
+    vi.mocked(getChapters).mockResolvedValue([
+      {
+        title: 'Intro',
+        startTime: 0,
+        endTime: 60,
+        startTimeFormatted: '0:00',
+        endTimeFormatted: '1:00',
+      },
+      {
+        title: 'The Middle',
+        startTime: 60,
+        endTime: 120,
+        startTimeFormatted: '1:00',
+        endTimeFormatted: '2:00',
+      },
+    ]);
+
+    const result = await digestPlaylistHandler(args);
+    const structured = result.structuredContent as {
+      videos: { chapters?: { title: string; startSeconds: number }[] }[];
+    };
+
+    expect(textOf(result)).toContain('0:00 Intro · 1:00 The Middle');
+    expect(structured.videos[0]?.chapters).toEqual([
+      { title: 'Intro', startSeconds: 0 },
+      { title: 'The Middle', startSeconds: 60 },
+    ]);
+  });
+
+  it('says nothing about chapters for a video that has none', async () => {
+    vi.mocked(getChapters).mockResolvedValue([]);
+
+    const result = await digestPlaylistHandler(args);
+    const structured = result.structuredContent as { videos: { chapters?: unknown }[] };
+
+    expect(textOf(result)).not.toContain('chapters:');
+    expect(structured.videos[0]).not.toHaveProperty('chapters');
+  });
+
+  it('continues when chapters cannot be fetched at all', async () => {
+    // Not every video exposes them, and that is not worth failing a digest over.
+    vi.mocked(getChapters).mockRejectedValue(new Error('nope'));
+
+    const result = await digestPlaylistHandler(args);
+
+    expect(result.structuredContent).toMatchObject({ count: 1 });
+  });
+
+  it('counts transcript words when stats are requested', async () => {
+    vi.mocked(getTranscript).mockResolvedValue({
+      transcript: 'one two three four five',
+      segments: [
+        { start: 0, end: 2, text: 'one two three' },
+        { start: 2, end: 4, text: 'four five' },
+      ],
+      language: 'en',
+      videoId: 'v1',
+      cached: false,
+    });
+
+    const result = await digestPlaylistHandler({
+      ...args,
+      includeChapters: false,
+      includeTranscriptStats: true,
+    });
+    const structured = result.structuredContent as { videos: { transcriptWords?: number }[] };
+
+    expect(textOf(result)).toContain('transcript: 5 words (en)');
+    expect(structured.videos[0]?.transcriptWords).toBe(5);
+  });
+
+  it('skips both extras when neither is asked for', async () => {
+    const result = await digestPlaylistHandler({
+      ...args,
+      includeChapters: false,
+      includeTranscriptStats: false,
+    });
+
+    expect(getChapters).not.toHaveBeenCalled();
+    expect(getTranscript).not.toHaveBeenCalled();
+    expect(result.structuredContent).toMatchObject({ count: 1 });
+  });
+});
+
+describe('get_library_item rendering', () => {
+  const METADATA = {
+    videoId: 'v1',
+    title: 'A Talk',
+    channel: 'Chan',
+    url: 'https://www.youtube.com/watch?v=v1',
+    tags: ['systems'],
+    dateSaved: '2024-01-01T12:00:00.000Z',
+    hasTranscript: false,
+    hasSummary: true,
+    hasSkill: true,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('renders both notes with their headings', async () => {
+    vi.mocked(getLibraryItem).mockResolvedValue({
+      metadata: METADATA,
+      summary: 'The summary body',
+      skill: 'The skill body',
+    });
+
+    const text = textOf(await getLibraryItemHandler({ videoId: 'v1' }));
+
+    expect(text).toContain('## Summary');
+    expect(text).toContain('The summary body');
+    expect(text).toContain('## Skill');
+    expect(text).toContain('The skill body');
+  });
+
+  it('shows the channel, tags and save date', async () => {
+    vi.mocked(getLibraryItem).mockResolvedValue({ metadata: METADATA, summary: 'x' });
+
+    const text = textOf(await getLibraryItemHandler({ videoId: 'v1' }));
+
+    expect(text).toContain('by Chan');
+    expect(text).toContain('tags: systems');
+    expect(text).toContain('saved 2024-01-01');
+  });
+
+  it('omits the channel and tag lines when there are none', async () => {
+    vi.mocked(getLibraryItem).mockResolvedValue({
+      metadata: { ...METADATA, channel: '', tags: [] },
+      summary: 'x',
+    });
+
+    const text = textOf(await getLibraryItemHandler({ videoId: 'v1' }));
+
+    expect(text).not.toContain('by ');
+    expect(text).not.toContain('tags:');
+  });
+
+  it('omits the section for a note that does not exist', async () => {
+    vi.mocked(getLibraryItem).mockResolvedValue({ metadata: METADATA, summary: 'only this' });
+
+    const result = await getLibraryItemHandler({ videoId: 'v1' });
+
+    expect(textOf(result)).not.toContain('## Skill');
+    expect(result.structuredContent).not.toHaveProperty('skill');
+    expect(result.structuredContent).toMatchObject({ summary: 'only this' });
   });
 });
