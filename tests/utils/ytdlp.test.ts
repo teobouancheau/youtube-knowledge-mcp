@@ -101,9 +101,16 @@ describe('runYtDlp', () => {
   });
 
   it('never retries a deterministic failure', async () => {
-    mockedExeca.mockRejectedValue(failWith({ stderr: 'This video is private' }));
+    // yt_dlp/postprocessor/ffmpeg.py:225 — a missing binary will still be
+    // missing on the second attempt, so retrying only wastes the caller's time.
+    mockedExeca.mockRejectedValue(
+      failWith({
+        stderr:
+          'ERROR: ffmpeg not found. Please install or provide the path using --ffmpeg-location',
+      })
+    );
 
-    await expect(runYtDlp(['--version'])).rejects.toMatchObject({ code: 'PRIVATE' });
+    await expect(runYtDlp(['--version'])).rejects.toMatchObject({ code: 'FFMPEG_MISSING' });
     expect(mockedExeca).toHaveBeenCalledTimes(1);
   });
 

@@ -2,53 +2,71 @@ import { describe, it, expect } from 'vitest';
 import {
   YouTubeError,
   asYouTubeError,
+  classifyPlayability,
   classifyYtDlpFailure,
   toToolError,
 } from '../../src/utils/errors.js';
 import { textOf } from '../helpers.js';
 
-/** Real stderr excerpts, so the patterns are tested against what yt-dlp emits. */
+/**
+ * Every sample below is a sentence yt-dlp itself builds, quoted from the cited
+ * line of the installed copy (2026.07.04).
+ *
+ * Deliberately absent: YouTube's own refusal text ("Private video…", "Video
+ * unavailable", "Join this channel to get access to members-only content"). It
+ * reaches stderr verbatim from `playabilityStatus.reason`, exists nowhere in
+ * yt-dlp's source, and is localised — asserting it here would only test our
+ * memory of YouTube's copy against itself. Those cases are covered by
+ * `classifyPlayability` below, against yt-dlp's structured fields.
+ */
 const SAMPLES: [string, string][] = [
   [
-    'PRIVATE',
-    'ERROR: [youtube] abc: Private video. Sign in if you have been granted access to this video',
+    // yt_dlp/networking/exceptions.py:63 formats `HTTP Error {status}: {reason}`.
+    'RATE_LIMITED',
+    'ERROR: unable to download video data: HTTP Error 429: Too Many Requests',
   ],
   [
-    'AGE_GATED',
-    'ERROR: [youtube] abc: Sign in to confirm your age. This video may be inappropriate for some users.',
+    // yt_dlp/YoutubeDL.py:4459
+    'NO_CAPTIONS',
+    '[info] There are no subtitles for the requested languages',
   ],
-  ['MEMBERS_ONLY', 'ERROR: [youtube] abc: Join this channel to get access to members-only content'],
   [
-    'REGION_BLOCKED',
-    'ERROR: [youtube] abc: The uploader has not made this video available in your country',
-  ],
-  ['REMOVED', 'ERROR: [youtube] abc: This video has been removed by the uploader'],
-  ['NOT_FOUND', 'ERROR: [youtube] abc: Video unavailable'],
-  ['NO_CAPTIONS', 'WARNING: [youtube] abc: There are no subtitles for the requested languages'],
-  ['LIVE_NOT_ENDED', 'ERROR: [youtube] abc: This live event will begin in 3 hours'],
-  ['BOT_CHECK', "ERROR: [youtube] abc: Sign in to confirm you're not a bot"],
-  ['RATE_LIMITED', 'ERROR: unable to download video data: HTTP Error 429: Too Many Requests'],
-  ['NETWORK', 'ERROR: unable to download video data: HTTP Error 503: Service Unavailable'],
-  [
+    // yt_dlp/YoutubeDL.py:3545
     'FFMPEG_MISSING',
     'ERROR: You have requested merging of multiple formats but ffmpeg is not installed',
+  ],
+  [
+    // yt_dlp/postprocessor/ffmpeg.py:225
+    'FFMPEG_MISSING',
+    'ERROR: ffmpeg not found. Please install or provide the path using --ffmpeg-location',
+  ],
+  [
+    // yt_dlp/extractor/youtube/_base.py:664, appended by yt-dlp to whatever
+    // refusal YouTube returned when that refusal mentions signing in.
+    'LOGIN_REQUIRED',
+    'ERROR: [youtube] abc: Some refusal we cannot read. Use --cookies-from-browser or --cookies for the ' +
+      'authentication. Also see  https://github.com/yt-dlp/yt-dlp/wiki/FAQ  for tips on effectively ' +
+      'exporting YouTube cookies',
   ],
 ];
 
 describe('classifyYtDlpFailure', () => {
-  it.each(SAMPLES)('maps real yt-dlp stderr to %s', (code, stderr) => {
+  it.each(SAMPLES)('maps stderr that yt-dlp itself builds to %s', (code, stderr) => {
     expect(classifyYtDlpFailure(stderr).code).toBe(code);
   });
 
-  it('prefers the specific reason when generic text appears alongside it', () => {
-    // yt-dlp routinely prints "Video unavailable" next to the real cause.
-    const stderr = 'ERROR: [youtube] abc: Video unavailable. This video is private.';
-    expect(classifyYtDlpFailure(stderr).code).toBe('PRIVATE');
+  it('does not guess at YouTube-authored refusal text', () => {
+    // This is what a private video really prints. It is YouTube's sentence, not
+    // yt-dlp's, so the only honest answer is the generic one — a guess here
+    // would silently mis-report the day YouTube rewords it.
+    const stderr = 'ERROR: [youtube] abc: Private video. Sign in if you have been granted access';
+
+    expect(classifyYtDlpFailure(stderr).code).toBe('YTDLP_FAILED');
   });
 
   it('marks only transient failures as retryable', () => {
     expect(classifyYtDlpFailure('HTTP Error 429: Too Many Requests').retryable).toBe(true);
-    expect(classifyYtDlpFailure('This video is private').retryable).toBe(false);
+    expect(classifyYtDlpFailure('ffmpeg not found. Please install').retryable).toBe(false);
   });
 
   it('never forwards unrecognised stderr to the caller', () => {
@@ -67,6 +85,59 @@ describe('classifyYtDlpFailure', () => {
   it('keeps the original failure as the cause for server-side debugging', () => {
     const cause = new Error('original');
     expect(classifyYtDlpFailure('anything', cause).cause).toBe(cause);
+  });
+});
+
+/**
+ * The closed sets yt-dlp documents: `availability` at extractor/common.py:413
+ * and built by `_availability` at common.py:4010, `live_status` at
+ * common.py:392. Every member is covered, so a new one added upstream shows up
+ * here as an untested value rather than as a silent fallthrough.
+ */
+describe('classifyPlayability', () => {
+  it.each([
+    ['private', 'PRIVATE'],
+    ['subscriber_only', 'MEMBERS_ONLY'],
+    ['premium_only', 'PREMIUM_ONLY'],
+    ['needs_auth', 'AGE_GATED'],
+  ])('reads availability %s as %s', (availability, code) => {
+    expect(classifyPlayability({ availability })?.code).toBe(code);
+  });
+
+  it.each(['public', 'unlisted'])('treats availability %s as readable', (availability) => {
+    expect(classifyPlayability({ availability })).toBeUndefined();
+  });
+
+  it.each([
+    ['is_upcoming', 'LIVE_NOT_ENDED'],
+    ['post_live', 'LIVE_NOT_ENDED'],
+  ])('reads live_status %s as %s', (liveStatus, code) => {
+    expect(classifyPlayability({ liveStatus })?.code).toBe(code);
+  });
+
+  it.each(['is_live', 'was_live', 'not_live'])(
+    'treats live_status %s as readable',
+    (liveStatus) => {
+      // A stream in progress has real metadata; asking about one is legitimate.
+      expect(classifyPlayability({ liveStatus })).toBeUndefined();
+    }
+  );
+
+  it('marks a still-processing recording as retryable, and a refusal as not', () => {
+    expect(classifyPlayability({ liveStatus: 'post_live' })?.retryable).toBe(true);
+    expect(classifyPlayability({ availability: 'private' })?.retryable).toBe(false);
+  });
+
+  it('says nothing when yt-dlp reported nothing', () => {
+    expect(classifyPlayability({})).toBeUndefined();
+    // "NA" is yt-dlp's placeholder for an absent --print field (YoutubeDL.py:1388).
+    expect(classifyPlayability({ availability: 'NA', liveStatus: 'NA' })).toBeUndefined();
+  });
+
+  it('prefers the availability reason when both are restrictive', () => {
+    expect(classifyPlayability({ availability: 'private', liveStatus: 'is_upcoming' })?.code).toBe(
+      'PRIVATE'
+    );
   });
 });
 

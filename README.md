@@ -244,15 +244,16 @@ Reusable workflows your client can invoke directly: `summarize_video`,
 Failures are reported inside the result so the model can read and recover from
 them, each prefixed with a code and followed by a next step.
 
-| Code                                                                             | Meaning                                                                      |
-| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `PRIVATE`, `AGE_GATED`, `MEMBERS_ONLY`, `REGION_BLOCKED`, `REMOVED`, `NOT_FOUND` | The video cannot be accessed                                                 |
-| `NO_CAPTIONS`                                                                    | No captions in the requested language; the message lists the ones that exist |
-| `LIVE_NOT_ENDED`                                                                 | An upcoming or in-progress stream                                            |
-| `BOT_CHECK`, `RATE_LIMITED`, `NETWORK`, `TIMEOUT`                                | Transient; retried automatically with backoff before surfacing               |
-| `YTDLP_MISSING`, `FFMPEG_MISSING`, `YTDLP_FAILED`                                | A tooling problem; the message says how to fix it                            |
-| `INVALID_INPUT`                                                                  | A bad argument, caught before any network call                               |
-| `CANCELLED`                                                                      | The client cancelled the request                                             |
+| Code                                                                | Meaning                                                                      |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `PRIVATE`, `AGE_GATED`, `MEMBERS_ONLY`, `PREMIUM_ONLY`, `NOT_FOUND` | The video cannot be accessed                                                 |
+| `LOGIN_REQUIRED`                                                    | yt-dlp reports the video needs a signed-in account                           |
+| `NO_CAPTIONS`                                                       | No captions in the requested language; the message lists the ones that exist |
+| `LIVE_NOT_ENDED`                                                    | An upcoming stream, or one whose recording is still processing               |
+| `RATE_LIMITED`, `TIMEOUT`                                           | Transient; retried automatically with backoff before surfacing               |
+| `YTDLP_MISSING`, `FFMPEG_MISSING`, `YTDLP_FAILED`                   | A tooling problem; the message says how to fix it                            |
+| `INVALID_INPUT`                                                     | A bad argument, caught before any network call                               |
+| `CANCELLED`                                                         | The client cancelled the request                                             |
 
 ## Environment variables
 
