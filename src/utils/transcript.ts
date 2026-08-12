@@ -1,3 +1,5 @@
+import webvtt from 'webvtt-parser';
+
 /**
  * Timestamped transcripts.
  *
@@ -28,14 +30,6 @@ export interface CachedTranscript {
   segments: TranscriptSegment[];
 }
 
-const CUE_TIMING = /^(\d{2,}:\d{2}:\d{2}[.,]\d{3})\s+-->\s+(\d{2,}:\d{2}:\d{2}[.,]\d{3})/;
-
-/** "00:01:02.500" -> 62.5 */
-export function parseVttTimestamp(value: string): number {
-  const parts = value.replace(',', '.').split(':');
-  return Number(parts[0] ?? 0) * 3600 + Number(parts[1] ?? 0) * 60 + Number(parts[2] ?? 0);
-}
-
 /** 3723.5 -> "1:02:03", 62 -> "1:02" */
 export function formatTimestamp(totalSeconds: number): string {
   const whole = Math.max(0, Math.floor(totalSeconds));
@@ -60,70 +54,69 @@ export function formatSrtTimestamp(totalSeconds: number): string {
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)},${pad(millis, 3)}`;
 }
 
-function stripCueTags(line: string): string {
-  // Auto-generated captions carry inline word timings (<00:00:01.234>) and
-  // <c> colouring spans; neither is content.
-  return line
-    .replace(/<[^>]*>/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+/**
+ * WebVTT cue text is a small markup language: inline timestamps and <c> spans
+ * for karaoke-style highlighting. The parser hands back the spec's parsed tree,
+ * so the readable text is a walk over its text nodes — no tag stripping, and no
+ * pattern of our own to get wrong.
+ */
+function textOfCueNode(node: webvtt.TreeNode<webvtt.TreeNodeObjectTagNameWithRt>): string {
+  // Exhaustive over the union the parser declares, so a new node kind becomes a
+  // type error here rather than silently vanishing from the transcript.
+  switch (node.type) {
+    case 'text':
+      return node.value;
+    case 'timestamp':
+      // Inline karaoke timing; carries no readable content.
+      return '';
+    case 'object':
+      return node.children.map(textOfCueNode).join('');
+  }
+}
+
+function textOfCueTree(tree: webvtt.Tree): string {
+  return tree.children.map(textOfCueNode).join('');
 }
 
 /**
  * Parse WebVTT into segments.
  *
- * YouTube's auto-generated captions use a rolling window: each cue repeats the
- * tail of the previous one and appends a little more. Emitting every line would
- * duplicate most of the transcript, so a line that repeats the one before it is
- * dropped — but the timing of its *first* appearance is what gets kept, which is
- * what makes deep links land on the right moment.
+ * Parsing is delegated to the W3C reference implementation rather than matched
+ * with our own expressions — WebVTT has a real grammar, and a hand-written
+ * approximation of it is a source of silent wrong answers.
+ *
+ * The one thing left to us is YouTube-specific and not a parsing concern: its
+ * auto-generated captions use a rolling window where each cue repeats the tail
+ * of the previous one and appends a little more. Emitting every line would
+ * duplicate most of the transcript, so a line repeating the one before it is
+ * dropped — keeping the timing of its *first* appearance, which is what makes a
+ * deep link land on the right moment.
  */
 export function parseVtt(vttContent: string): TranscriptSegment[] {
+  // Parse errors are reported rather than thrown: YouTube emits `Kind:` and
+  // `Language:` headers that the spec does not define, and the parser flags
+  // them while still returning every cue correctly.
+  const { cues } = new webvtt.WebVTTParser().parse(vttContent, 'captions');
+
   const segments: TranscriptSegment[] = [];
-  const lines = vttContent.split(/\r?\n/);
+  let lastLine = '';
 
-  let start: number | undefined;
-  let end: number | undefined;
-  let lastText = '';
+  for (const cue of cues) {
+    for (const line of textOfCueTree(cue.tree).split('\n')) {
+      const text = line.trim();
+      if (text === '' || text === lastLine) continue;
 
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
+      const previous = segments.at(-1);
+      if (previous?.start === cue.startTime) {
+        // A multi-line cue is one moment, not several.
+        previous.text = `${previous.text} ${text}`;
+        previous.end = cue.endTime;
+      } else {
+        segments.push({ start: cue.startTime, end: cue.endTime, text });
+      }
 
-    const timing = CUE_TIMING.exec(line);
-    if (timing) {
-      start = parseVttTimestamp(timing[1] ?? '0:0:0.000');
-      end = parseVttTimestamp(timing[2] ?? '0:0:0.000');
-      continue;
+      lastLine = text;
     }
-
-    if (
-      line === '' ||
-      line.startsWith('WEBVTT') ||
-      line.startsWith('Kind:') ||
-      line.startsWith('Language:') ||
-      line.startsWith('NOTE') ||
-      line.startsWith('STYLE') ||
-      // A bare integer is a cue index, not speech.
-      /^\d+$/.test(line)
-    ) {
-      continue;
-    }
-
-    if (start === undefined || end === undefined) continue;
-
-    const text = stripCueTags(line);
-    if (text === '' || text === lastText) continue;
-
-    const previous = segments.at(-1);
-    if (previous?.start === start) {
-      // Multi-line cue: keep it as one segment rather than splitting mid-sentence.
-      previous.text = `${previous.text} ${text}`;
-      previous.end = end;
-    } else {
-      segments.push({ start, end, text });
-    }
-
-    lastText = text;
   }
 
   return segments;

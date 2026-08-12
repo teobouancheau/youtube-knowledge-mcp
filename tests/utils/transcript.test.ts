@@ -4,7 +4,6 @@ import {
   formatSrtTimestamp,
   formatTimestamp,
   parseVtt,
-  parseVttTimestamp,
   searchSegments,
   segmentsToText,
   segmentsToTimestamped,
@@ -52,17 +51,6 @@ welcome<00:00:02.500><c> back</c>
 welcome back
 to<00:00:04.500><c> the</c><00:00:04.800><c> show</c>
 `;
-
-describe('parseVttTimestamp', () => {
-  it.each([
-    ['00:00:00.000', 0],
-    ['00:01:02.500', 62.5],
-    ['01:02:03.000', 3723],
-    ['00:00:01,500', 1.5],
-  ])('parses %s to %d seconds', (input, expected) => {
-    expect(parseVttTimestamp(input)).toBe(expected);
-  });
-});
 
 describe('formatTimestamp', () => {
   it.each([

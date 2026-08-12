@@ -41,6 +41,7 @@ Supports both **local** (stdio) and **remote** (Streamable HTTP) transports.
 
 **Built to stay working**
 
+- WebVTT parsed by the W3C reference implementation, not a hand-written matcher
 - Typed, actionable errors — "no captions in en, try: fr, es, de" rather than a
   wall of yt-dlp stderr
 - Timeouts, retry with backoff, and a concurrency limit on every yt-dlp call
