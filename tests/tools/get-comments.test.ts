@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { textOf } from '../helpers.js';
 
 vi.mock('../../src/utils/youtube.js', () => ({
   getComments: vi.fn(),
@@ -29,7 +30,7 @@ describe('get-comments tool', () => {
     const { getCommentsHandler } = await import('../../src/tools/get-comments.js');
     const result = await getCommentsHandler({ video: 'test123', limit: 20 });
 
-    const text = result.content[0].text;
+    const text = textOf(result);
     expect(text).toContain('2 top comments');
     expect(text).toContain('@YouTube');
     expect(text).toContain('[pinned]');
@@ -45,6 +46,6 @@ describe('get-comments tool', () => {
     const { getCommentsHandler } = await import('../../src/tools/get-comments.js');
     const result = await getCommentsHandler({ video: 'test123', limit: 20 });
 
-    expect(result.content[0].text).toContain('No comments found');
+    expect(textOf(result)).toContain('No comments found');
   });
 });

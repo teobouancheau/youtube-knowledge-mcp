@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { textOf } from '../helpers.js';
 
 vi.mock('../../src/utils/youtube.js', () => ({
   getChannelInfo: vi.fn(),
@@ -23,7 +24,7 @@ describe('get-channel-info tool', () => {
     const { getChannelInfoHandler } = await import('../../src/tools/get-channel-info.js');
     const result = await getChannelInfoHandler({ channel: '@Fireship' });
 
-    const text = result.content[0].text;
+    const text = textOf(result);
     expect(text).toContain('Fireship');
     expect(text).toContain('@Fireship');
     expect(text).toContain('4.2M subscribers');
@@ -44,7 +45,7 @@ describe('get-channel-info tool', () => {
     const { getChannelInfoHandler } = await import('../../src/tools/get-channel-info.js');
     const result = await getChannelInfoHandler({ channel: 'Empty Channel' });
 
-    const text = result.content[0].text;
+    const text = textOf(result);
     expect(text).toContain('Empty Channel');
     expect(text).toContain('0 subscribers');
     expect(text).not.toContain('undefined');

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { textOf } from '../helpers.js';
 
 // Mock the storage utility
 vi.mock('../../src/utils/storage.js', () => ({
@@ -30,7 +31,7 @@ describe('list-library tool', () => {
     const result = await listLibraryHandler({});
 
     expect(result.content).toHaveLength(1);
-    const text = result.content[0].text;
+    const text = textOf(result);
     expect(text).toContain('1 item in library');
     expect(text).toContain('Video 1');
     expect(text).toContain('by Channel 1');
@@ -54,7 +55,7 @@ describe('list-library tool', () => {
     const { listLibraryHandler } = await import('../../src/tools/list-library.js');
     const result = await listLibraryHandler({});
 
-    const text = result.content[0].text;
+    const text = textOf(result);
     expect(text).toContain('Your library is empty');
   });
 });

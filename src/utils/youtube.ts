@@ -355,7 +355,8 @@ export async function getTranscript(
     };
   } catch (error) {
     throw new Error(
-      `Failed to get transcript for ${videoId}: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to get transcript for ${videoId}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
     );
   }
 }
@@ -405,14 +406,7 @@ export async function listFormats(urlOrId: string): Promise<VideoFormat[]> {
 }
 
 export type VideoQuality =
-  | 'best'
-  | '2160p'
-  | '1440p'
-  | '1080p'
-  | '720p'
-  | '480p'
-  | '360p'
-  | 'audio';
+  'best' | '2160p' | '1440p' | '1080p' | '720p' | '480p' | '360p' | 'audio';
 
 // Smart format selectors that use yt-dlp's fallback syntax
 const QUALITY_FORMAT_SELECTORS: Record<VideoQuality, string> = {

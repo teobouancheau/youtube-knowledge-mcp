@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { searchVideos } from '../utils/youtube.js';
 import { formatCount, textContent } from '../utils/format.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const searchVideosSchema = {
   query: z
@@ -14,7 +15,13 @@ export const searchVideosSchema = {
     .describe('Maximum number of results to return (1-20, default: 5)'),
 };
 
-export async function searchVideosHandler({ query, limit }: { query: string; limit: number }) {
+export async function searchVideosHandler({
+  query,
+  limit,
+}: {
+  query: string;
+  limit: number;
+}): Promise<CallToolResult> {
   const results = await searchVideos(query, limit);
 
   const lines: string[] = [

@@ -1,12 +1,13 @@
 import { z } from 'zod';
 import { getChapters } from '../utils/youtube.js';
 import { textContent } from '../utils/format.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const getChaptersSchema = {
   video: z.string().describe('YouTube video ID (e.g., dQw4w9WgXcQ) or full URL'),
 };
 
-export async function getChaptersHandler({ video }: { video: string }) {
+export async function getChaptersHandler({ video }: { video: string }): Promise<CallToolResult> {
   const chapters = await getChapters(video);
 
   if (chapters.length === 0) {

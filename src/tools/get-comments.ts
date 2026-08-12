@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { getComments } from '../utils/youtube.js';
 import { textContent } from '../utils/format.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const getCommentsSchema = {
   video: z.string().describe('YouTube video ID (e.g., dQw4w9WgXcQ) or full URL'),
@@ -12,7 +13,13 @@ export const getCommentsSchema = {
     .describe('Maximum number of top-level comments to return (1-50, default: 20)'),
 };
 
-export async function getCommentsHandler({ video, limit }: { video: string; limit: number }) {
+export async function getCommentsHandler({
+  video,
+  limit,
+}: {
+  video: string;
+  limit: number;
+}): Promise<CallToolResult> {
   const comments = await getComments(video, limit);
 
   if (comments.length === 0) {

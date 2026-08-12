@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { searchChannels } from '../utils/youtube.js';
 import { formatCount, textContent } from '../utils/format.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const searchChannelsSchema = {
   query: z
@@ -14,7 +15,13 @@ export const searchChannelsSchema = {
     .describe('Maximum number of channels to return (1-20, default: 5)'),
 };
 
-export async function searchChannelsHandler({ query, limit }: { query: string; limit: number }) {
+export async function searchChannelsHandler({
+  query,
+  limit,
+}: {
+  query: string;
+  limit: number;
+}): Promise<CallToolResult> {
   const channels = await searchChannels(query, limit);
 
   if (channels.length === 0) {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { randomUUID } from 'node:crypto';
-import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { Express } from 'express';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -321,25 +321,7 @@ function startHttp(): void {
     }
   }, 300_000);
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- createMcpExpressApp returns untyped Express (no @types/express for v5)
-  const app: {
-    post: (
-      path: string,
-      handler: (req: IncomingMessage & { body?: unknown }, res: ServerResponse) => Promise<void>
-    ) => void;
-    get: (
-      path: string,
-      handler: (
-        req: IncomingMessage & { body?: unknown },
-        res: ServerResponse
-      ) => Promise<void> | void
-    ) => void;
-    delete: (
-      path: string,
-      handler: (req: IncomingMessage & { body?: unknown }, res: ServerResponse) => Promise<void>
-    ) => void;
-    listen: (port: number, cb: () => void) => void;
-  } = createMcpExpressApp({ host: '0.0.0.0' });
+  const app: Express = createMcpExpressApp({ host: '0.0.0.0' });
 
   const transports = new Map<string, StreamableHTTPServerTransport>();
 

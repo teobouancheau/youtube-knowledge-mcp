@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { textOf } from '../helpers.js';
 
 vi.mock('../../src/utils/youtube.js', () => ({
   getChapters: vi.fn(),
@@ -31,7 +32,7 @@ describe('get-chapters tool', () => {
     const { getChaptersHandler } = await import('../../src/tools/get-chapters.js');
     const result = await getChaptersHandler({ video: 'test123' });
 
-    const text = result.content[0].text;
+    const text = textOf(result);
     expect(text).toContain('2 chapters');
     expect(text).toContain('[0:00 - 2:00] Introduction');
     expect(text).toContain('[2:00 - 10:00] Main Content');
@@ -44,6 +45,6 @@ describe('get-chapters tool', () => {
     const { getChaptersHandler } = await import('../../src/tools/get-chapters.js');
     const result = await getChaptersHandler({ video: 'test123' });
 
-    expect(result.content[0].text).toContain('No chapters found');
+    expect(textOf(result)).toContain('No chapters found');
   });
 });

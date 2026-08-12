@@ -1,12 +1,13 @@
 import { z } from 'zod';
 import { getVideoInfo } from '../utils/youtube.js';
 import { formatCount, textContent } from '../utils/format.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const getVideoInfoSchema = {
   video: z.string().describe('YouTube video ID (e.g., dQw4w9WgXcQ) or full URL'),
 };
 
-export async function getVideoInfoHandler({ video }: { video: string }) {
+export async function getVideoInfoHandler({ video }: { video: string }): Promise<CallToolResult> {
   const info = await getVideoInfo(video);
 
   const stats = [

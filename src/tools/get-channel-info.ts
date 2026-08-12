@@ -1,12 +1,17 @@
 import { z } from 'zod';
 import { getChannelInfo } from '../utils/youtube.js';
 import { formatCount, textContent } from '../utils/format.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const getChannelInfoSchema = {
   channel: z.string().describe('YouTube channel URL, handle (e.g., @Fireship), or channel name'),
 };
 
-export async function getChannelInfoHandler({ channel }: { channel: string }) {
+export async function getChannelInfoHandler({
+  channel,
+}: {
+  channel: string;
+}): Promise<CallToolResult> {
   const info = await getChannelInfo(channel);
 
   const lines: string[] = [
