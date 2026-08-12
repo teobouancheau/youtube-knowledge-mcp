@@ -1,0 +1,22 @@
+{
+  "$comment": [
+    "Copy this file to .mcp.json to register the server with an MCP client.",
+    "The 'local' entry runs the published package over stdio and exposes every tool,",
+    "including the filesystem-backed library and download tools.",
+    "The 'remote' entry connects to a self-hosted HTTP deployment, which exposes",
+    "only the tools that are safe without local filesystem access."
+  ],
+  "mcpServers": {
+    "youtube-knowledge": {
+      "command": "npx",
+      "args": ["-y", "youtube-knowledge-mcp"]
+    },
+    "youtube-knowledge-remote": {
+      "type": "http",
+      "url": "https://your-deployment.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${YOUTUBE_MCP_TOKEN}"
+      }
+    }
+  }
+}

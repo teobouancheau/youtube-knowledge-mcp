@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { searchChannels } from '../utils/youtube.js';
-import { formatCount, textContent } from '../utils/format.js';
+import { formatCount, pageInfo, toolResult } from '../utils/format.js';
+import { channelInfoSchema, paginationShape } from '../schemas.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const searchChannelsSchema = {
   query: z
@@ -14,11 +16,24 @@ export const searchChannelsSchema = {
     .describe('Maximum number of channels to return (1-20, default: 5)'),
 };
 
-export async function searchChannelsHandler({ query, limit }: { query: string; limit: number }) {
+export const searchChannelsOutputSchema = {
+  query: z.string(),
+  channels: z.array(channelInfoSchema),
+  ...paginationShape,
+};
+
+export async function searchChannelsHandler({
+  query,
+  limit,
+}: {
+  query: string;
+  limit: number;
+}): Promise<CallToolResult> {
   const channels = await searchChannels(query, limit);
+  const structured = { query, channels, ...pageInfo(channels.length, channels.length) };
 
   if (channels.length === 0) {
-    return textContent(`No channels found for "${query}".`);
+    return toolResult(`No channels found for "${query}".`, structured);
   }
 
   const lines: string[] = [
@@ -36,5 +51,5 @@ export async function searchChannelsHandler({ query, limit }: { query: string; l
     lines.push('');
   });
 
-  return textContent(lines.join('\n'));
+  return toolResult(lines.join('\n'), structured);
 }

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { saveToLibrary } from '../utils/storage.js';
-import { textContent } from '../utils/format.js';
+import { fileResult } from '../utils/format.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const saveToLibrarySchema = {
   videoId: z.string().describe('YouTube video ID (e.g., dQw4w9WgXcQ)'),
@@ -21,6 +22,14 @@ export const saveToLibrarySchema = {
     .describe('Tags for categorization and filtering (e.g., ["machine-learning", "tutorial"])'),
 };
 
+export const saveToLibraryOutputSchema = {
+  videoId: z.string(),
+  title: z.string(),
+  contentType: z.enum(['summary', 'skill']),
+  filePath: z.string(),
+  tags: z.array(z.string()),
+};
+
 export async function saveToLibraryHandler({
   videoId,
   title,
@@ -35,7 +44,7 @@ export async function saveToLibraryHandler({
   contentType: 'summary' | 'skill';
   channel?: string;
   tags?: string[];
-}) {
+}): Promise<CallToolResult> {
   const result = await saveToLibrary({
     videoId,
     title,
@@ -58,5 +67,9 @@ export async function saveToLibraryHandler({
   lines.push('');
   lines.push(result.path);
 
-  return textContent(lines.join('\n'));
+  return fileResult(
+    lines.join('\n'),
+    { videoId, title, contentType, filePath: result.path, tags: tags ?? [] },
+    { path: result.path, name: `${title} (${contentType})`, mimeType: 'text/markdown' }
+  );
 }

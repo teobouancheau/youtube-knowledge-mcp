@@ -1,13 +1,20 @@
 import { z } from 'zod';
 import { listFormats, downloadVideo, VideoQuality } from '../utils/youtube.js';
-import { formatFilesize, textContent } from '../utils/format.js';
+import { fileResult, formatFilesize, toolResult } from '../utils/format.js';
+import { videoFormatSchema } from '../schemas.js';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 // Tool 1: List available formats
 export const listFormatsSchema = {
   video: z.string().describe('YouTube video ID (e.g., dQw4w9WgXcQ) or full URL'),
 };
 
-export async function listFormatsHandler({ video }: { video: string }) {
+export const listFormatsOutputSchema = {
+  formats: z.array(videoFormatSchema),
+  count: z.number().int(),
+};
+
+export async function listFormatsHandler({ video }: { video: string }): Promise<CallToolResult> {
   const formats = await listFormats(video);
 
   const lines: string[] = [`${formats.length} formats available`, ''];
@@ -15,6 +22,22 @@ export async function listFormatsHandler({ video }: { video: string }) {
   const combined = formats.filter((f) => f.vcodec !== 'none' && f.acodec !== 'none');
   const videoOnly = formats.filter((f) => f.vcodec !== 'none' && f.acodec === 'none');
   const audioOnly = formats.filter((f) => f.vcodec === 'none' && f.acodec !== 'none');
+
+  const kindOf = (format: (typeof formats)[number]): 'video+audio' | 'video-only' | 'audio-only' =>
+    format.vcodec !== 'none' && format.acodec !== 'none'
+      ? 'video+audio'
+      : format.vcodec !== 'none'
+        ? 'video-only'
+        : 'audio-only';
+
+  const structured = {
+    formats: formats.map(({ filesize, ...rest }) => ({
+      ...rest,
+      ...(filesize === undefined ? {} : { filesizeBytes: filesize }),
+      kind: kindOf({ ...rest, filesize }),
+    })),
+    count: formats.length,
+  };
 
   if (combined.length > 0) {
     lines.push('video + audio:');
@@ -50,7 +73,7 @@ export async function listFormatsHandler({ video }: { video: string }) {
     lines.push('tip: combine formats like "137+140" for video+audio');
   }
 
-  return textContent(lines.join('\n'));
+  return toolResult(lines.join('\n'), structured);
 }
 
 // Tool 2: Download video with selected format
@@ -74,6 +97,13 @@ export const downloadVideoSchema = {
     .describe('Output directory path. Default: ~/.youtube-knowledge/downloads/'),
 };
 
+export const downloadVideoOutputSchema = {
+  videoId: z.string(),
+  title: z.string(),
+  filePath: z.string(),
+  format: z.string(),
+};
+
 export async function downloadVideoHandler({
   video,
   quality,
@@ -84,7 +114,7 @@ export async function downloadVideoHandler({
   quality?: VideoQuality;
   formatId?: string;
   outputDir?: string;
-}) {
+}): Promise<CallToolResult> {
   // Use "best" as default quality if neither quality nor formatId is provided
   const effectiveQuality = quality ?? (formatId ? undefined : 'best');
 
@@ -94,5 +124,14 @@ export async function downloadVideoHandler({
 
   const lines: string[] = [`✓ Downloaded`, '', result.title, qualityLabel, '', result.filePath];
 
-  return textContent(lines.join('\n'));
+  return fileResult(
+    lines.join('\n'),
+    {
+      videoId: result.videoId,
+      title: result.title,
+      filePath: result.filePath,
+      format: result.format,
+    },
+    { path: result.filePath, name: result.title, mimeType: 'video/mp4' }
+  );
 }
