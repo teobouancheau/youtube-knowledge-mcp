@@ -18,6 +18,25 @@ function userMessage(text: string): {
 
 const video = z.string().describe('YouTube video ID or URL');
 
+/**
+ * An optional prompt argument that offers completions.
+ *
+ * The SDK looks for the completion marker in two places, and unwraps
+ * differently in each: registering the prompt unwraps one level of ZodOptional
+ * and inspects the schema inside, while serving a `completion/complete` request
+ * inspects the field as declared. Marking only the inner schema advertises the
+ * capability but then completes to nothing; marking only the outer one never
+ * advertises it at all, and the client gets "method not found". Both layers
+ * therefore carry the marker.
+ */
+function completableOptional(
+  schema: z.ZodString,
+  // Undefined when the client asks for completions before anything is typed.
+  complete: (value: string | undefined) => Promise<string[]>
+): z.ZodOptional<z.ZodString> {
+  return completable(completable(schema, complete).optional(), complete);
+}
+
 export function registerPrompts(server: McpServer, mode: 'stdio' | 'http'): void {
   server.registerPrompt(
     'summarize_video',
@@ -192,7 +211,7 @@ export function registerPrompts(server: McpServer, mode: 'stdio' | 'http'): void
       description: 'Survey what is saved locally on a topic and synthesize it.',
       argsSchema: {
         // Completion over real tags, so the client can offer what actually exists.
-        tag: completable(z.string().optional().describe('Restrict to this tag'), async (value) => {
+        tag: completableOptional(z.string().describe('Restrict to this tag'), async (value) => {
           const prefix = (value ?? '').toLowerCase();
           const tags = await listTags();
           return tags.filter((candidate) => candidate.toLowerCase().startsWith(prefix));
