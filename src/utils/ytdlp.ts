@@ -29,21 +29,80 @@ const BASE_BACKOFF_MS = 750;
 /** Guards against a pathological video description blowing up memory. */
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
-let active = 0;
-const waiting: (() => void)[] = [];
+/**
+ * Seconds of socket inactivity before yt-dlp gives up on a connection.
+ *
+ * Media transfers deliberately run without a wall-clock timeout — a long clip
+ * is allowed to take as long as it honestly takes — which left a dead
+ * connection indistinguishable from a slow one, holding its concurrency slot
+ * forever. This bounds the silence, not the work: a transfer still making
+ * progress is never interrupted.
+ */
+const SOCKET_TIMEOUT_S = '30';
 
-async function acquireSlot(): Promise<void> {
+interface Waiter {
+  grant: () => void;
+  cancel: (error: YouTubeError) => void;
+}
+
+let active = 0;
+const waiting: Waiter[] = [];
+
+/**
+ * Takes a concurrency slot, waiting for one when the limiter is full.
+ *
+ * The wait honours the request's abort signal. It used to be a bare promise
+ * with no way out, so a client that gave up stayed queued forever — and since a
+ * media transfer runs without a wall-clock timeout, three stalled downloads
+ * held every slot and every later call queued behind them, uncancellable. The
+ * server was not slow, it was wedged, and no tool could run again.
+ */
+async function acquireSlot(signal: AbortSignal | undefined): Promise<void> {
+  if (signal?.aborted === true) {
+    throw new YouTubeError('CANCELLED', 'The request was cancelled.');
+  }
+
   if (active < MAX_CONCURRENT) {
     active++;
     return;
   }
-  await new Promise<void>((resolve) => waiting.push(resolve));
-  active++;
+
+  await new Promise<void>((resolve, reject) => {
+    const waiter: Waiter = {
+      grant: () => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      },
+      cancel: (error) => {
+        signal?.removeEventListener('abort', onAbort);
+        reject(error);
+      },
+    };
+
+    function onAbort(): void {
+      const index = waiting.indexOf(waiter);
+      if (index !== -1) waiting.splice(index, 1);
+      waiter.cancel(new YouTubeError('CANCELLED', 'The request was cancelled.'));
+    }
+
+    signal?.addEventListener('abort', onAbort, { once: true });
+    waiting.push(waiter);
+  });
 }
 
+/**
+ * Hands the slot to the next waiter rather than freeing it and letting them
+ * race for it: decrementing first left `active` below the limit for a tick, so
+ * a fresh caller could take the slot the queue was already promised and the
+ * limiter would run over its own ceiling.
+ */
 function releaseSlot(): void {
+  const next = waiting.shift();
+  if (next) {
+    next.grant();
+    return;
+  }
   active--;
-  waiting.shift()?.();
 }
 
 /** Test seam: lets the suite assert the limiter without spawning processes. */
@@ -119,9 +178,9 @@ async function spawnOnce(
   timeoutMs: number,
   signal: AbortSignal | undefined
 ): Promise<string> {
-  await acquireSlot();
+  await acquireSlot(signal);
   try {
-    const { stdout } = await execa('yt-dlp', args, {
+    const { stdout } = await execa('yt-dlp', ['--socket-timeout', SOCKET_TIMEOUT_S, ...args], {
       timeout: timeoutMs > 0 ? timeoutMs : undefined,
       cancelSignal: signal,
       maxBuffer: MAX_OUTPUT_BYTES,

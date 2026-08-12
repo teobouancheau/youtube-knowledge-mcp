@@ -5,9 +5,33 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.2] - 2026-08-12
 
 ### Fixed
+
+**The server could wedge until it was restarted.** Reported in the field on
+`extract_clip`, but no tool was safe: once it happened, every yt-dlp call queued
+behind it for good.
+
+Two defects had to meet. Media transfers run without a wall-clock timeout, on
+purpose — a long clip should take as long as it honestly takes — so a stalled
+connection was indistinguishable from a slow one and held its concurrency slot
+indefinitely. And the wait for a slot was a bare promise with no way out: it
+ignored the request's abort signal, so a client that gave up stayed queued for
+ever. Three stalled transfers therefore held every slot, and everything after
+them waited on a queue nothing would ever drain. The server was not slow, it
+was locked, and cancelling did not help.
+
+- Waiting for a slot now honours the abort signal: a cancelled request leaves
+  the queue and reports `CANCELLED` instead of hanging. Covered by a test that
+  times out against the previous code.
+- Every yt-dlp call passes `--socket-timeout`, so a dead connection fails
+  instead of holding its slot. This bounds silence, not work — a transfer still
+  making progress is never interrupted, and transfers keep their absent
+  wall-clock timeout.
+- Releasing a slot hands it to the next waiter rather than freeing it and
+  letting callers race, which used to let the limiter run over its own ceiling
+  for a tick.
 
 **Setting `MCP_ALLOWED_HOSTS` made the service permanently unhealthy.** The SDK
 installs Host validation as global middleware, so `/health` sat behind the
@@ -299,7 +323,8 @@ video but never say when something was said.
 
 Initial release.
 
-[unreleased]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v2.0.1...HEAD
+[unreleased]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v2.0.2...HEAD
+[2.0.2]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v1.2.0...v2.0.0
 [1.2.0]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v1.1.1...v1.2.0
