@@ -77,6 +77,13 @@ video but never say when something was said.
 
 ### Fixed
 
+- The package no longer claims Node 20 support while being unable to run there.
+  execa 10 and lint-staged 17 both require Node 22, and npm installed them
+  without complaint against an `engines` field of `>=20`; the break surfaced
+  only as `TEXT_ENCODINGS.union is not a function` from inside execa on the
+  oldest supported Node. Both are pinned to versions that honour the declared
+  floor, and `.npmrc` now sets `engine-strict=true` so a future mismatch fails
+  at install time instead of at runtime.
 - Tool names are now uniformly verb-first. `health_check` was the one noun-first
   name and is `check_health`; it was introduced in this release and never
   published, so nothing external depended on it. Tests now enforce both halves
