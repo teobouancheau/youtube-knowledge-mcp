@@ -33,7 +33,6 @@ describe('get-video-info tool', () => {
     const result = await getVideoInfoHandler({ video: 'test123' });
 
     expect(result.content).toHaveLength(1);
-    expect(result.content[0].type).toBe('text');
 
     const text = textOf(result);
     expect(text).toContain('Test Video');

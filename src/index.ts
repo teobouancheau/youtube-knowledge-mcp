@@ -25,6 +25,25 @@ import {
   downloadVideoHandler,
 } from './tools/download-video.js';
 import { healthCheckSchema, healthCheckHandler } from './tools/health-check.js';
+import { searchTranscriptSchema, searchTranscriptHandler } from './tools/search-transcript.js';
+import {
+  getTranscriptsSchema,
+  getTranscriptsHandler,
+  digestPlaylistSchema,
+  digestPlaylistHandler,
+} from './tools/batch.js';
+import {
+  getLibraryItemSchema,
+  getLibraryItemHandler,
+  searchLibrarySchema,
+  searchLibraryHandler,
+  deleteLibraryItemSchema,
+  deleteLibraryItemHandler,
+  updateLibraryTagsSchema,
+  updateLibraryTagsHandler,
+  rebuildLibraryIndexSchema,
+  rebuildLibraryIndexHandler,
+} from './tools/library.js';
 import { runWithRequestContext } from './utils/context.js';
 import { toToolError } from './utils/errors.js';
 import { formatPreflightReport, runPreflight } from './utils/preflight.js';
@@ -261,6 +280,57 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
   );
 
   server.registerTool(
+    'search_transcript',
+    {
+      title: 'Search Inside a Transcript',
+      description:
+        'Find a phrase or pattern inside a video transcript and return each match with its timestamp and a link that opens the video at that moment. Use this instead of reading a whole transcript when you need to locate or cite a specific moment.',
+      inputSchema: searchTranscriptSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    guarded(searchTranscriptHandler)
+  );
+
+  server.registerTool(
+    'get_transcripts',
+    {
+      title: 'Get Transcripts for Several Videos',
+      description:
+        'Fetch transcripts for up to 25 videos in one call, each capped so the batch cannot flood the context. Videos that have no captions are reported individually rather than failing the whole call.',
+      inputSchema: getTranscriptsSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    guarded(getTranscriptsHandler)
+  );
+
+  server.registerTool(
+    'digest_playlist',
+    {
+      title: 'Digest a Playlist or Channel',
+      description:
+        'Summarize a playlist or channel in one call: per-video metadata, chapter markers, and optionally transcript word counts. Use this to survey a body of content before deciding what to read in full.',
+      inputSchema: digestPlaylistSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: true,
+      },
+    },
+    guarded(digestPlaylistHandler)
+  );
+
+  server.registerTool(
     'health_check',
     {
       title: 'Check Server Health',
@@ -312,6 +382,91 @@ function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
         },
       },
       guarded(listLibraryHandler)
+    );
+
+    server.registerTool(
+      'get_library_item',
+      {
+        title: 'Read a Saved Library Item',
+        description:
+          'Read back a summary or skill note previously saved with save_to_library. Returns the markdown content plus the saved metadata.',
+        inputSchema: getLibraryItemSchema,
+        annotations: {
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      guarded(getLibraryItemHandler)
+    );
+
+    server.registerTool(
+      'search_library',
+      {
+        title: 'Search the Knowledge Library',
+        description:
+          'Full-text search across every saved summary and skill note, ranked by relevance. Returns matching excerpts with the video IDs needed to read the full note.',
+        inputSchema: searchLibrarySchema,
+        annotations: {
+          readOnlyHint: true,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      guarded(searchLibraryHandler)
+    );
+
+    server.registerTool(
+      'update_library_tags',
+      {
+        title: 'Update Library Tags',
+        description:
+          'Add, remove or replace the tags on a saved library item. Tags are how list_library filters, so this is the way to reorganize a growing library.',
+        inputSchema: updateLibraryTagsSchema,
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      guarded(updateLibraryTagsHandler)
+    );
+
+    server.registerTool(
+      'delete_library_item',
+      {
+        title: 'Delete a Library Item',
+        description:
+          'Permanently delete a saved summary or skill note, or the entire library entry for a video. This removes files from disk and cannot be undone.',
+        inputSchema: deleteLibraryItemSchema,
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      guarded(deleteLibraryItemHandler)
+    );
+
+    server.registerTool(
+      'rebuild_library_index',
+      {
+        title: 'Rebuild the Library Search Index',
+        description:
+          'Rebuild the full-text search index from the notes on disk. Use this if search_library results look stale or incomplete, for example after editing files by hand.',
+        inputSchema: rebuildLibraryIndexSchema,
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: false,
+          idempotentHint: true,
+          openWorldHint: false,
+        },
+      },
+      guarded(rebuildLibraryIndexHandler)
     );
 
     server.registerTool(

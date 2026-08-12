@@ -11,9 +11,8 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 export function textOf(result: CallToolResult, index = 0): string {
   const block = result.content[index];
   expect(block, `expected a content block at index ${index}`).toBeDefined();
-  expect(block.type).toBe('text');
-  if (block.type !== 'text') {
-    throw new Error(`content[${index}] is "${block.type}", expected "text"`);
+  if (block?.type !== 'text') {
+    throw new Error(`content[${index}] is "${block?.type ?? 'missing'}", expected "text"`);
   }
   return block.text;
 }
