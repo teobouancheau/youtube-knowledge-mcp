@@ -763,12 +763,14 @@ export function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
       {
         title: 'Build a Channel Brain',
         description:
-          "Read a channel's videos into a searchable corpus of timestamped passages, so you can later ask what its creator has said about anything. Long-running: several hundred videos is several hundred fetches. Safe to interrupt and call again — it continues where it stopped, and on a finished brain it picks up new uploads. Ask it questions with ask_brain.",
+          "Read a channel's videos into a searchable corpus of timestamped passages, so you can later ask what its creator has said about anything. Long-running: several hundred videos is several hundred fetches. Safe to interrupt and call again — it continues where it stopped, and on a finished brain it picks up new uploads. The since and minDurationSeconds filters describe the brain, not just the call: narrowing one discards the passages of the videos it excludes, and widening it reads them again. Ask it questions with ask_brain.",
         inputSchema: buildBrainSchema,
         outputSchema: buildBrainOutputSchema,
         annotations: {
           readOnlyHint: false,
-          destructiveHint: false,
+          // A plain build only adds, but narrowing a filter drops the passages
+          // of videos it excludes, and a client should be able to ask first.
+          destructiveHint: true,
           // Re-running converges on the same brain rather than duplicating
           // anything: that is the same code path as resuming.
           idempotentHint: true,

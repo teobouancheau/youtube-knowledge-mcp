@@ -17,8 +17,10 @@ export const brainVideoStateSchema = z.object({
   uploadDate: z.string().describe('YYYY-MM-DD, or empty when YouTube did not report one'),
   durationSeconds: z.number(),
   state: z
-    .enum(['pending', 'indexed', 'no-captions', 'failed'])
-    .describe('pending and failed videos are retried by the next build_brain call'),
+    .enum(['pending', 'indexed', 'no-captions', 'failed', 'excluded'])
+    .describe(
+      'pending and failed videos are retried by the next build_brain call; excluded ones were ruled out by since or minDurationSeconds and return if those change'
+    ),
   chunkCount: z.number().int(),
   wordCount: z.number().int(),
   error: z.string().optional().describe('Failure code, when state is failed'),
@@ -61,7 +63,8 @@ export const brainMonthlyUploadsSchema = z.object({
  * belong in the profile, which a model writes from quotes it can cite.
  */
 export const brainStatsSchema = z.object({
-  videoCount: z.number().int(),
+  videoCount: z.number().int().describe('Videos in the brain; excluded ones are not among them'),
+  excludedCount: z.number().int().describe('Videos ruled out by since or minDurationSeconds'),
   indexedCount: z.number().int(),
   noCaptionsCount: z.number().int(),
   failedCount: z.number().int(),

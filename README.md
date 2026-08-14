@@ -276,23 +276,34 @@ keyframe-aligned cut. All of these require ffmpeg.
 
 ### Channel brains — local only
 
-| Tool                 | Key parameters                                                    | Returns                                         |
-| -------------------- | ----------------------------------------------------------------- | ----------------------------------------------- |
-| `build_brain`        | `channel`, `maxVideos`, `language`, `since`, `minDurationSeconds` | What was read, what could not be, and the stats |
-| `ask_brain`          | `channel`, `query`, `limit`                                       | Passages with timestamps and `?t=` links        |
-| `list_brains`        | —                                                                 | Every brain built locally                       |
-| `get_brain_info`     | `channel`, `includeVideos`                                        | Coverage, statistics and repeated phrases       |
-| `save_brain_profile` | `channel`, `content`                                              | Path to the saved profile                       |
-| `delete_brain`       | `channel`                                                         | What was removed                                |
+| Tool                 | Key parameters                                                    | Returns                                          |
+| -------------------- | ----------------------------------------------------------------- | ------------------------------------------------ |
+| `build_brain`        | `channel`, `maxVideos`, `language`, `since`, `minDurationSeconds` | What was read, what was ruled out, and the stats |
+| `ask_brain`          | `channel`, `query`, `limit`                                       | Passages with timestamps and `?t=` links         |
+| `list_brains`        | —                                                                 | Every brain built locally                        |
+| `get_brain_info`     | `channel`, `includeVideos`                                        | Coverage, statistics and repeated phrases        |
+| `save_brain_profile` | `channel`, `content`                                              | Path to the saved profile                        |
+| `delete_brain`       | `channel`                                                         | What was removed                                 |
 
 `build_brain` is the only one that touches the network. The rest resolve a
 channel from what is already on disk, so they work offline and cost nothing to
 call.
 
 A brain holds one caption language; pass `language` to read another, and build a
-separate brain per language. `build_brain` also repairs: if the passage file is
-lost or truncated, the videos it can no longer account for are read again on the
-next call rather than being skipped forever as already done.
+separate brain per language.
+
+`since` and `minDurationSeconds` describe the brain, not just the call that
+passed them. They are re-applied every time, so narrowing one drops the passages
+of the videos it excludes and widening it reads them back — which is why
+`build_brain` is annotated as destructive. Whether a video qualifies is decided
+from the date and length already recorded, so changing your mind costs no
+requests until there is something new to fetch. Those values come from each
+video's own metadata, never from a guess: a flat channel listing does not carry
+a publication date at all.
+
+`build_brain` also repairs. If the passage file is lost or truncated, the videos
+it can no longer account for are read again on the next call rather than being
+skipped forever as already done.
 
 ## Prompts
 

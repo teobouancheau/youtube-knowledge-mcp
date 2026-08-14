@@ -32,6 +32,13 @@ the refresh path — on a finished brain it reads only what is new — so there 
 separate refresh tool. A video with no captions, or one behind a members-only
 wall, costs itself and nothing else.
 
+Filters are re-evaluated rather than remembered, and every value they test is
+one YouTube reported for that video. A channel listing is fetched flat — which
+is what makes enumerating a thousand videos one request rather than a thousand —
+and flat entries carry no publication date, so dates and lengths come from each
+video's own metadata, in the same request that fetches its chapters. A video the
+filters rule out costs that one request and no transcript.
+
 The server has no language model and does not pretend otherwise. It counts what
 can be counted — coverage, upload rhythm, speaking rate, phrases repeated across
 videos — and leaves the reading of a creator to `save_brain_profile`, which

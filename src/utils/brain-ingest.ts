@@ -3,7 +3,7 @@ import { chunkTranscript } from './brain-chunks.js';
 import { throwIfAborted } from './context.js';
 import { asYouTubeError } from './errors.js';
 import { countWords } from './transcript.js';
-import { getChapters, getTranscript, getVideoInfo, type VideoListItem } from './youtube.js';
+import { getTranscript, getVideoDetails, type VideoListItem } from './youtube.js';
 
 /**
  * Reading one video into passages.
@@ -13,6 +13,10 @@ import { getChapters, getTranscript, getVideoInfo, type VideoListItem } from './
  * captioned is still a channel worth having a brain for; which videos those
  * were belongs in the manifest, not in an exception that loses the other two
  * hundred.
+ *
+ * Metadata is read before the transcript, in that order deliberately: it is the
+ * cheaper request, it carries the date and length the filters need, and a video
+ * ruled out by them then costs one request instead of two.
  */
 
 /**
@@ -26,6 +30,17 @@ export const MAX_CHUNKS_PER_BRAIN = 100_000;
 export const TOO_LARGE = 'TOO_LARGE';
 export const BRAIN_FULL = 'BRAIN_FULL';
 
+export interface VideoFilters {
+  /** Ignore anything published before this date (YYYY-MM-DD). */
+  since?: string;
+  /** Ignore anything shorter, to leave out shorts and clips. */
+  minDurationSeconds: number;
+}
+
+export interface IngestOptions extends VideoFilters {
+  language: string;
+}
+
 export interface IngestResult {
   state: BrainVideoState;
   chunks: BrainChunk[];
@@ -34,28 +49,37 @@ export interface IngestResult {
 export async function ingestVideo(
   video: VideoListItem,
   chunksSoFar: number,
-  language: string
+  options: IngestOptions
 ): Promise<IngestResult> {
-  const base = { ...pendingState(video), uploadDate: await uploadDateOf(video) };
+  const listed = pendingState(video);
 
   try {
-    const transcript = await getTranscript(video.id, { language });
-    // Most videos have no chapters, which is not a failure worth reporting.
-    const chapters = await getChapters(video.id).catch(() => []);
+    // The listing is flat, which is what makes enumerating a thousand videos one
+    // request rather than a thousand — and flat entries carry no date. These are
+    // the real values, and the chapters come back in the same request.
+    const details = await getVideoDetails(video.id);
+    const known: BrainVideoState = {
+      ...listed,
+      uploadDate: details.uploadDate,
+      durationSeconds: details.durationSeconds,
+    };
 
+    if (isExcluded(known, options) === true) return { state: excluded(known), chunks: [] };
+
+    const transcript = await getTranscript(video.id, { language: options.language });
     const chunks = chunkTranscript({
       videoId: video.id,
       title: video.title,
       segments: transcript.segments,
-      chapters,
+      chapters: details.chapters,
     });
 
-    if (chunks.length > MAX_CHUNKS_PER_VIDEO) return refused(base, TOO_LARGE);
-    if (chunksSoFar + chunks.length > MAX_CHUNKS_PER_BRAIN) return refused(base, BRAIN_FULL);
+    if (chunks.length > MAX_CHUNKS_PER_VIDEO) return refused(known, TOO_LARGE);
+    if (chunksSoFar + chunks.length > MAX_CHUNKS_PER_BRAIN) return refused(known, BRAIN_FULL);
 
     return {
       state: {
-        ...base,
+        ...known,
         state: 'indexed',
         chunkCount: chunks.length,
         wordCount: chunks.reduce((total, chunk) => total + countWords(chunk.text), 0),
@@ -73,33 +97,38 @@ export async function ingestVideo(
     return {
       state:
         failure.code === 'NO_CAPTIONS'
-          ? { ...base, state: 'no-captions' }
-          : { ...base, state: 'failed', error: failure.code },
+          ? { ...listed, state: 'no-captions' }
+          : { ...listed, state: 'failed', error: failure.code },
       chunks: [],
     };
   }
 }
 
 /**
- * When the video was published.
+ * Whether the filters rule this video out, or `undefined` when its recorded
+ * state cannot say.
  *
- * A channel listing is fetched flat, which is what makes listing a thousand
- * videos one request rather than a thousand — and flat entries carry no upload
- * date. Asking for the video's own metadata is the only way to get one, so it
- * happens here, once per video actually read, and only when the listing did not
- * already supply it.
- *
- * Best effort: a channel whose dates cannot be read still gets a brain, and the
- * statistics say plainly that no dates were reported rather than inventing any.
+ * A build asks this of the manifest before deciding what to read, which is what
+ * lets a changed filter take effect without re-fetching anything: once a video
+ * has been looked at, its real date and length are on disk and the question is
+ * answerable from there. `undefined` is the honest answer for a video only ever
+ * seen in a flat listing — not a licence to assume it qualifies.
  */
-export async function uploadDateOf(video: VideoListItem): Promise<string> {
-  if (video.uploadDate !== '') return video.uploadDate;
+export function isExcluded(state: BrainVideoState, filters: VideoFilters): boolean | undefined {
+  const { since, minDurationSeconds } = filters;
+  let undecided = false;
 
-  try {
-    return (await getVideoInfo(video.id)).uploadDate;
-  } catch {
-    return '';
+  if (minDurationSeconds > 0) {
+    if (state.durationSeconds <= 0) undecided = true;
+    else if (state.durationSeconds < minDurationSeconds) return true;
   }
+
+  if (since !== undefined) {
+    if (state.uploadDate === '') undecided = true;
+    else if (state.uploadDate < since) return true;
+  }
+
+  return undecided ? undefined : false;
 }
 
 export function pendingState(video: VideoListItem): BrainVideoState {
@@ -115,6 +144,10 @@ export function pendingState(video: VideoListItem): BrainVideoState {
   };
 }
 
-function refused(base: BrainVideoState, reason: string): IngestResult {
-  return { state: { ...base, state: 'failed', error: reason }, chunks: [] };
+export function excluded(state: BrainVideoState): BrainVideoState {
+  return { ...state, state: 'excluded', chunkCount: 0, wordCount: 0 };
+}
+
+function refused(state: BrainVideoState, reason: string): IngestResult {
+  return { state: { ...state, state: 'failed', error: reason }, chunks: [] };
 }

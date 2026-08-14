@@ -14,7 +14,12 @@ import { findRecurringPhrases } from './brain-phrases.js';
  * writes from passages it can cite.
  */
 
-export function computeStats(videos: BrainVideoState[], chunks: BrainChunk[]): BrainStats {
+export function computeStats(all: BrainVideoState[], chunks: BrainChunk[]): BrainStats {
+  // A video the filters ruled out is not part of this brain, so it does not get
+  // to move the brain's numbers — its date must not stretch the upload range,
+  // and its length must not enter the speaking rate. It is reported as its own
+  // count instead, because "we chose not to read 40 videos" is worth knowing.
+  const videos = all.filter((video) => video.state !== 'excluded');
   const uploadDates = videos
     .map((video) => video.uploadDate)
     .filter(Boolean)
@@ -22,6 +27,7 @@ export function computeStats(videos: BrainVideoState[], chunks: BrainChunk[]): B
 
   return {
     videoCount: videos.length,
+    excludedCount: all.length - videos.length,
     indexedCount: countState(videos, 'indexed'),
     noCaptionsCount: countState(videos, 'no-captions'),
     failedCount: countState(videos, 'failed'),

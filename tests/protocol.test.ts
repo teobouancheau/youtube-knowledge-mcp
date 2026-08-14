@@ -120,6 +120,7 @@ describe('tool manifest', () => {
     // Overwriting a saved note and replacing a tag set both discard content the
     // user cannot recover, so they belong here alongside the outright delete.
     expect(destructive).toEqual([
+      'build_brain',
       'delete_brain',
       'delete_library_item',
       'save_brain_profile',
@@ -422,5 +423,32 @@ describe('error reporting', () => {
     const content = result.content as { type: string; text: string }[];
     expect(content[0]?.text).toMatch(/^\[[A-Z_]+\]/);
     expect(content[0]?.text).not.toContain('    at ');
+  });
+});
+
+describe('documented surface', () => {
+  /**
+   * The README states how many tools there are and how they split across the
+   * two transports. Those numbers are the first thing a reader trusts and the
+   * easiest thing to forget, so they are checked against the server rather than
+   * maintained by hand.
+   */
+  it('counts tools the way the README says it does', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const readme = await readFile(new URL('../README.md', import.meta.url), 'utf-8');
+
+    const claimed =
+      /(\d+) tools\. The (\d+) read-only ones work over both transports; the (\d+)/.exec(readme);
+
+    expect(
+      claimed,
+      'the README no longer states its tool counts in the expected form'
+    ).not.toBeNull();
+
+    const [total, remote, local] = [claimed?.[1], claimed?.[2], claimed?.[3]].map(Number);
+
+    expect(total, 'total tools').toBe(stdioTools.length);
+    expect(remote, 'tools available over HTTP').toBe(httpTools.length);
+    expect(local, 'tools registered only locally').toBe(stdioTools.length - httpTools.length);
   });
 });
