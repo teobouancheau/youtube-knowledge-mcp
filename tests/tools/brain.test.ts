@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { structuredOf, textOf } from '../helpers.js';
 import { YouTubeError } from '../../src/utils/errors.js';
 import { segmentsToText, type TranscriptSegment } from '../../src/utils/transcript.js';
-import type { TranscriptResult, VideoListItem } from '../../src/utils/youtube.js';
+import type { TranscriptResult, VideoInfo, VideoListItem } from '../../src/utils/youtube.js';
 
 /**
  * The brain tools end to end, against a real temporary filesystem and a stubbed
@@ -22,6 +22,7 @@ vi.mock('../../src/utils/youtube.js', () => ({
   listVideos: vi.fn(),
   getTranscript: vi.fn(),
   getChapters: vi.fn(),
+  getVideoInfo: vi.fn(),
 }));
 
 vi.mock('node:os', async (importOriginal) => {
@@ -62,6 +63,24 @@ function video(
 
 function segments(text: string, start = 0): TranscriptSegment[] {
   return [{ start, end: start + 30, text }];
+}
+
+function videoInfo(id: string, uploadDate: string): VideoInfo {
+  return {
+    id,
+    title: id,
+    channel: CHANNEL.name,
+    duration: 600,
+    durationFormatted: '10:00',
+    uploadDate,
+    description: '',
+    tags: [],
+    url: `https://www.youtube.com/watch?v=${id}`,
+    thumbnailUrl: '',
+    viewCount: 1,
+    likeCount: 1,
+    commentCount: 1,
+  };
 }
 
 function transcript(videoId: string, segments: TranscriptSegment[]): TranscriptResult {
@@ -117,6 +136,7 @@ beforeEach(async () => {
   const youtube = await stubYouTube();
   youtube.getChannelInfo.mockResolvedValue(CHANNEL);
   youtube.getChapters.mockResolvedValue([]);
+  youtube.getVideoInfo.mockRejectedValue(new YouTubeError('NOT_FOUND', 'no metadata'));
 });
 
 afterEach(async () => {
@@ -224,6 +244,96 @@ describe('build_brain', () => {
     expect(
       structuredOf(await ask({ channel: '@Fireship', query: 'caching', limit: 25 })).passages
     ).toHaveLength(count);
+  });
+
+  it('reads the uploads tab, not every tab the channel has', async () => {
+    const youtube = await stubYouTube();
+    youtube.listVideos.mockResolvedValue([video('a', 'One'), video('b', 'Two')]);
+    youtube.getTranscript.mockImplementation((id: string) =>
+      Promise.resolve(transcript(id, segments(`words for ${id}`)))
+    );
+
+    const { build } = await tools();
+    await build({ channel: '@Fireship', ...DEFAULTS });
+
+    expect(youtube.listVideos).toHaveBeenCalledWith(`${CHANNEL.channelUrl}/videos`, 100);
+  });
+
+  it('never considers more videos than it was asked for', async () => {
+    const youtube = await stubYouTube();
+    // A bare channel URL expands per tab, so yt-dlp can return more than the
+    // limit however politely it was asked.
+    youtube.listVideos.mockResolvedValue(
+      Array.from({ length: 8 }, (_unused, index) => video(`v${index}`, `Episode ${index}`))
+    );
+    youtube.getTranscript.mockImplementation((id: string) =>
+      Promise.resolve(transcript(id, segments(`words for ${id}`)))
+    );
+
+    const { build } = await tools();
+    const structured = structuredOf(
+      await build({ channel: '@Fireship', maxVideos: 2, minDurationSeconds: 0 })
+    );
+
+    expect(structured).toMatchObject({ considered: 2, processed: 2 });
+  });
+
+  it('falls back to the channel itself when there is no uploads tab', async () => {
+    const youtube = await stubYouTube();
+    youtube.listVideos.mockImplementation((url: string) =>
+      url.endsWith('/videos')
+        ? Promise.reject(new YouTubeError('NOT_FOUND', 'no such tab'))
+        : Promise.resolve([video('a', 'One')])
+    );
+    youtube.getTranscript.mockResolvedValue(transcript('a', segments('words')));
+
+    const { build } = await tools();
+
+    expect(structuredOf(await build({ channel: '@Fireship', ...DEFAULTS }))).toMatchObject({
+      considered: 1,
+      processed: 1,
+    });
+  });
+
+  it('records the upload date the flat listing does not carry', async () => {
+    const youtube = await stubYouTube();
+    youtube.listVideos.mockResolvedValue([video('a', 'One', 600, '')]);
+    youtube.getTranscript.mockResolvedValue(transcript('a', segments('words')));
+    youtube.getVideoInfo.mockResolvedValue(videoInfo('a', '2025-04-09'));
+
+    const { build, info } = await tools();
+    await build({ channel: '@Fireship', ...DEFAULTS });
+
+    expect(textOf(await info({ channel: '@Fireship', includeVideos: false }))).toContain(
+      'Uploads from 2025-04-09'
+    );
+  });
+
+  it('resolves real dates before deciding what to read', async () => {
+    const youtube = await stubYouTube();
+    youtube.listVideos.mockResolvedValue([
+      video('old', 'Old', 600, ''),
+      video('new', 'New', 600, ''),
+    ]);
+    youtube.getTranscript.mockImplementation((id: string) =>
+      Promise.resolve(transcript(id, segments(`words for ${id}`)))
+    );
+    youtube.getVideoInfo.mockImplementation((id: string) =>
+      Promise.resolve(videoInfo(id, id === 'old' ? '2019-01-01' : '2025-04-09'))
+    );
+
+    const { build } = await tools();
+    const structured = structuredOf(
+      await build({
+        channel: '@Fireship',
+        maxVideos: 100,
+        since: '2024-01-01',
+        minDurationSeconds: 0,
+      })
+    );
+
+    expect(structured).toMatchObject({ considered: 1, processed: 1 });
+    expect(structured.stats).toMatchObject({ firstUpload: '2025-04-09' });
   });
 
   it('applies the duration and date filters', async () => {

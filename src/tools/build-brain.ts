@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { brainStatsSchema, type BrainStats } from '../brain-schemas.js';
-import { buildBrain } from '../utils/brain-build.js';
+import { buildBrain, datedVideos } from '../utils/brain-build.js';
 import { withBuildLock } from '../utils/brain-lock.js';
 import { readManifest } from '../utils/brain-storage.js';
 import { toolResult } from '../utils/format.js';
@@ -68,29 +68,51 @@ export async function buildBrainHandler({
   const info = await getChannelInfo(channel);
   assertChannelId(info.channelId);
 
-  const listed = await listVideos(info.channelUrl, maxVideos);
-  const videos = listed.filter((video) => matches(video, since, minDurationSeconds));
+  const { considered, ...result } = await withBuildLock(info.channelId, async () => {
+    const existing = await readManifest(info.channelId);
+    const listed = await listUploads(info.channelUrl, maxVideos);
+    const dated = since === undefined ? listed : await datedVideos(listed, existing);
+    const videos = dated.filter((video) => matches(video, since, minDurationSeconds));
 
-  const result = await withBuildLock(info.channelId, async () =>
-    buildBrain({
-      channel: info,
-      videos,
-      existing: await readManifest(info.channelId),
-    })
-  );
+    return {
+      considered: videos.length,
+      ...(await buildBrain({ channel: info, videos, existing })),
+    };
+  });
 
-  return toolResult(render(info.name, videos.length, result), {
+  return toolResult(render(info.name, considered, result), {
     channelId: info.channelId,
     name: info.name,
     handle: info.handle,
     channelUrl: info.channelUrl,
-    considered: videos.length,
+    considered,
     processed: result.processed,
     skipped: result.skipped,
     stoppedEarly: result.stoppedEarly,
     ...(result.stopReason === undefined ? {} : { stopReason: result.stopReason }),
     stats: result.manifest.stats,
   });
+}
+
+/**
+ * The channel's uploads, newest first.
+ *
+ * Deliberately the uploads tab rather than the channel itself. A bare channel
+ * URL expands to every tab it has — shorts, live, releases — so `--playlist-end`
+ * applies per tab and asking for two videos can return eight, from four
+ * different places. The slice is belt and braces for a channel whose tabs
+ * yt-dlp expands anyway.
+ */
+async function listUploads(channelUrl: string, maxVideos: number): Promise<VideoListItem[]> {
+  const uploads = `${channelUrl.replace(/\/+$/, '')}/videos`;
+
+  // A channel with no uploads tab is unusual rather than impossible; falling
+  // back costs one extra listing and keeps the brain buildable.
+  const listed = await listVideos(uploads, maxVideos).catch(() =>
+    listVideos(channelUrl, maxVideos)
+  );
+
+  return listed.slice(0, maxVideos);
 }
 
 /**

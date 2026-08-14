@@ -1,6 +1,6 @@
 import type { BrainChunk, BrainManifest, BrainVideoState } from '../brain-schemas.js';
 import { readChunks, writeChunks } from './brain-index.js';
-import { ingestVideo, pendingState } from './brain-ingest.js';
+import { ingestVideo, pendingState, uploadDateOf } from './brain-ingest.js';
 import { computeStats } from './brain-stats.js';
 import { BRAIN_MANIFEST_VERSION, writeManifest } from './brain-storage.js';
 import { reportProgress, throwIfAborted } from './context.js';
@@ -96,6 +96,35 @@ export async function buildBrain(options: BuildBrainOptions): Promise<BuildBrain
     stoppedEarly: stopReason !== undefined,
     ...(stopReason === undefined ? {} : { stopReason }),
   };
+}
+
+/**
+ * The same videos, with the dates a flat listing does not carry.
+ *
+ * Only worth doing when a caller asked to filter by date, because it costs one
+ * metadata request per candidate. Dates already recorded by an earlier build
+ * are reused, so a channel is not re-dated every time.
+ */
+export async function datedVideos(
+  videos: VideoListItem[],
+  existing: BrainManifest | undefined
+): Promise<VideoListItem[]> {
+  const dated: VideoListItem[] = [];
+
+  await inBatches(videos, BUILD_CONCURRENCY, async (video) => {
+    throwIfAborted();
+    const known = existing?.videos[video.id]?.uploadDate;
+
+    dated.push({
+      ...video,
+      uploadDate: known !== undefined && known !== '' ? known : await uploadDateOf(video),
+    });
+  });
+
+  // `inBatches` finishes a batch before starting the next, but within one batch
+  // completion order is not arrival order.
+  const order = new Map(videos.map((video, index) => [video.id, index]));
+  return dated.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
 }
 
 /** Anything not already read: never attempted, or attempted and failed. */
