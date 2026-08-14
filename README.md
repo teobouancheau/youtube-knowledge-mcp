@@ -41,9 +41,9 @@ Supports both **local** (stdio) and **remote** (Streamable HTTP) transports.
 
 **Build a brain for a channel** (local mode)
 
-- **Read a whole channel** into a searchable corpus of timestamped passages,
-  resumable and safe to interrupt — a second run continues where it stopped and
-  picks up new uploads
+- **Read a whole channel** into a searchable corpus of timestamped passages, in
+  any caption language, resumable and safe to interrupt — a second run continues
+  where it stopped and picks up new uploads
 - **Ask what a creator has said** about anything, across every video, and get
   back the moments themselves with links that open the video there
 - **Measure the channel**: how much was readable, its upload rhythm, its
@@ -276,18 +276,23 @@ keyframe-aligned cut. All of these require ffmpeg.
 
 ### Channel brains — local only
 
-| Tool                 | Key parameters                                        | Returns                                         |
-| -------------------- | ----------------------------------------------------- | ----------------------------------------------- |
-| `build_brain`        | `channel`, `maxVideos`, `since`, `minDurationSeconds` | What was read, what could not be, and the stats |
-| `ask_brain`          | `channel`, `query`, `limit`                           | Passages with timestamps and `?t=` links        |
-| `list_brains`        | —                                                     | Every brain built locally                       |
-| `get_brain_info`     | `channel`, `includeVideos`                            | Coverage, statistics and repeated phrases       |
-| `save_brain_profile` | `channel`, `content`                                  | Path to the saved profile                       |
-| `delete_brain`       | `channel`                                             | What was removed                                |
+| Tool                 | Key parameters                                                    | Returns                                         |
+| -------------------- | ----------------------------------------------------------------- | ----------------------------------------------- |
+| `build_brain`        | `channel`, `maxVideos`, `language`, `since`, `minDurationSeconds` | What was read, what could not be, and the stats |
+| `ask_brain`          | `channel`, `query`, `limit`                                       | Passages with timestamps and `?t=` links        |
+| `list_brains`        | —                                                                 | Every brain built locally                       |
+| `get_brain_info`     | `channel`, `includeVideos`                                        | Coverage, statistics and repeated phrases       |
+| `save_brain_profile` | `channel`, `content`                                              | Path to the saved profile                       |
+| `delete_brain`       | `channel`                                                         | What was removed                                |
 
 `build_brain` is the only one that touches the network. The rest resolve a
 channel from what is already on disk, so they work offline and cost nothing to
 call.
+
+A brain holds one caption language; pass `language` to read another, and build a
+separate brain per language. `build_brain` also repairs: if the passage file is
+lost or truncated, the videos it can no longer account for are read again on the
+next call rather than being skipped forever as already done.
 
 ## Prompts
 

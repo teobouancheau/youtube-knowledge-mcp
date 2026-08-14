@@ -83,6 +83,11 @@ export type BrainStats = z.infer<typeof brainStatsSchema>;
 export const brainManifestSchema = z.object({
   version: z.number().int(),
   channel: channelInfoSchema,
+  /**
+   * A brain is built from one caption language. Defaulted rather than required
+   * so a manifest written before this existed still reads back.
+   */
+  language: z.string().default('en'),
   createdAt: z.string(),
   updatedAt: z.string(),
   videos: recordOfValid(brainVideoStateSchema),
@@ -111,6 +116,7 @@ export const brainSummarySchema = z.object({
   name: z.string(),
   handle: z.string(),
   channelUrl: z.string(),
+  language: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
   hasProfile: z.boolean(),

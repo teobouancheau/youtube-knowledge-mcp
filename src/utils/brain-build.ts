@@ -33,6 +33,8 @@ export interface BuildBrainOptions {
   channel: ChannelInfo;
   videos: VideoListItem[];
   existing: BrainManifest | undefined;
+  /** Caption language to read. A brain is built from one language at a time. */
+  language: string;
 }
 
 export interface BuildBrainResult {
@@ -45,20 +47,16 @@ export interface BuildBrainResult {
 }
 
 export async function buildBrain(options: BuildBrainOptions): Promise<BuildBrainResult> {
-  const { channel, videos, existing } = options;
+  const { channel, videos, existing, language } = options;
   const createdAt = existing?.createdAt ?? new Date().toISOString();
 
-  const states = new Map<string, BrainVideoState>(Object.entries(existing?.videos ?? {}));
-  for (const video of videos) {
-    if (!states.has(video.id)) states.set(video.id, pendingState(video));
-  }
-
   const chunksByVideo = groupByVideo(await readChunks(channel.channelId));
+  const states = reconciled(existing, videos, chunksByVideo);
   const outstanding = videos.filter((video) => isOutstanding(states.get(video.id)));
 
   const save = async (): Promise<BrainManifest> => {
     const passages = flatten(states, chunksByVideo);
-    const manifest = toManifest(channel, states, passages, createdAt);
+    const manifest = toManifest(channel, states, passages, createdAt, language);
 
     await writeChunks(channel.channelId, passages);
     await writeManifest(manifest);
@@ -69,25 +67,33 @@ export async function buildBrain(options: BuildBrainOptions): Promise<BuildBrain
   let consecutiveThrottles = 0;
   let stopReason: string | undefined;
 
-  await inBatches(outstanding, BUILD_CONCURRENCY, async (video) => {
-    if (stopReason !== undefined) return;
-    throwIfAborted();
+  try {
+    await inBatches(outstanding, BUILD_CONCURRENCY, async (video) => {
+      if (stopReason !== undefined) return;
+      throwIfAborted();
 
-    const { state, chunks } = await ingestVideo(video, countChunks(chunksByVideo));
+      const { state, chunks } = await ingestVideo(video, countChunks(chunksByVideo), language);
 
-    states.set(video.id, state);
-    if (chunks.length > 0) chunksByVideo.set(video.id, chunks);
-    else chunksByVideo.delete(video.id);
+      states.set(video.id, state);
+      if (chunks.length > 0) chunksByVideo.set(video.id, chunks);
+      else chunksByVideo.delete(video.id);
 
-    processed++;
-    consecutiveThrottles = state.error === 'RATE_LIMITED' ? consecutiveThrottles + 1 : 0;
-    if (consecutiveThrottles >= RATE_LIMIT_TOLERANCE) {
-      stopReason = 'YouTube is rate limiting this client.';
-    }
+      processed++;
+      consecutiveThrottles = state.error === 'RATE_LIMITED' ? consecutiveThrottles + 1 : 0;
+      if (consecutiveThrottles >= RATE_LIMIT_TOLERANCE) {
+        stopReason = 'YouTube is rate limiting this client.';
+      }
 
-    reportProgress(processed, outstanding.length, `Read ${processed} of ${outstanding.length}`);
-    if (processed % CHECKPOINT_EVERY_VIDEOS === 0) await save();
-  });
+      reportProgress(processed, outstanding.length, `Read ${processed} of ${outstanding.length}`);
+      if (processed % CHECKPOINT_EVERY_VIDEOS === 0) await save();
+    });
+  } catch (error) {
+    // A cancelled build must not throw away the videos read since the last
+    // checkpoint. Saving first is what makes "interrupt it and call it again"
+    // true rather than nearly true.
+    await save();
+    throw error;
+  }
 
   return {
     manifest: await save(),
@@ -96,6 +102,39 @@ export async function buildBrain(options: BuildBrainOptions): Promise<BuildBrain
     stoppedEarly: stopReason !== undefined,
     ...(stopReason === undefined ? {} : { stopReason }),
   };
+}
+
+/**
+ * Per-video state, corrected against the passages actually on disk.
+ *
+ * The manifest and the passage file are two documents, and only one of them can
+ * be written first. A crash between the two, a half-restored backup, or a
+ * `chunks.json` truncated by a full disk all end the same way: the manifest says
+ * a video was read and there is nothing to show for it. Left alone that brain is
+ * stranded for good — every build skips the video as already done, while every
+ * search returns nothing.
+ *
+ * So the passages win. A video the corpus cannot account for goes back to
+ * pending and is read again on this very call, which is why there is no repair
+ * tool to remember to run.
+ */
+function reconciled(
+  existing: BrainManifest | undefined,
+  videos: VideoListItem[],
+  chunksByVideo: Map<string, BrainChunk[]>
+): Map<string, BrainVideoState> {
+  const states = new Map<string, BrainVideoState>();
+
+  for (const [videoId, state] of Object.entries(existing?.videos ?? {})) {
+    const lost = state.state === 'indexed' && (chunksByVideo.get(videoId)?.length ?? 0) === 0;
+    states.set(videoId, lost ? { ...state, state: 'pending', chunkCount: 0, wordCount: 0 } : state);
+  }
+
+  for (const video of videos) {
+    if (!states.has(video.id)) states.set(video.id, pendingState(video));
+  }
+
+  return states;
 }
 
 /**
@@ -160,11 +199,13 @@ function toManifest(
   channel: ChannelInfo,
   states: Map<string, BrainVideoState>,
   passages: BrainChunk[],
-  createdAt: string
+  createdAt: string,
+  language: string
 ): BrainManifest {
   return {
     version: BRAIN_MANIFEST_VERSION,
     channel,
+    language,
     createdAt,
     updatedAt: new Date().toISOString(),
     videos: Object.fromEntries(states),

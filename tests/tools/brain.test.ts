@@ -124,7 +124,7 @@ async function tools(): Promise<{
   };
 }
 
-const DEFAULTS = { maxVideos: 100, minDurationSeconds: 0 };
+const DEFAULTS = { maxVideos: 100, language: 'en', minDurationSeconds: 0 };
 
 let home: string;
 
@@ -272,7 +272,7 @@ describe('build_brain', () => {
 
     const { build } = await tools();
     const structured = structuredOf(
-      await build({ channel: '@Fireship', maxVideos: 2, minDurationSeconds: 0 })
+      await build({ channel: '@Fireship', ...DEFAULTS, maxVideos: 2 })
     );
 
     expect(structured).toMatchObject({ considered: 2, processed: 2 });
@@ -324,16 +324,83 @@ describe('build_brain', () => {
 
     const { build } = await tools();
     const structured = structuredOf(
-      await build({
-        channel: '@Fireship',
-        maxVideos: 100,
-        since: '2024-01-01',
-        minDurationSeconds: 0,
-      })
+      await build({ channel: '@Fireship', ...DEFAULTS, since: '2024-01-01' })
     );
 
     expect(structured).toMatchObject({ considered: 1, processed: 1 });
     expect(structured.stats).toMatchObject({ firstUpload: '2025-04-09' });
+  });
+
+  it('reads the caption language it was asked for', async () => {
+    const youtube = await stubYouTube();
+    youtube.listVideos.mockResolvedValue([video('a', 'Une vidéo')]);
+    youtube.getTranscript.mockResolvedValue(transcript('a', segments('bonjour tout le monde')));
+
+    const { build } = await tools();
+    const structured = structuredOf(
+      await build({ channel: '@Fireship', ...DEFAULTS, language: 'fr' })
+    );
+
+    expect(youtube.getTranscript).toHaveBeenCalledWith('a', { language: 'fr' });
+    expect(structured.language).toBe('fr');
+  });
+
+  it('refuses a language that is not a language', async () => {
+    const { build } = await tools();
+
+    await expect(
+      build({ channel: '@Fireship', ...DEFAULTS, language: '../../etc' })
+    ).rejects.toThrow(expect.objectContaining({ code: 'INVALID_INPUT' }));
+  });
+
+  it('re-reads a video whose passages have gone missing', async () => {
+    const youtube = await stubYouTube();
+    youtube.listVideos.mockResolvedValue([video('a', 'One')]);
+    youtube.getTranscript.mockResolvedValue(transcript('a', segments('the passage text')));
+
+    const { build, ask } = await tools();
+    await build({ channel: '@Fireship', ...DEFAULTS });
+
+    // A crash between writing the manifest and writing the passages, a
+    // half-restored backup, a truncated file: the manifest says the video was
+    // read and the corpus cannot account for it.
+    await rm(join(home, '.youtube-knowledge', 'brains', CHANNEL_ID, 'chunks.json'));
+
+    const repaired = structuredOf(await build({ channel: '@Fireship', ...DEFAULTS }));
+
+    expect(repaired).toMatchObject({ processed: 1, skipped: 0 });
+    expect(
+      structuredOf(await ask({ channel: '@Fireship', query: 'passage', limit: 8 })).passages
+    ).toHaveLength(1);
+  });
+
+  it('keeps what it read when the client cancels partway', async () => {
+    const youtube = await stubYouTube();
+    youtube.listVideos.mockResolvedValue(
+      Array.from({ length: 6 }, (_unused, index) => video(`v${index}`, `Episode ${index}`))
+    );
+
+    // Fewer than one checkpoint's worth, so anything kept was kept by the
+    // cancellation path rather than by a periodic save.
+    const controller = new AbortController();
+    let read = 0;
+    youtube.getTranscript.mockImplementation((id: string) => {
+      if (++read === 3) controller.abort();
+      return Promise.resolve(transcript(id, segments(`words for ${id}`)));
+    });
+
+    const { build, info } = await tools();
+    const { runWithRequestContext } = await import('../../src/utils/context.js');
+
+    await expect(
+      runWithRequestContext({ signal: controller.signal }, () =>
+        build({ channel: '@Fireship', ...DEFAULTS })
+      )
+    ).rejects.toThrow();
+
+    const stats = structuredOf(await info({ channel: '@Fireship', includeVideos: false })).stats;
+
+    expect(stats).toMatchObject({ indexedCount: 3 });
   });
 
   it('applies the duration and date filters', async () => {
@@ -351,7 +418,7 @@ describe('build_brain', () => {
     const structured = structuredOf(
       await build({
         channel: '@Fireship',
-        maxVideos: 100,
+        ...DEFAULTS,
         since: '2024-01-01',
         minDurationSeconds: 60,
       })

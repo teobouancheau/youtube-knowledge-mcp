@@ -51,6 +51,7 @@ function manifest(overrides: Partial<BrainManifest> = {}): BrainManifest {
       channelUrl: `https://www.youtube.com/channel/${CHANNEL_ID}`,
       description: '',
     },
+    language: 'en',
     createdAt: '2025-01-01T00:00:00.000Z',
     updatedAt: '2025-01-01T00:00:00.000Z',
     videos: {},

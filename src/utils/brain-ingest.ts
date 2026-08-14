@@ -33,12 +33,13 @@ export interface IngestResult {
 
 export async function ingestVideo(
   video: VideoListItem,
-  chunksSoFar: number
+  chunksSoFar: number,
+  language: string
 ): Promise<IngestResult> {
   const base = { ...pendingState(video), uploadDate: await uploadDateOf(video) };
 
   try {
-    const transcript = await getTranscript(video.id);
+    const transcript = await getTranscript(video.id, { language });
     // Most videos have no chapters, which is not a failure worth reporting.
     const chapters = await getChapters(video.id).catch(() => []);
 
