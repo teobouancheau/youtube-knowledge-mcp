@@ -279,7 +279,7 @@ keyframe-aligned cut. All of these require ffmpeg.
 | Tool                 | Key parameters                                                    | Returns                                          |
 | -------------------- | ----------------------------------------------------------------- | ------------------------------------------------ |
 | `build_brain`        | `channel`, `maxVideos`, `language`, `since`, `minDurationSeconds` | What was read, what was ruled out, and the stats |
-| `ask_brain`          | `channel`, `query`, `limit`                                       | Passages with timestamps and `?t=` links         |
+| `ask_brain`          | `channel`, `query`, `limit`, `offset`                             | Passages with timestamps and `?t=` links         |
 | `list_brains`        | —                                                                 | Every brain built locally                        |
 | `get_brain_info`     | `channel`, `includeVideos`                                        | Coverage, statistics and repeated phrases        |
 | `save_brain_profile` | `channel`, `content`                                              | Path to the saved profile                        |
