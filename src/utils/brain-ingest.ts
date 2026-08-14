@@ -22,6 +22,11 @@ import { getTranscript, getVideoDetails, type VideoListItem } from './youtube.js
 /**
  * A transcript that chunks past this is not a transcript. Recording the video
  * as failed keeps the brain buildable; letting it through does not.
+ *
+ * The brain-wide ceiling is what bounds memory, and it was chosen by measuring
+ * rather than by feel: a corpus of 100,000 passages is 81MB on disk, and the
+ * heaviest thing done to it — the phrase pass — peaked at 767MB of heap. Raising
+ * it means measuring again.
  */
 export const MAX_CHUNKS_PER_VIDEO = 2000;
 export const MAX_CHUNKS_PER_BRAIN = 100_000;

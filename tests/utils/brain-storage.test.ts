@@ -294,13 +294,14 @@ describe('passages', () => {
 
   it('is empty for a channel with no brain', async () => {
     expect(await readChunks(CHANNEL_ID)).toEqual([]);
-    expect(await searchBrain(CHANNEL_ID, 'radiator', 5)).toEqual([]);
+    expect((await searchBrain(CHANNEL_ID, 'radiator', 5)).passages).toEqual([]);
   });
 
   it('returns a passage with the link that opens it', async () => {
     await writeChunks(CHANNEL_ID, passages);
 
-    const [hit] = await searchBrain(CHANNEL_ID, 'radiator', 5);
+    const { passages: found } = await searchBrain(CHANNEL_ID, 'radiator', 5);
+    const [hit] = found;
 
     expect(hit).toMatchObject({
       videoId: 'vid1',
@@ -314,18 +315,18 @@ describe('passages', () => {
   it('ranks the passage that answers the query first', async () => {
     await writeChunks(CHANNEL_ID, passages);
 
-    const hits = await searchBrain(CHANNEL_ID, 'fan curves noise', 5);
+    const { passages: ranked } = await searchBrain(CHANNEL_ID, 'fan curves noise', 5);
 
-    expect(hits[0]?.startSeconds).toBe(30);
+    expect(ranked[0]?.startSeconds).toBe(30);
   });
 
   it('sees passages added after an earlier search', async () => {
     await writeChunks(CHANNEL_ID, passages.slice(0, 1));
-    expect(await searchBrain(CHANNEL_ID, 'fan curves', 5)).toEqual([]);
+    expect((await searchBrain(CHANNEL_ID, 'fan curves', 5)).passages).toEqual([]);
 
     await writeChunks(CHANNEL_ID, passages);
 
-    expect(await searchBrain(CHANNEL_ID, 'fan curves', 5)).toHaveLength(1);
+    expect((await searchBrain(CHANNEL_ID, 'fan curves', 5)).passages).toHaveLength(1);
   });
 });
 

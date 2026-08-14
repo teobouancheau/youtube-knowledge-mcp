@@ -249,7 +249,8 @@ describe('build_brain', () => {
 
     expect(structured.stats).toMatchObject({ indexedCount: count, chunkCount: count });
     expect(
-      structuredOf(await ask({ channel: '@Fireship', query: 'caching', limit: 25 })).passages
+      structuredOf(await ask({ channel: '@Fireship', query: 'caching', limit: 25, offset: 0 }))
+        .passages
     ).toHaveLength(count);
   });
 
@@ -372,8 +373,87 @@ describe('build_brain', () => {
 
     expect(repaired).toMatchObject({ processed: 1, skipped: 0 });
     expect(
-      structuredOf(await ask({ channel: '@Fireship', query: 'passage', limit: 8 })).passages
+      structuredOf(await ask({ channel: '@Fireship', query: 'passage', limit: 8, offset: 0 }))
+        .passages
     ).toHaveLength(1);
+  });
+
+  it('reads at the concurrency the yt-dlp limiter is set to', async () => {
+    const youtube = await stubYouTube();
+    const { concurrencyState } = await import('../../src/utils/ytdlp.js');
+    const { limit } = concurrencyState();
+
+    youtube.listVideos.mockResolvedValue(
+      Array.from({ length: limit * 3 }, (_unused, index) => video(`v${index}`, `Episode ${index}`))
+    );
+
+    let inFlight = 0;
+    let peak = 0;
+    youtube.getVideoDetails.mockImplementation(async () => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      inFlight--;
+      return details();
+    });
+    youtube.getTranscript.mockImplementation((id: string) =>
+      Promise.resolve(transcript(id, segments(`words for ${id}`)))
+    );
+
+    const { build } = await tools();
+    await build({ channel: '@Fireship', ...DEFAULTS });
+
+    expect(peak).toBe(limit);
+  });
+
+  it('leaves the phrase pass for a finished corpus', async () => {
+    const youtube = await stubYouTube();
+    youtube.listVideos.mockResolvedValue(
+      Array.from({ length: 12 }, (_unused, index) => video(`v${index}`, `Episode ${index}`))
+    );
+    youtube.getTranscript.mockImplementation((id: string) =>
+      Promise.resolve(transcript(id, segments(`and thats it for today from ${id}`)))
+    );
+
+    const { build, info } = await tools();
+    const finished = structuredOf(await build({ channel: '@Fireship', ...DEFAULTS }));
+
+    // The build checkpointed at ten videos and finished at twelve; only the
+    // finished corpus is measured for phrases.
+    expect((finished.stats as { recurringPhrases?: unknown[] }).recurringPhrases).toBeDefined();
+    expect(textOf(await info({ channel: '@Fireship', includeVideos: false }))).toContain(
+      'Phrases repeated across videos'
+    );
+  });
+
+  it('says phrases are unmeasured after an interrupted build, rather than none', async () => {
+    const youtube = await stubYouTube();
+    youtube.listVideos.mockResolvedValue(
+      Array.from({ length: 6 }, (_unused, index) => video(`v${index}`, `Episode ${index}`))
+    );
+
+    const controller = new AbortController();
+    let read = 0;
+    youtube.getTranscript.mockImplementation((id: string) => {
+      if (++read === 3) controller.abort();
+      return Promise.resolve(transcript(id, segments(`and thats it for today from ${id}`)));
+    });
+
+    const { build, info } = await tools();
+    const { runWithRequestContext } = await import('../../src/utils/context.js');
+
+    await expect(
+      runWithRequestContext({ signal: controller.signal }, () =>
+        build({ channel: '@Fireship', ...DEFAULTS })
+      )
+    ).rejects.toThrow();
+
+    const partial = await info({ channel: '@Fireship', includeVideos: false });
+
+    expect(
+      (structuredOf(partial).stats as { recurringPhrases?: unknown[] }).recurringPhrases
+    ).toBeUndefined();
+    expect(textOf(partial)).toContain('have not been measured yet');
   });
 
   it('keeps what it read when the client cancels partway', async () => {
@@ -443,8 +523,9 @@ describe('build_brain', () => {
     // And a search cannot reach what the filters exclude.
     const { ask } = await tools();
     expect(
-      structuredOf(await ask({ channel: '@Fireship', query: 'floppy disks modems', limit: 8 }))
-        .passages
+      structuredOf(
+        await ask({ channel: '@Fireship', query: 'floppy disks modems', limit: 8, offset: 0 })
+      ).passages
     ).toEqual([]);
 
     // Widening: it comes back.
@@ -455,8 +536,9 @@ describe('build_brain', () => {
       structuredOf(await info({ channel: '@Fireship', includeVideos: false })).stats
     ).toMatchObject({ videoCount: 2, indexedCount: 2, chunkCount: 2 });
     expect(
-      structuredOf(await ask({ channel: '@Fireship', query: 'floppy disks modems', limit: 8 }))
-        .passages
+      structuredOf(
+        await ask({ channel: '@Fireship', query: 'floppy disks modems', limit: 8, offset: 0 })
+      ).passages
     ).toHaveLength(1);
   });
 
@@ -534,7 +616,7 @@ describe('ask_brain', () => {
   it('returns the passage that answers the question, with a link to the moment', async () => {
     const { ask } = await tools();
     const structured = structuredOf(
-      await ask({ channel: '@Fireship', query: 'borrow checker memory', limit: 8 })
+      await ask({ channel: '@Fireship', query: 'borrow checker memory', limit: 8, offset: 0 })
     );
 
     const passages = structured.passages as { url: string; startFormatted: string }[];
@@ -542,7 +624,7 @@ describe('ask_brain', () => {
     expect(passages[0]?.url).toContain('&t=120s');
     expect(passages[0]?.startFormatted).toBe('2:00');
     expect(
-      textOf(await ask({ channel: '@Fireship', query: 'borrow checker', limit: 8 }))
+      textOf(await ask({ channel: '@Fireship', query: 'borrow checker', limit: 8, offset: 0 }))
     ).toContain('borrow checker');
   });
 
@@ -553,16 +635,52 @@ describe('ask_brain', () => {
     youtube.getChannelInfo.mockClear();
 
     for (const name of [CHANNEL_ID, '@Fireship', 'Fireship', CHANNEL.channelUrl]) {
-      const structured = structuredOf(await ask({ channel: name, query: 'rust', limit: 8 }));
+      const structured = structuredOf(
+        await ask({ channel: name, query: 'rust', limit: 8, offset: 0 })
+      );
       expect(structured.channelId).toBe(CHANNEL_ID);
     }
 
     expect(youtube.getChannelInfo).not.toHaveBeenCalled();
   });
 
+  it('reports how many passages matched, not how many it returned', async () => {
+    const youtube = await stubYouTube();
+    youtube.listVideos.mockResolvedValue(
+      Array.from({ length: 6 }, (_unused, index) => video(`v${index}`, `Episode ${index}`))
+    );
+    youtube.getTranscript.mockImplementation((id: string) =>
+      Promise.resolve(transcript(id, segments(`kubernetes autoscaling in ${id}`)))
+    );
+
+    const { build, ask } = await tools();
+    await build({ channel: '@Fireship', ...DEFAULTS });
+
+    const page = structuredOf(
+      await ask({ channel: '@Fireship', query: 'kubernetes autoscaling', limit: 2, offset: 0 })
+    );
+
+    expect(page).toMatchObject({ total: 6, count: 2, hasMore: true, nextOffset: 2 });
+    expect(page.passages).toHaveLength(2);
+
+    const second = structuredOf(
+      await ask({ channel: '@Fireship', query: 'kubernetes autoscaling', limit: 2, offset: 2 })
+    );
+
+    expect(second).toMatchObject({ total: 6, offset: 2, hasMore: true });
+    expect(
+      (second.passages as { videoId: string }[]).map((passage) => passage.videoId)
+    ).not.toEqual((page.passages as { videoId: string }[]).map((passage) => passage.videoId));
+  });
+
   it('says so when nothing matches rather than inventing an answer', async () => {
     const { ask } = await tools();
-    const result = await ask({ channel: '@Fireship', query: 'sourdough hydration', limit: 8 });
+    const result = await ask({
+      channel: '@Fireship',
+      query: 'sourdough hydration',
+      limit: 8,
+      offset: 0,
+    });
 
     expect(structuredOf(result).passages).toEqual([]);
     expect(textOf(result)).toContain('Nothing in');
@@ -571,9 +689,9 @@ describe('ask_brain', () => {
   it('refuses a channel with no brain, naming the tool that builds one', async () => {
     const { ask } = await tools();
 
-    await expect(ask({ channel: '@Unknown', query: 'anything', limit: 8 })).rejects.toThrow(
-      expect.objectContaining({ code: 'NOT_FOUND' })
-    );
+    await expect(
+      ask({ channel: '@Unknown', query: 'anything', limit: 8, offset: 0 })
+    ).rejects.toThrow(expect.objectContaining({ code: 'NOT_FOUND' }));
   });
 });
 
@@ -622,7 +740,7 @@ describe('the rest of the brain surface', () => {
     await expect(remove({ channel: '@Fireship' })).rejects.toThrow(
       expect.objectContaining({ code: 'NOT_FOUND' })
     );
-    await expect(ask({ channel: '@Fireship', query: 'rust', limit: 8 })).rejects.toThrow(
+    await expect(ask({ channel: '@Fireship', query: 'rust', limit: 8, offset: 0 })).rejects.toThrow(
       YouTubeError
     );
   });

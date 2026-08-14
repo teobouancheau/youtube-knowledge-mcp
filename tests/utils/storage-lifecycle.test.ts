@@ -243,7 +243,7 @@ describe('search', () => {
     const { saveToLibrary, searchLibrary } = await storage();
     await saveToLibrary(NOTE);
 
-    const hits = await searchLibrary('leaky bucket throttling');
+    const { hits } = await searchLibrary('leaky bucket throttling');
     expect(hits[0]?.videoId).toBe('vid1');
   });
 
@@ -252,7 +252,7 @@ describe('search', () => {
     await saveToLibrary(NOTE);
     await deleteLibraryItem('vid1');
 
-    expect(await searchLibrary('throttling')).toEqual([]);
+    expect((await searchLibrary('throttling')).hits).toEqual([]);
   });
 
   it('reflects an overwrite rather than matching the old text', async () => {
@@ -260,8 +260,8 @@ describe('search', () => {
     await saveToLibrary(NOTE);
     await saveToLibrary({ ...NOTE, content: 'circuit breakers instead' });
 
-    expect(await searchLibrary('throttling')).toEqual([]);
-    expect(await searchLibrary('circuit breakers')).toHaveLength(1);
+    expect((await searchLibrary('throttling')).hits).toEqual([]);
+    expect((await searchLibrary('circuit breakers')).hits).toHaveLength(1);
   });
 
   it('rebuilds the index from what is on disk', async () => {
@@ -276,7 +276,7 @@ describe('search', () => {
     );
 
     expect(await rebuildSearchIndex()).toEqual({ documents: 1 });
-    expect(await searchLibrary('compilers')).toHaveLength(1);
+    expect((await searchLibrary('compilers')).hits).toHaveLength(1);
   });
 });
 
@@ -329,7 +329,7 @@ describe('resilience', () => {
     await writeFile(join(home, '.youtube-knowledge', 'search-index.json'), 'garbage', 'utf-8');
 
     // A corrupt cache must degrade to "no results", never to an exception.
-    expect(await searchLibrary('throttling')).toEqual([]);
+    expect((await searchLibrary('throttling')).hits).toEqual([]);
   });
 });
 

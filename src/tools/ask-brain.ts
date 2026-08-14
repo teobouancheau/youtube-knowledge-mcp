@@ -19,6 +19,12 @@ export const askBrainSchema = {
     .max(25)
     .default(8)
     .describe('How many passages to return. Default: 8'),
+  offset: z
+    .number()
+    .int()
+    .min(0)
+    .default(0)
+    .describe('Skip this many of the ranked passages, for paging. Default: 0'),
 };
 
 export const askBrainOutputSchema = {
@@ -42,25 +48,27 @@ export async function askBrainHandler({
   channel,
   query,
   limit,
+  offset,
 }: {
   channel: string;
   query: string;
   limit: number;
+  offset: number;
 }): Promise<CallToolResult> {
   const manifest = await resolveBrain(channel);
   const { channelId, name } = manifest.channel;
-  const passages = await searchBrain(channelId, query, limit);
+  const { passages, total } = await searchBrain(channelId, query, limit, offset);
 
-  return toolResult(render(name, query, passages), {
+  return toolResult(render(name, query, passages, total), {
     channelId,
     name,
     query,
     passages,
-    ...pageInfo(passages.length, passages.length),
+    ...pageInfo(total, passages.length, offset),
   });
 }
 
-function render(name: string, query: string, passages: BrainPassage[]): string {
+function render(name: string, query: string, passages: BrainPassage[], total: number): string {
   if (passages.length === 0) {
     return [
       `Nothing in ${name}'s brain matches "${query}".`,
@@ -74,7 +82,10 @@ function render(name: string, query: string, passages: BrainPassage[]): string {
     [`### ${passage.title} [${passage.startFormatted}]`, passage.url, '', passage.text].join('\n')
   );
 
-  return [`${passages.length} passages from ${name} matching "${query}"`, '', ...sections].join(
-    '\n\n'
-  );
+  const heading =
+    passages.length === total
+      ? `${total} passages from ${name} matching "${query}"`
+      : `${passages.length} of ${total} passages from ${name} matching "${query}" — pass offset to see more`;
+
+  return [heading, '', ...sections].join('\n\n');
 }

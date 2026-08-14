@@ -12,12 +12,13 @@ import { deepLink, formatTimestamp } from './transcript.js';
  * The passages are the only thing persisted. An index file alongside them would
  * hold a second copy of every word — the serialised index carries the text it
  * scored — and would then be free to disagree with them. It is built in memory
- * on first use instead and kept until the passages change, which costs about a
- * second once per brain rather than a class of bugs forever.
+ * on first use instead and kept until the passages change: measured at 1.5s for
+ * a corpus at this brain's 100,000-passage ceiling, once, against a class of
+ * bugs forever. A search over that corpus then costs 73ms.
  *
- * Retrieval is the only way a corpus reaches a model. A few hundred videos is
- * tens of megabytes of transcript, so there is no "give me everything" path
- * here: `readChunks` exists for statistics and rebuilding, not for answering.
+ * Retrieval is the only way a corpus reaches a model. That ceiling is 81MB of
+ * transcript, so there is no "give me everything" path here: `readChunks`
+ * exists for statistics and rebuilding, not for answering.
  */
 
 export const BRAIN_CHUNK_FILE_VERSION = 1;
@@ -60,15 +61,23 @@ export async function writeChunks(channelId: string, chunks: BrainChunk[]): Prom
   forgetBrainCorpus(channelId);
 }
 
+export interface BrainSearchResults {
+  passages: BrainPassage[];
+  /** Passages matching the query, not passages returned. */
+  total: number;
+}
+
 /** Passages ranked against the query, each with the link that opens it. */
 export async function searchBrain(
   channelId: string,
   query: string,
-  limit: number
-): Promise<BrainPassage[]> {
+  limit: number,
+  offset = 0
+): Promise<BrainSearchResults> {
   const { index, byId } = await corpusOf(channelId);
+  const { hits, total } = index.search(query, limit, offset);
 
-  return index.search(query, limit).flatMap((hit) => {
+  const passages = hits.flatMap((hit) => {
     const chunk = byId.get(hit.id);
     if (chunk === undefined) return [];
 
@@ -85,6 +94,8 @@ export async function searchBrain(
       },
     ];
   });
+
+  return { passages, total };
 }
 
 async function corpusOf(channelId: string): Promise<Corpus> {

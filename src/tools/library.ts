@@ -69,6 +69,12 @@ export const searchLibrarySchema = {
     .min(1)
     .describe('Words or phrase to search for across saved summaries and skills'),
   limit: z.number().int().min(1).max(50).default(10).describe('Maximum results. Default: 10'),
+  offset: z
+    .number()
+    .int()
+    .min(0)
+    .default(0)
+    .describe('Skip this many of the ranked results, for paging. Default: 0'),
 };
 
 export const searchLibraryOutputSchema = {
@@ -80,15 +86,17 @@ export const searchLibraryOutputSchema = {
 export async function searchLibraryHandler({
   query,
   limit,
+  offset,
 }: {
   query: string;
   limit: number;
+  offset: number;
 }): Promise<CallToolResult> {
-  const hits = await searchLibrary(query, limit);
+  const { hits, total } = await searchLibrary(query, limit, offset);
   const structured = {
     query,
     hits: hits.map(({ id: _id, ...hit }) => hit),
-    ...pageInfo(hits.length, hits.length),
+    ...pageInfo(total, hits.length, offset),
   };
 
   if (hits.length === 0) {
@@ -102,7 +110,7 @@ export async function searchLibraryHandler({
     );
   }
 
-  const lines: string[] = [`${hits.length} result${hits.length === 1 ? '' : 's'}`, ''];
+  const lines: string[] = [`${hits.length} of ${total} result${total === 1 ? '' : 's'}`, ''];
 
   for (const hit of hits) {
     lines.push(`${hit.title} (${hit.kind})`);

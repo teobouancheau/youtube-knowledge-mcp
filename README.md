@@ -269,7 +269,7 @@ keyframe-aligned cut. All of these require ffmpeg.
 | `save_to_library`       | `videoId`, `title`, `content`, `contentType`, `channel`, `tags` | Path to the saved note              |
 | `list_library`          | `tag`                                                           | Saved items, newest first           |
 | `get_library_item`      | `videoId`, `contentType`                                        | The saved markdown and its metadata |
-| `search_library`        | `query`, `limit`                                                | Ranked matches with excerpts        |
+| `search_library`        | `query`, `limit`, `offset`                                      | Ranked matches with excerpts        |
 | `update_library_tags`   | `videoId`, `add`, `remove`, `replace`                           | The updated tags                    |
 | `delete_library_item`   | `videoId`, `contentType`                                        | What was deleted                    |
 | `rebuild_library_index` | —                                                               | Number of notes reindexed           |
