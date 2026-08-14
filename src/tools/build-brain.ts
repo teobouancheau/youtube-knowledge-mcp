@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { brainStatsSchema, type BrainStats } from '../brain-schemas.js';
-import { buildBrain, datedVideos } from '../utils/brain-build.js';
+import { buildBrain } from '../utils/brain-build.js';
 import { withBuildLock } from '../utils/brain-lock.js';
 import { readManifest } from '../utils/brain-storage.js';
 import { toolResult } from '../utils/format.js';
@@ -27,7 +27,7 @@ export const buildBrainSchema = {
     .string()
     .optional()
     .describe(
-      'Only videos uploaded on or after this date (YYYY-MM-DD). Videos with no reported date are kept.'
+      "Only videos published on or after this date (YYYY-MM-DD), read from each video's own metadata rather than guessed at. Re-applied on every call, so narrowing or widening it takes effect without a rebuild."
     ),
   minDurationSeconds: z
     .number()
@@ -35,7 +35,7 @@ export const buildBrainSchema = {
     .min(0)
     .default(0)
     .describe(
-      'Skip anything shorter, to leave out shorts and clips. Videos of unknown length are skipped when this is set. Default: 0'
+      'Skip anything shorter, to leave out shorts and clips. Re-applied on every call, like since. Default: 0'
     ),
 };
 
@@ -45,9 +45,10 @@ export const buildBrainOutputSchema = {
   handle: z.string(),
   channelUrl: z.string(),
   language: z.string(),
-  considered: z.number().int().describe('Videos matching the filters'),
+  considered: z.number().int().describe('Videos the filters kept'),
   processed: z.number().int().describe('Videos read during this call'),
   skipped: z.number().int().describe('Videos already in the brain'),
+  excluded: z.number().int().describe('Videos ruled out by since or minDurationSeconds'),
   stoppedEarly: z.boolean(),
   stopReason: z.string().optional(),
   stats: brainStatsSchema,
@@ -60,6 +61,10 @@ export const buildBrainOutputSchema = {
  * already there, so calling it again after an interruption continues, and
  * calling it on a finished brain picks up new uploads. That is also why there
  * is no separate refresh tool.
+ *
+ * The filters describe the brain rather than just this call, so a build makes
+ * the brain match them: narrowing one discards the passages of videos it now
+ * excludes, and widening it reads them again.
  */
 export async function buildBrainHandler({
   channel,
@@ -79,27 +84,27 @@ export async function buildBrainHandler({
   const info = await getChannelInfo(channel);
   assertChannelId(info.channelId);
 
-  const { considered, ...result } = await withBuildLock(info.channelId, async () => {
-    const existing = await readManifest(info.channelId);
-    const listed = await listUploads(info.channelUrl, maxVideos);
-    const dated = since === undefined ? listed : await datedVideos(listed, existing);
-    const videos = dated.filter((video) => matches(video, since, minDurationSeconds));
+  const result = await withBuildLock(info.channelId, async () =>
+    buildBrain({
+      channel: info,
+      videos: await listUploads(info.channelUrl, maxVideos),
+      existing: await readManifest(info.channelId),
+      language,
+      minDurationSeconds,
+      ...(since === undefined ? {} : { since }),
+    })
+  );
 
-    return {
-      considered: videos.length,
-      ...(await buildBrain({ channel: info, videos, existing, language })),
-    };
-  });
-
-  return toolResult(render(info.name, considered, result), {
+  return toolResult(render(info.name, result), {
     channelId: info.channelId,
     name: info.name,
     handle: info.handle,
     channelUrl: info.channelUrl,
     language,
-    considered,
+    considered: result.considered,
     processed: result.processed,
     skipped: result.skipped,
+    excluded: result.excluded,
     stoppedEarly: result.stoppedEarly,
     ...(result.stopReason === undefined ? {} : { stopReason: result.stopReason }),
     stats: result.manifest.stats,
@@ -118,32 +123,20 @@ export async function buildBrainHandler({
 async function listUploads(channelUrl: string, maxVideos: number): Promise<VideoListItem[]> {
   const uploads = `${channelUrl.replace(/\/+$/, '')}/videos`;
 
-  // A channel with no uploads tab is unusual rather than impossible; falling
-  // back costs one extra listing and keeps the brain buildable.
-  const listed = await listVideos(uploads, maxVideos).catch(() =>
-    listVideos(channelUrl, maxVideos)
-  );
-
-  return listed.slice(0, maxVideos);
-}
-
-/**
- * A video of unknown length is skipped only when a minimum was asked for:
- * without one, there is nothing to exclude it on. A video of unknown date is
- * kept either way, because "not proven old" is not "old".
- */
-function matches(video: VideoListItem, since: string | undefined, minDuration: number): boolean {
-  if (minDuration > 0 && video.duration < minDuration) return false;
-  if (since !== undefined && video.uploadDate !== '' && video.uploadDate < since) return false;
-  return true;
+  // No fallback to the bare channel URL. Every channel has an uploads tab, so a
+  // failure here is a failure worth reporting — throttling, a network fault, a
+  // channel that no longer exists — and retrying it against a URL that expands
+  // to more work would double the load while reporting the wrong cause.
+  return (await listVideos(uploads, maxVideos)).slice(0, maxVideos);
 }
 
 function render(
   name: string,
-  considered: number,
   result: {
+    considered: number;
     processed: number;
     skipped: number;
+    excluded: number;
     stopReason?: string;
     manifest: { stats: BrainStats };
   }
@@ -153,7 +146,9 @@ function render(
   const lines = [
     `Brain for ${name}: ${stats.indexedCount} of ${stats.videoCount} videos indexed, ${stats.chunkCount.toLocaleString()} passages.`,
     '',
-    `Considered ${considered} videos · read ${result.processed} · already had ${result.skipped}`,
+    `Considered ${result.considered} videos · read ${result.processed} · already had ${result.skipped}${
+      result.excluded > 0 ? ` · ${result.excluded} outside the filters` : ''
+    }`,
   ];
 
   if (stats.noCaptionsCount > 0) lines.push(`${stats.noCaptionsCount} have no captions`);

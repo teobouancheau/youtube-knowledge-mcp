@@ -1,9 +1,16 @@
 import type { BrainChunk, BrainManifest, BrainVideoState } from '../brain-schemas.js';
 import { readChunks, writeChunks } from './brain-index.js';
-import { ingestVideo, pendingState, uploadDateOf } from './brain-ingest.js';
+import {
+  excluded,
+  ingestVideo,
+  isExcluded,
+  pendingState,
+  type VideoFilters,
+} from './brain-ingest.js';
 import { computeStats } from './brain-stats.js';
 import { BRAIN_MANIFEST_VERSION, writeManifest } from './brain-storage.js';
 import { reportProgress, throwIfAborted } from './context.js';
+import { concurrencyState } from './ytdlp.js';
 import type { ChannelInfo, VideoListItem } from './youtube.js';
 
 /**
@@ -23,13 +30,22 @@ import type { ChannelInfo, VideoListItem } from './youtube.js';
 /** Frequent enough that little work is lost, rare enough not to dominate. */
 export const CHECKPOINT_EVERY_VIDEOS = 10;
 
-/** Matches the yt-dlp limiter, which queues anything beyond it anyway. */
-export const BUILD_CONCURRENCY = 3;
+/**
+ * How many videos to read at once: whatever the yt-dlp limiter is actually set
+ * to, which `YOUTUBE_MCP_MAX_CONCURRENCY` can change.
+ *
+ * Read rather than copied. A second number that merely happened to match would
+ * stop matching the moment someone tuned the first, and would then either queue
+ * work behind a limit it could not see or batch below one it was allowed.
+ */
+function buildConcurrency(): number {
+  return concurrencyState().limit;
+}
 
 /** Past this many throttled videos in a row, YouTube means it. */
 export const RATE_LIMIT_TOLERANCE = 3;
 
-export interface BuildBrainOptions {
+export interface BuildBrainOptions extends VideoFilters {
   channel: ChannelInfo;
   videos: VideoListItem[];
   existing: BrainManifest | undefined;
@@ -39,19 +55,23 @@ export interface BuildBrainOptions {
 
 export interface BuildBrainResult {
   manifest: BrainManifest;
+  /** Videos the filters kept, whether or not this call had to read them. */
+  considered: number;
   /** Videos read during this call, as opposed to carried over from an earlier one. */
   processed: number;
   skipped: number;
+  excluded: number;
   stoppedEarly: boolean;
   stopReason?: string;
 }
 
 export async function buildBrain(options: BuildBrainOptions): Promise<BuildBrainResult> {
-  const { channel, videos, existing, language } = options;
+  const { channel, videos, existing, language, since, minDurationSeconds } = options;
+  const filters: VideoFilters = { minDurationSeconds, ...(since === undefined ? {} : { since }) };
   const createdAt = existing?.createdAt ?? new Date().toISOString();
 
   const chunksByVideo = groupByVideo(await readChunks(channel.channelId));
-  const states = reconciled(existing, videos, chunksByVideo);
+  const states = reconciled(existing, videos, chunksByVideo, filters);
   const outstanding = videos.filter((video) => isOutstanding(states.get(video.id)));
 
   const save = async (): Promise<BrainManifest> => {
@@ -63,29 +83,36 @@ export async function buildBrain(options: BuildBrainOptions): Promise<BuildBrain
     return manifest;
   };
 
+  let attempted = 0;
   let processed = 0;
   let consecutiveThrottles = 0;
   let stopReason: string | undefined;
 
   try {
-    await inBatches(outstanding, BUILD_CONCURRENCY, async (video) => {
+    await inBatches(outstanding, buildConcurrency(), async (video) => {
       if (stopReason !== undefined) return;
       throwIfAborted();
 
-      const { state, chunks } = await ingestVideo(video, countChunks(chunksByVideo), language);
+      const { state, chunks } = await ingestVideo(video, countChunks(chunksByVideo), {
+        language,
+        ...filters,
+      });
 
       states.set(video.id, state);
       if (chunks.length > 0) chunksByVideo.set(video.id, chunks);
       else chunksByVideo.delete(video.id);
 
-      processed++;
+      attempted++;
+      // A video the filters ruled out was looked at, not read.
+      if (state.state !== 'excluded') processed++;
+
       consecutiveThrottles = state.error === 'RATE_LIMITED' ? consecutiveThrottles + 1 : 0;
       if (consecutiveThrottles >= RATE_LIMIT_TOLERANCE) {
         stopReason = 'YouTube is rate limiting this client.';
       }
 
-      reportProgress(processed, outstanding.length, `Read ${processed} of ${outstanding.length}`);
-      if (processed % CHECKPOINT_EVERY_VIDEOS === 0) await save();
+      reportProgress(attempted, outstanding.length, `Read ${attempted} of ${outstanding.length}`);
+      if (attempted % CHECKPOINT_EVERY_VIDEOS === 0) await save();
     });
   } catch (error) {
     // A cancelled build must not throw away the videos read since the last
@@ -95,75 +122,81 @@ export async function buildBrain(options: BuildBrainOptions): Promise<BuildBrain
     throw error;
   }
 
+  const manifest = await save();
+  const excludedCount = videos.filter((video) => states.get(video.id)?.state === 'excluded').length;
+
   return {
-    manifest: await save(),
+    manifest,
+    considered: videos.length - excludedCount,
     processed,
-    skipped: videos.length - outstanding.length,
+    skipped: videos.length - excludedCount - processed,
+    excluded: excludedCount,
     stoppedEarly: stopReason !== undefined,
     ...(stopReason === undefined ? {} : { stopReason }),
   };
 }
 
 /**
- * Per-video state, corrected against the passages actually on disk.
+ * Per-video state, reconciled against the passages on disk and re-tested
+ * against the filters in force right now.
  *
- * The manifest and the passage file are two documents, and only one of them can
- * be written first. A crash between the two, a half-restored backup, or a
- * `chunks.json` truncated by a full disk all end the same way: the manifest says
- * a video was read and there is nothing to show for it. Left alone that brain is
- * stranded for good — every build skips the video as already done, while every
- * search returns nothing.
+ * Two corrections happen here, both for the same reason: what the manifest says
+ * was true when it was written, and neither the corpus nor the caller's filters
+ * are obliged to have stayed the same.
  *
- * So the passages win. A video the corpus cannot account for goes back to
- * pending and is read again on this very call, which is why there is no repair
- * tool to remember to run.
+ * The manifest and the passage file are two documents, and only one can be
+ * written first. A crash between them, a half-restored backup, or a
+ * `chunks.json` truncated by a full disk all end the same way — the manifest
+ * says a video was read and there is nothing to show for it. Left alone that
+ * brain is stranded for good: every build skips the video as already done while
+ * every search returns nothing. So the passages win, and a video the corpus
+ * cannot account for goes back to pending.
+ *
+ * A filter is re-applied rather than remembered. Narrowing one excludes videos
+ * already read; widening one brings excluded videos back. Both are decided from
+ * the dates and lengths already recorded, so changing your mind costs nothing
+ * until there is something new to fetch.
  */
 function reconciled(
   existing: BrainManifest | undefined,
   videos: VideoListItem[],
-  chunksByVideo: Map<string, BrainChunk[]>
+  chunksByVideo: Map<string, BrainChunk[]>,
+  filters: VideoFilters
 ): Map<string, BrainVideoState> {
   const states = new Map<string, BrainVideoState>();
 
-  for (const [videoId, state] of Object.entries(existing?.videos ?? {})) {
-    const lost = state.state === 'indexed' && (chunksByVideo.get(videoId)?.length ?? 0) === 0;
-    states.set(videoId, lost ? { ...state, state: 'pending', chunkCount: 0, wordCount: 0 } : state);
+  for (const [videoId, recorded] of Object.entries(existing?.videos ?? {})) {
+    const lost = recorded.state === 'indexed' && (chunksByVideo.get(videoId)?.length ?? 0) === 0;
+    const state = lost
+      ? { ...recorded, state: 'pending' as const, chunkCount: 0, wordCount: 0 }
+      : recorded;
+
+    states.set(videoId, refiltered(state, filters));
   }
 
   for (const video of videos) {
-    if (!states.has(video.id)) states.set(video.id, pendingState(video));
+    // The listing's own length is real data, so a filter that can be decided
+    // from it is decided here — before spending a request to learn what the
+    // listing already said.
+    if (!states.has(video.id)) states.set(video.id, refiltered(pendingState(video), filters));
   }
 
   return states;
 }
 
 /**
- * The same videos, with the dates a flat listing does not carry.
- *
- * Only worth doing when a caller asked to filter by date, because it costs one
- * metadata request per candidate. Dates already recorded by an earlier build
- * are reused, so a channel is not re-dated every time.
+ * `undefined` — the filters cannot be decided from what is recorded — leaves the
+ * state alone, so the video is read and the question answered from the metadata
+ * that read fetches.
  */
-export async function datedVideos(
-  videos: VideoListItem[],
-  existing: BrainManifest | undefined
-): Promise<VideoListItem[]> {
-  const dated: VideoListItem[] = [];
+function refiltered(state: BrainVideoState, filters: VideoFilters): BrainVideoState {
+  const ruledOut = isExcluded(state, filters);
 
-  await inBatches(videos, BUILD_CONCURRENCY, async (video) => {
-    throwIfAborted();
-    const known = existing?.videos[video.id]?.uploadDate;
-
-    dated.push({
-      ...video,
-      uploadDate: known !== undefined && known !== '' ? known : await uploadDateOf(video),
-    });
-  });
-
-  // `inBatches` finishes a batch before starting the next, but within one batch
-  // completion order is not arrival order.
-  const order = new Map(videos.map((video, index) => [video.id, index]));
-  return dated.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+  if (ruledOut === true) return excluded(state);
+  if (ruledOut === false && state.state === 'excluded') {
+    return { ...state, state: 'pending' };
+  }
+  return state;
 }
 
 /** Anything not already read: never attempted, or attempted and failed. */
@@ -187,12 +220,22 @@ function countChunks(chunksByVideo: Map<string, BrainChunk[]>): number {
   return total;
 }
 
-/** In manifest order, so the file changes as little as possible between builds. */
+/**
+ * The corpus: every passage of every video the brain holds, in manifest order so
+ * the file changes as little as possible between builds.
+ *
+ * A video the filters exclude contributes nothing, which is what makes the
+ * filters mean something. Leaving its passages in would let `ask_brain` quote a
+ * video that `get_brain_info` says is not part of this brain, and no wording
+ * makes that defensible.
+ */
 function flatten(
   states: Map<string, BrainVideoState>,
   chunksByVideo: Map<string, BrainChunk[]>
 ): BrainChunk[] {
-  return [...states.keys()].flatMap((videoId) => chunksByVideo.get(videoId) ?? []);
+  return [...states.entries()].flatMap(([videoId, state]) =>
+    state.state === 'excluded' ? [] : (chunksByVideo.get(videoId) ?? [])
+  );
 }
 
 function toManifest(

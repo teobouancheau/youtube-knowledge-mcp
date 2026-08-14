@@ -4,8 +4,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { structuredOf, textOf } from '../helpers.js';
 import { YouTubeError } from '../../src/utils/errors.js';
-import { segmentsToText, type TranscriptSegment } from '../../src/utils/transcript.js';
-import type { TranscriptResult, VideoInfo, VideoListItem } from '../../src/utils/youtube.js';
+import {
+  formatTimestamp,
+  segmentsToText,
+  type TranscriptSegment,
+} from '../../src/utils/transcript.js';
+import type {
+  Chapter,
+  TranscriptResult,
+  VideoDetails,
+  VideoListItem,
+} from '../../src/utils/youtube.js';
 
 /**
  * The brain tools end to end, against a real temporary filesystem and a stubbed
@@ -21,8 +30,7 @@ vi.mock('../../src/utils/youtube.js', () => ({
   getChannelInfo: vi.fn(),
   listVideos: vi.fn(),
   getTranscript: vi.fn(),
-  getChapters: vi.fn(),
-  getVideoInfo: vi.fn(),
+  getVideoDetails: vi.fn(),
 }));
 
 vi.mock('node:os', async (importOriginal) => {
@@ -65,21 +73,21 @@ function segments(text: string, start = 0): TranscriptSegment[] {
   return [{ start, end: start + 30, text }];
 }
 
-function videoInfo(id: string, uploadDate: string): VideoInfo {
+function details(
+  uploadDate = '2025-03-01',
+  durationSeconds = 600,
+  chapters: Chapter[] = []
+): VideoDetails {
+  return { uploadDate, durationSeconds, chapters };
+}
+
+function chapter(title: string, startTime: number, endTime: number): Chapter {
   return {
-    id,
-    title: id,
-    channel: CHANNEL.name,
-    duration: 600,
-    durationFormatted: '10:00',
-    uploadDate,
-    description: '',
-    tags: [],
-    url: `https://www.youtube.com/watch?v=${id}`,
-    thumbnailUrl: '',
-    viewCount: 1,
-    likeCount: 1,
-    commentCount: 1,
+    title,
+    startTime,
+    endTime,
+    startTimeFormatted: formatTimestamp(startTime),
+    endTimeFormatted: formatTimestamp(endTime),
   };
 }
 
@@ -135,8 +143,7 @@ beforeEach(async () => {
 
   const youtube = await stubYouTube();
   youtube.getChannelInfo.mockResolvedValue(CHANNEL);
-  youtube.getChapters.mockResolvedValue([]);
-  youtube.getVideoInfo.mockRejectedValue(new YouTubeError('NOT_FOUND', 'no metadata'));
+  youtube.getVideoDetails.mockResolvedValue(details());
 });
 
 afterEach(async () => {
@@ -278,28 +285,23 @@ describe('build_brain', () => {
     expect(structured).toMatchObject({ considered: 2, processed: 2 });
   });
 
-  it('falls back to the channel itself when there is no uploads tab', async () => {
+  it('reports a listing failure instead of retrying somewhere else', async () => {
     const youtube = await stubYouTube();
-    youtube.listVideos.mockImplementation((url: string) =>
-      url.endsWith('/videos')
-        ? Promise.reject(new YouTubeError('NOT_FOUND', 'no such tab'))
-        : Promise.resolve([video('a', 'One')])
-    );
-    youtube.getTranscript.mockResolvedValue(transcript('a', segments('words')));
+    youtube.listVideos.mockRejectedValue(new YouTubeError('RATE_LIMITED', 'slow down'));
 
     const { build } = await tools();
 
-    expect(structuredOf(await build({ channel: '@Fireship', ...DEFAULTS }))).toMatchObject({
-      considered: 1,
-      processed: 1,
-    });
+    await expect(build({ channel: '@Fireship', ...DEFAULTS })).rejects.toThrow(
+      expect.objectContaining({ code: 'RATE_LIMITED' })
+    );
+    expect(youtube.listVideos).toHaveBeenCalledTimes(1);
   });
 
   it('records the upload date the flat listing does not carry', async () => {
     const youtube = await stubYouTube();
     youtube.listVideos.mockResolvedValue([video('a', 'One', 600, '')]);
     youtube.getTranscript.mockResolvedValue(transcript('a', segments('words')));
-    youtube.getVideoInfo.mockResolvedValue(videoInfo('a', '2025-04-09'));
+    youtube.getVideoDetails.mockResolvedValue(details('2025-04-09'));
 
     const { build, info } = await tools();
     await build({ channel: '@Fireship', ...DEFAULTS });
@@ -318,8 +320,8 @@ describe('build_brain', () => {
     youtube.getTranscript.mockImplementation((id: string) =>
       Promise.resolve(transcript(id, segments(`words for ${id}`)))
     );
-    youtube.getVideoInfo.mockImplementation((id: string) =>
-      Promise.resolve(videoInfo(id, id === 'old' ? '2019-01-01' : '2025-04-09'))
+    youtube.getVideoDetails.mockImplementation((id: string) =>
+      Promise.resolve(details(id === 'old' ? '2019-01-01' : '2025-04-09'))
     );
 
     const { build } = await tools();
@@ -403,6 +405,82 @@ describe('build_brain', () => {
     expect(stats).toMatchObject({ indexedCount: 3 });
   });
 
+  it('re-applies a changed filter, so the brain always matches it', async () => {
+    const youtube = await stubYouTube();
+    youtube.listVideos.mockResolvedValue([
+      video('old', 'Old', 600, ''),
+      video('new', 'New', 600, ''),
+    ]);
+    youtube.getTranscript.mockImplementation((id: string) =>
+      Promise.resolve(
+        transcript(
+          id,
+          segments(id === 'old' ? 'floppy disks and dial up modems' : 'modern rust tooling')
+        )
+      )
+    );
+    youtube.getVideoDetails.mockImplementation((id: string) =>
+      Promise.resolve(details(id === 'old' ? '2019-01-01' : '2025-04-09'))
+    );
+
+    const { build, info } = await tools();
+    await build({ channel: '@Fireship', ...DEFAULTS });
+
+    // Narrowing: the old video was read, and is now outside the range. It is
+    // decided from the date already recorded, so nothing is fetched to decide
+    // it, and its passages leave the corpus with it.
+    youtube.getVideoDetails.mockClear();
+    const narrowed = structuredOf(
+      await build({ channel: '@Fireship', ...DEFAULTS, since: '2024-01-01' })
+    );
+
+    expect(narrowed).toMatchObject({ considered: 1, excluded: 1, processed: 0 });
+    expect(youtube.getVideoDetails).not.toHaveBeenCalled();
+    expect(
+      structuredOf(await info({ channel: '@Fireship', includeVideos: false })).stats
+    ).toMatchObject({ videoCount: 1, indexedCount: 1, chunkCount: 1, firstUpload: '2025-04-09' });
+
+    // And a search cannot reach what the filters exclude.
+    const { ask } = await tools();
+    expect(
+      structuredOf(await ask({ channel: '@Fireship', query: 'floppy disks modems', limit: 8 }))
+        .passages
+    ).toEqual([]);
+
+    // Widening: it comes back.
+    const widened = structuredOf(await build({ channel: '@Fireship', ...DEFAULTS }));
+
+    expect(widened).toMatchObject({ considered: 2, excluded: 0 });
+    expect(
+      structuredOf(await info({ channel: '@Fireship', includeVideos: false })).stats
+    ).toMatchObject({ videoCount: 2, indexedCount: 2, chunkCount: 2 });
+    expect(
+      structuredOf(await ask({ channel: '@Fireship', query: 'floppy disks modems', limit: 8 }))
+        .passages
+    ).toHaveLength(1);
+  });
+
+  it('rules out a short video from the listing alone', async () => {
+    const youtube = await stubYouTube();
+    youtube.listVideos.mockResolvedValue([
+      video('short', 'A short', 30),
+      video('full', 'Full', 600),
+    ]);
+    youtube.getTranscript.mockImplementation((id: string) =>
+      Promise.resolve(transcript(id, segments(`words for ${id}`)))
+    );
+
+    const { build } = await tools();
+    const structured = structuredOf(
+      await build({ channel: '@Fireship', ...DEFAULTS, minDurationSeconds: 60 })
+    );
+
+    expect(structured).toMatchObject({ considered: 1, processed: 1, excluded: 1 });
+    // The listing already said it was 30 seconds long, so nothing was fetched
+    // to find that out again.
+    expect(youtube.getVideoDetails).toHaveBeenCalledTimes(1);
+  });
+
   it('applies the duration and date filters', async () => {
     const youtube = await stubYouTube();
     youtube.listVideos.mockResolvedValue([
@@ -412,6 +490,11 @@ describe('build_brain', () => {
     ]);
     youtube.getTranscript.mockResolvedValue(
       transcript('keep', segments('this is the only video that should be read'))
+    );
+    youtube.getVideoDetails.mockImplementation((id: string) =>
+      Promise.resolve(
+        details(id === 'old' ? '2019-01-01' : '2025-03-01', id === 'short' ? 30 : 600)
+      )
     );
 
     const { build } = await tools();
@@ -440,22 +523,9 @@ describe('ask_brain', () => {
     );
     // Two short segments would otherwise be one passage; a chapter boundary is
     // what separates them, which is the same thing that separates two subjects.
-    youtube.getChapters.mockResolvedValue([
-      {
-        title: 'Intro',
-        startTime: 0,
-        endTime: 120,
-        startTimeFormatted: '0:00',
-        endTimeFormatted: '2:00',
-      },
-      {
-        title: 'Ownership',
-        startTime: 120,
-        endTime: 150,
-        startTimeFormatted: '2:00',
-        endTimeFormatted: '2:30',
-      },
-    ]);
+    youtube.getVideoDetails.mockResolvedValue(
+      details('2025-03-01', 600, [chapter('Intro', 0, 120), chapter('Ownership', 120, 150)])
+    );
 
     const { build } = await tools();
     await build({ channel: '@Fireship', ...DEFAULTS });
@@ -578,6 +648,9 @@ describe('the rest of the brain surface', () => {
       if (id === 'e') return Promise.reject(new YouTubeError('NO_CAPTIONS', 'none'));
       return Promise.resolve(transcript(id, segments(`episode${id} ${catchphrase} topic${id}`)));
     });
+    // YouTube reports no publication date for these, which the report has to
+    // say plainly rather than fill in.
+    youtube.getVideoDetails.mockResolvedValue(details(''));
 
     const { build, info } = await tools();
     await build({ channel: '@Fireship', ...DEFAULTS });

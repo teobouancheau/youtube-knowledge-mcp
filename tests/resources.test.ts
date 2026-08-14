@@ -224,6 +224,7 @@ describe('brain resource', () => {
     videos: {},
     stats: {
       videoCount: 1,
+      excludedCount: 0,
       indexedCount: 1,
       noCaptionsCount: 0,
       failedCount: 0,
@@ -278,6 +279,14 @@ describe('brain resource', () => {
     });
 
     expect(textOfContents(result)).toContain('Terse');
+  });
+
+  it('refuses a part of a brain that does not exist', async () => {
+    const client = await connect();
+
+    await expect(
+      client.readResource({ uri: `youtube://brain/${CHANNEL_ID}/passages` })
+    ).rejects.toThrow(/not part of a brain/i);
   });
 
   it('fails clearly when no profile has been written', async () => {

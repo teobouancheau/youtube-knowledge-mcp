@@ -57,6 +57,7 @@ function manifest(overrides: Partial<BrainManifest> = {}): BrainManifest {
     videos: {},
     stats: {
       videoCount: 0,
+      excludedCount: 0,
       indexedCount: 0,
       noCaptionsCount: 0,
       failedCount: 0,

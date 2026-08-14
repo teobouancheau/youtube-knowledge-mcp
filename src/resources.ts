@@ -125,7 +125,15 @@ export function registerResources(server: McpServer, mode: 'stdio' | 'http'): vo
     },
     async (uri, { channelId, part }) => {
       const id = first(channelId);
-      const wanted = first(part) === 'profile' ? 'profile' : 'manifest';
+      const wanted = first(part);
+
+      // Returning the manifest for an unrecognised part would answer a question
+      // nobody asked, and look like the URI was understood.
+      if (wanted !== 'manifest' && wanted !== 'profile') {
+        throw new YouTubeError('INVALID_INPUT', `"${wanted}" is not part of a brain.`, {
+          nextStep: `Read youtube://brain/${id}/manifest or youtube://brain/${id}/profile.`,
+        });
+      }
 
       if (wanted === 'profile') {
         const profile = await readProfile(id);

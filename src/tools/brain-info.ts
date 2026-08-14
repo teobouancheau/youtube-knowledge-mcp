@@ -107,6 +107,9 @@ export async function getBrainInfoHandler({
   ];
 
   if (stats.noCaptionsCount > 0) lines.push(`${stats.noCaptionsCount} videos have no captions`);
+  if (stats.excludedCount > 0) {
+    lines.push(`${stats.excludedCount} videos are outside the filters this brain was built with`);
+  }
   if (stats.failedCount + stats.pendingCount > 0) {
     lines.push(
       `${stats.failedCount + stats.pendingCount} videos still to read — call build_brain to continue`

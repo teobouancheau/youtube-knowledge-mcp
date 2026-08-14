@@ -13,7 +13,7 @@ import type { TranscriptResult, VideoListItem } from '../../src/utils/youtube.js
 
 vi.mock('../../src/utils/youtube.js', () => ({
   getTranscript: vi.fn(),
-  getChapters: vi.fn(),
+  getVideoDetails: vi.fn(),
 }));
 
 const VIDEO: VideoListItem = {
@@ -48,10 +48,16 @@ async function youtube(): Promise<typeof import('../../src/utils/youtube.js')> {
   return import('../../src/utils/youtube.js');
 }
 
+const OPTIONS = { language: 'en', minDurationSeconds: 0 };
+
 beforeEach(async () => {
   vi.clearAllMocks();
-  const { getChapters } = await youtube();
-  vi.mocked(getChapters).mockResolvedValue([]);
+  const { getVideoDetails } = await youtube();
+  vi.mocked(getVideoDetails).mockResolvedValue({
+    uploadDate: '2025-02-02',
+    durationSeconds: 3600,
+    chapters: [],
+  });
 });
 
 describe('ingestVideo', () => {
@@ -61,32 +67,71 @@ describe('ingestVideo', () => {
       transcript([{ start: 0, end: 10, text: 'four words go here' }])
     );
 
-    const { state, chunks } = await ingestVideo(VIDEO, 0, 'en');
+    const { state, chunks } = await ingestVideo(VIDEO, 0, OPTIONS);
 
     expect(state).toMatchObject({ state: 'indexed', chunkCount: 1, wordCount: 4 });
     expect(chunks[0]?.text).toBe('four words go here');
   });
 
-  it('carries on when a video has no chapters', async () => {
-    const { getTranscript, getChapters } = await youtube();
+  it('records the date and length from the video, not from the listing', async () => {
+    const { getTranscript, getVideoDetails } = await youtube();
     vi.mocked(getTranscript).mockResolvedValue(
       transcript([{ start: 0, end: 10, text: 'still readable' }])
     );
-    vi.mocked(getChapters).mockRejectedValue(new YouTubeError('NOT_FOUND', 'no chapters'));
+    vi.mocked(getVideoDetails).mockResolvedValue({
+      uploadDate: '2024-11-30',
+      durationSeconds: 900,
+      chapters: [],
+    });
 
-    const { state } = await ingestVideo(VIDEO, 0, 'en');
+    const { state } = await ingestVideo(VIDEO, 0, OPTIONS);
 
-    expect(state.state).toBe('indexed');
+    expect(state).toMatchObject({ uploadDate: '2024-11-30', durationSeconds: 900 });
+  });
+
+  it('reads metadata once, not once per thing it needs from it', async () => {
+    const { getTranscript, getVideoDetails } = await youtube();
+    vi.mocked(getTranscript).mockResolvedValue(
+      transcript([{ start: 0, end: 10, text: 'still readable' }])
+    );
+
+    await ingestVideo(VIDEO, 0, OPTIONS);
+
+    expect(getVideoDetails).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a metadata failure rather than quietly reading without chapters', async () => {
+    const { getVideoDetails } = await youtube();
+    vi.mocked(getVideoDetails).mockRejectedValue(new YouTubeError('RATE_LIMITED', 'slow down'));
+
+    const { state } = await ingestVideo(VIDEO, 0, OPTIONS);
+
+    expect(state).toMatchObject({ state: 'failed', error: 'RATE_LIMITED' });
+  });
+
+  it('rules a video out before paying for its transcript', async () => {
+    const { getTranscript, getVideoDetails } = await youtube();
+    vi.mocked(getVideoDetails).mockResolvedValue({
+      uploadDate: '2019-01-01',
+      durationSeconds: 3600,
+      chapters: [],
+    });
+
+    const { state, chunks } = await ingestVideo(VIDEO, 0, { ...OPTIONS, since: '2024-01-01' });
+
+    expect(state.state).toBe('excluded');
+    expect(chunks).toEqual([]);
+    expect(getTranscript).not.toHaveBeenCalled();
   });
 
   it('separates a video nobody captioned from one that failed', async () => {
     const { getTranscript } = await youtube();
 
     vi.mocked(getTranscript).mockRejectedValue(new YouTubeError('NO_CAPTIONS', 'none'));
-    expect((await ingestVideo(VIDEO, 0, 'en')).state).toMatchObject({ state: 'no-captions' });
+    expect((await ingestVideo(VIDEO, 0, OPTIONS)).state).toMatchObject({ state: 'no-captions' });
 
     vi.mocked(getTranscript).mockRejectedValue(new YouTubeError('MEMBERS_ONLY', 'no'));
-    expect((await ingestVideo(VIDEO, 0, 'en')).state).toMatchObject({
+    expect((await ingestVideo(VIDEO, 0, OPTIONS)).state).toMatchObject({
       state: 'failed',
       error: 'MEMBERS_ONLY',
     });
@@ -98,7 +143,7 @@ describe('ingestVideo', () => {
       transcript(oversizedSegments(MAX_CHUNKS_PER_VIDEO + 1))
     );
 
-    const { state, chunks } = await ingestVideo(VIDEO, 0, 'en');
+    const { state, chunks } = await ingestVideo(VIDEO, 0, OPTIONS);
 
     expect(state).toMatchObject({ state: 'failed', error: TOO_LARGE });
     expect(chunks).toEqual([]);
@@ -110,7 +155,7 @@ describe('ingestVideo', () => {
       transcript([{ start: 0, end: 10, text: 'one more passage' }])
     );
 
-    const { state, chunks } = await ingestVideo(VIDEO, MAX_CHUNKS_PER_BRAIN, 'en');
+    const { state, chunks } = await ingestVideo(VIDEO, MAX_CHUNKS_PER_BRAIN, OPTIONS);
 
     expect(state).toMatchObject({ state: 'failed', error: BRAIN_FULL });
     expect(chunks).toEqual([]);
