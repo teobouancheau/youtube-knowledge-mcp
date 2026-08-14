@@ -39,6 +39,17 @@ Supports both **local** (stdio) and **remote** (Streamable HTTP) transports.
 - **Read them back**, and **search across all of them** with full-text ranking
 - **Tag, retag and delete**
 
+**Build a brain for a channel** (local mode)
+
+- **Read a whole channel** into a searchable corpus of timestamped passages,
+  resumable and safe to interrupt — a second run continues where it stopped and
+  picks up new uploads
+- **Ask what a creator has said** about anything, across every video, and get
+  back the moments themselves with links that open the video there
+- **Measure the channel**: how much was readable, its upload rhythm, its
+  speaking rate, and the phrases it repeats across videos
+- **Keep a written profile** beside the corpus, grounded in passages you can cite
+
 **Built to stay working**
 
 - WebVTT parsed by the W3C reference implementation, not a hand-written matcher
@@ -199,7 +210,7 @@ a cold start. Any paid plan removes that.
 
 ## MCP Tools
 
-27 tools. The 14 read-only ones work over both transports; the 13 that touch
+33 tools. The 14 read-only ones work over both transports; the 19 that touch
 your filesystem are registered only in local (stdio) mode, so a remote
 deployment cannot reach the host's disk.
 
@@ -263,17 +274,35 @@ keyframe-aligned cut. All of these require ffmpeg.
 | `delete_library_item`   | `videoId`, `contentType`                                        | What was deleted                    |
 | `rebuild_library_index` | —                                                               | Number of notes reindexed           |
 
+### Channel brains — local only
+
+| Tool                 | Key parameters                                        | Returns                                         |
+| -------------------- | ----------------------------------------------------- | ----------------------------------------------- |
+| `build_brain`        | `channel`, `maxVideos`, `since`, `minDurationSeconds` | What was read, what could not be, and the stats |
+| `ask_brain`          | `channel`, `query`, `limit`                           | Passages with timestamps and `?t=` links        |
+| `list_brains`        | —                                                     | Every brain built locally                       |
+| `get_brain_info`     | `channel`, `includeVideos`                            | Coverage, statistics and repeated phrases       |
+| `save_brain_profile` | `channel`, `content`                                  | Path to the saved profile                       |
+| `delete_brain`       | `channel`                                             | What was removed                                |
+
+`build_brain` is the only one that touches the network. The rest resolve a
+channel from what is already on disk, so they work offline and cost nothing to
+call.
+
 ## Prompts
 
 Reusable workflows your client can invoke directly: `summarize_video`,
 `extract_skill`, `compare_videos`, `research_topic`, `channel_deep_dive`,
-`clip_from_quote` (find a phrase, then cut the clip around it), and
-`review_library` (local only).
+`clip_from_quote` (find a phrase, then cut the clip around it), and — local
+only — `review_library`, `create_brain` (build a channel's corpus, then write
+its profile from it) and `ask_creator` (answer a question strictly from a
+brain, with citations).
 
 ## Resources
 
 - `youtube://transcript/{videoId}` — a timestamped transcript, fetched and cached on first read
 - `youtube://library/{videoId}/{summary|skill}` — a saved note (local only, and enumerable)
+- `youtube://brain/{channelId}/{manifest|profile}` — what a channel brain covers, or the profile written from it (local only, and enumerable)
 
 ## Error codes
 
@@ -322,6 +351,11 @@ Content is stored in `~/.youtube-knowledge/`:
 │       ├── metadata.json
 │       ├── summary.md
 │       └── skill.md
+├── brains/               # Channel brains
+│   └── {channel_id}/
+│       ├── manifest.json # What the brain covers, and where a build stopped
+│       ├── chunks.json   # The timestamped passages
+│       └── profile.md    # The written account, if one was saved
 ├── downloads/            # Full downloads
 ├── clips/                # Extracted clips
 ├── frames/               # Captured stills
@@ -393,6 +427,18 @@ editor can import.
 
 `save_to_library` stores it; `search_library` searches across everything saved
 with full-text ranking.
+
+### Build a brain for a creator
+
+```
+"Build a brain for @Fireship, then tell me everything they've said about Rust"
+```
+
+`build_brain` reads the channel into timestamped passages — interrupt it and
+call it again to continue. `ask_brain` then answers from what was actually
+said, returning the moments themselves so every claim can be checked against
+the video. Run `build_brain` again a month later and it reads only the new
+uploads.
 
 ## Testing
 

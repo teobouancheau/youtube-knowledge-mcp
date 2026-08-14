@@ -30,8 +30,9 @@ src/
 ├── index.ts              # Server construction, tool registration, transport start
 ├── http.ts               # Streamable HTTP transport: auth, sessions, rate limits
 ├── prompts.ts            # Reusable workflow prompts
-├── resources.ts          # Transcript and library resources
-├── schemas.ts            # Shared Zod output schemas
+├── resources.ts          # Transcript, library and brain resources
+├── schemas.ts            # Shared Zod domain schemas
+├── brain-schemas.ts      # The shapes a channel brain is made of
 ├── tools/                # One file per tool group: input schema, output schema, handler
 └── utils/
     ├── ytdlp.ts          # The only place yt-dlp is spawned
@@ -40,9 +41,21 @@ src/
     ├── context.ts        # Per-request abort signal, progress and logging
     ├── transcript.ts     # WebVTT parsing, slicing, search, subtitle export
     ├── clips.ts          # Clip, audio and frame extraction
-    ├── search-index.ts   # BM25 index for the local library
+    ├── search-index.ts   # BM25 index, shared by the library and the brains
     ├── storage.ts        # Library persistence
-    ├── validate.ts       # Path, language and timestamp validation
+    ├── json-file.ts      # Atomic JSON writes and validated reads
+    ├── paths.ts          # The one directory everything is written under
+    ├── brain-paths.ts    # Every file a brain is made of
+    ├── brain-storage.ts  # Manifest and profile persistence
+    ├── brain-lock.ts     # Exclusive access while a brain is being built
+    ├── brain-chunks.ts   # Transcripts cut into retrievable passages
+    ├── brain-ingest.ts   # Reading one video into passages
+    ├── brain-build.ts    # Reading a channel, resumably
+    ├── brain-index.ts    # Passage persistence and retrieval
+    ├── brain-lookup.ts   # Finding a brain from whatever the channel was called
+    ├── brain-phrases.ts  # Phrases a creator repeats across videos
+    ├── brain-stats.ts    # What can be counted about a channel
+    ├── validate.ts       # Path, language, channel id and timestamp validation
     ├── format.ts         # Result construction and human-readable formatting
     └── youtube.ts        # URL and ID parsing
 tests/                    # Unit, protocol-level and filesystem tests

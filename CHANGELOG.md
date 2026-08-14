@@ -5,6 +5,42 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+**Channel brains.** `build_brain` reads a whole channel into a searchable corpus
+of timestamped passages, and `ask_brain` answers questions from what the creator
+actually said — returning the moments themselves, each with the second it was
+spoken and a link that opens the video there. Alongside them: `list_brains`,
+`get_brain_info`, `save_brain_profile` and `delete_brain`, the
+`youtube://brain/{channelId}/{manifest|profile}` resource, and the `create_brain`
+and `ask_creator` prompts. All local (stdio) only, like the library.
+
+Reading several hundred videos means several hundred fetches, so a build is
+something that gets interrupted. Per-video state is recorded in a manifest and
+checkpointed as it goes: a cancelled, throttled or killed build leaves a valid
+brain, and calling `build_brain` again continues where it stopped. That is also
+the refresh path — on a finished brain it reads only what is new — so there is no
+separate refresh tool. A video with no captions, or one behind a members-only
+wall, costs itself and nothing else.
+
+The server has no language model and does not pretend otherwise. It counts what
+can be counted — coverage, upload rhythm, speaking rate, phrases repeated across
+videos — and leaves the reading of a creator to `save_brain_profile`, which
+stores an account written from passages that can be cited.
+
+### Fixed
+
+**JSON documents could be truncated by an interrupted write.** The library index,
+the search index and every note's metadata were written straight to their
+destination, so a process that died mid-write left a corrupt file where a valid
+one had been. They now go through a temporary file and a rename, which is atomic.
+
+**`libraryMetadataSchema` was declared twice**, in `schemas.ts` and in
+`storage.ts`, and the two were free to drift. The location of the data directory
+was spelled out in six places. Both are now single-sourced.
+
 ## [2.0.2] - 2026-08-12
 
 ### Fixed
