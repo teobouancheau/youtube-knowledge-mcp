@@ -433,12 +433,42 @@ describe('documented surface', () => {
    * easiest thing to forget, so they are checked against the server rather than
    * maintained by hand.
    */
-  it('counts tools the way the README says it does', async () => {
+  async function readme(): Promise<string> {
     const { readFile } = await import('node:fs/promises');
-    const readme = await readFile(new URL('../README.md', import.meta.url), 'utf-8');
+    return readFile(new URL('../README.md', import.meta.url), 'utf-8');
+  }
 
+  it('never names a parameter a tool does not take', async () => {
+    const text = await readme();
+    const byName = new Map(stdioTools.map((tool) => [tool.name, tool]));
+
+    // The column is headed "Key parameters", so a row may leave one out. What
+    // it may not do is name one that was renamed or removed — a reader cannot
+    // tell that from an omission, and will pass it.
+    const rows = text.matchAll(/^\| `(\w+)`\s*\|([^|]*)\|/gm);
+    let checked = 0;
+
+    for (const [, name, parameters] of rows) {
+      const tool = byName.get(name ?? '');
+      if (tool === undefined) continue;
+
+      const actual = new Set(Object.keys(tool.inputSchema.properties ?? {}));
+      const documented = [...(parameters ?? '').matchAll(/`(\w+)`/g)].map((match) => match[1]);
+
+      for (const parameter of documented) {
+        expect(actual.has(parameter ?? ''), `${name} has no parameter "${parameter}"`).toBe(true);
+      }
+      checked++;
+    }
+
+    expect(checked, 'no tool rows found in the README').toBeGreaterThan(20);
+  });
+
+  it('counts tools the way the README says it does', async () => {
     const claimed =
-      /(\d+) tools\. The (\d+) read-only ones work over both transports; the (\d+)/.exec(readme);
+      /(\d+) tools\. The (\d+) read-only ones work over both transports; the (\d+)/.exec(
+        await readme()
+      );
 
     expect(
       claimed,
