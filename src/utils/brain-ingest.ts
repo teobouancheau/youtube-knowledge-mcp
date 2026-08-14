@@ -3,7 +3,7 @@ import { chunkTranscript } from './brain-chunks.js';
 import { throwIfAborted } from './context.js';
 import { asYouTubeError } from './errors.js';
 import { countWords } from './transcript.js';
-import { getChapters, getTranscript, type VideoListItem } from './youtube.js';
+import { getChapters, getTranscript, getVideoInfo, type VideoListItem } from './youtube.js';
 
 /**
  * Reading one video into passages.
@@ -35,7 +35,7 @@ export async function ingestVideo(
   video: VideoListItem,
   chunksSoFar: number
 ): Promise<IngestResult> {
-  const base = pendingState(video);
+  const base = { ...pendingState(video), uploadDate: await uploadDateOf(video) };
 
   try {
     const transcript = await getTranscript(video.id);
@@ -76,6 +76,28 @@ export async function ingestVideo(
           : { ...base, state: 'failed', error: failure.code },
       chunks: [],
     };
+  }
+}
+
+/**
+ * When the video was published.
+ *
+ * A channel listing is fetched flat, which is what makes listing a thousand
+ * videos one request rather than a thousand — and flat entries carry no upload
+ * date. Asking for the video's own metadata is the only way to get one, so it
+ * happens here, once per video actually read, and only when the listing did not
+ * already supply it.
+ *
+ * Best effort: a channel whose dates cannot be read still gets a brain, and the
+ * statistics say plainly that no dates were reported rather than inventing any.
+ */
+export async function uploadDateOf(video: VideoListItem): Promise<string> {
+  if (video.uploadDate !== '') return video.uploadDate;
+
+  try {
+    return (await getVideoInfo(video.id)).uploadDate;
+  } catch {
+    return '';
   }
 }
 
