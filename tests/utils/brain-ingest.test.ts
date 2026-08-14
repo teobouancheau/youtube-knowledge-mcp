@@ -61,7 +61,7 @@ describe('ingestVideo', () => {
       transcript([{ start: 0, end: 10, text: 'four words go here' }])
     );
 
-    const { state, chunks } = await ingestVideo(VIDEO, 0);
+    const { state, chunks } = await ingestVideo(VIDEO, 0, 'en');
 
     expect(state).toMatchObject({ state: 'indexed', chunkCount: 1, wordCount: 4 });
     expect(chunks[0]?.text).toBe('four words go here');
@@ -74,7 +74,7 @@ describe('ingestVideo', () => {
     );
     vi.mocked(getChapters).mockRejectedValue(new YouTubeError('NOT_FOUND', 'no chapters'));
 
-    const { state } = await ingestVideo(VIDEO, 0);
+    const { state } = await ingestVideo(VIDEO, 0, 'en');
 
     expect(state.state).toBe('indexed');
   });
@@ -83,10 +83,10 @@ describe('ingestVideo', () => {
     const { getTranscript } = await youtube();
 
     vi.mocked(getTranscript).mockRejectedValue(new YouTubeError('NO_CAPTIONS', 'none'));
-    expect((await ingestVideo(VIDEO, 0)).state).toMatchObject({ state: 'no-captions' });
+    expect((await ingestVideo(VIDEO, 0, 'en')).state).toMatchObject({ state: 'no-captions' });
 
     vi.mocked(getTranscript).mockRejectedValue(new YouTubeError('MEMBERS_ONLY', 'no'));
-    expect((await ingestVideo(VIDEO, 0)).state).toMatchObject({
+    expect((await ingestVideo(VIDEO, 0, 'en')).state).toMatchObject({
       state: 'failed',
       error: 'MEMBERS_ONLY',
     });
@@ -98,7 +98,7 @@ describe('ingestVideo', () => {
       transcript(oversizedSegments(MAX_CHUNKS_PER_VIDEO + 1))
     );
 
-    const { state, chunks } = await ingestVideo(VIDEO, 0);
+    const { state, chunks } = await ingestVideo(VIDEO, 0, 'en');
 
     expect(state).toMatchObject({ state: 'failed', error: TOO_LARGE });
     expect(chunks).toEqual([]);
@@ -110,7 +110,7 @@ describe('ingestVideo', () => {
       transcript([{ start: 0, end: 10, text: 'one more passage' }])
     );
 
-    const { state, chunks } = await ingestVideo(VIDEO, MAX_CHUNKS_PER_BRAIN);
+    const { state, chunks } = await ingestVideo(VIDEO, MAX_CHUNKS_PER_BRAIN, 'en');
 
     expect(state).toMatchObject({ state: 'failed', error: BRAIN_FULL });
     expect(chunks).toEqual([]);

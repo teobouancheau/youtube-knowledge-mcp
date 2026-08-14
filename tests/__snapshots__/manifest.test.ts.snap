@@ -32,6 +32,7 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     "name": "build_brain",
     "parameters": [
       "channel",
+      "language",
       "maxVideos",
       "minDurationSeconds",
       "since",

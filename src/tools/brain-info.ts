@@ -51,6 +51,7 @@ function summarize(manifest: BrainManifest): z.infer<typeof brainSummarySchema> 
     name,
     handle,
     channelUrl,
+    language: manifest.language,
     createdAt: manifest.createdAt,
     updatedAt: manifest.updatedAt,
     hasProfile: hasProfile(channelId),
@@ -75,6 +76,7 @@ export const getBrainInfoOutputSchema = {
   name: z.string(),
   handle: z.string(),
   channelUrl: z.string(),
+  language: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
   hasProfile: z.boolean(),
@@ -96,7 +98,7 @@ export async function getBrainInfoHandler({
 
   const lines = [
     `${name} (${handle || channelId})`,
-    `${stats.indexedCount} of ${stats.videoCount} videos indexed · ${stats.chunkCount.toLocaleString()} passages · ${stats.totalWords.toLocaleString()} words`,
+    `${stats.indexedCount} of ${stats.videoCount} videos indexed from ${manifest.language} captions · ${stats.chunkCount.toLocaleString()} passages · ${stats.totalWords.toLocaleString()} words`,
     `${stats.medianWordsPerMinute} words per minute (median)`,
     stats.firstUpload === undefined
       ? 'No upload dates reported'
@@ -136,6 +138,7 @@ export async function getBrainInfoHandler({
     name,
     handle,
     channelUrl,
+    language: manifest.language,
     createdAt: manifest.createdAt,
     updatedAt: manifest.updatedAt,
     hasProfile: hasProfile(channelId),

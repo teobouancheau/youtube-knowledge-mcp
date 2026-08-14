@@ -5,7 +5,7 @@ import { buildBrain, datedVideos } from '../utils/brain-build.js';
 import { withBuildLock } from '../utils/brain-lock.js';
 import { readManifest } from '../utils/brain-storage.js';
 import { toolResult } from '../utils/format.js';
-import { assertChannelId } from '../utils/validate.js';
+import { assertChannelId, assertLanguageTag } from '../utils/validate.js';
 import { getChannelInfo, listVideos, type VideoListItem } from '../utils/youtube.js';
 
 export const buildBrainSchema = {
@@ -17,6 +17,12 @@ export const buildBrainSchema = {
     .max(500)
     .default(100)
     .describe('How many of the most recent videos to consider. Default: 100'),
+  language: z
+    .string()
+    .default('en')
+    .describe(
+      'Caption language to read. A brain holds one language; build a separate one to read another. Default: en'
+    ),
   since: z
     .string()
     .optional()
@@ -38,6 +44,7 @@ export const buildBrainOutputSchema = {
   name: z.string(),
   handle: z.string(),
   channelUrl: z.string(),
+  language: z.string(),
   considered: z.number().int().describe('Videos matching the filters'),
   processed: z.number().int().describe('Videos read during this call'),
   skipped: z.number().int().describe('Videos already in the brain'),
@@ -57,14 +64,18 @@ export const buildBrainOutputSchema = {
 export async function buildBrainHandler({
   channel,
   maxVideos,
+  language,
   since,
   minDurationSeconds,
 }: {
   channel: string;
   maxVideos: number;
+  language: string;
   since?: string;
   minDurationSeconds: number;
 }): Promise<CallToolResult> {
+  assertLanguageTag(language);
+
   const info = await getChannelInfo(channel);
   assertChannelId(info.channelId);
 
@@ -76,7 +87,7 @@ export async function buildBrainHandler({
 
     return {
       considered: videos.length,
-      ...(await buildBrain({ channel: info, videos, existing })),
+      ...(await buildBrain({ channel: info, videos, existing, language })),
     };
   });
 
@@ -85,6 +96,7 @@ export async function buildBrainHandler({
     name: info.name,
     handle: info.handle,
     channelUrl: info.channelUrl,
+    language,
     considered,
     processed: result.processed,
     skipped: result.skipped,

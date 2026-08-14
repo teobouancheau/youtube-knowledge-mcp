@@ -19,8 +19,15 @@ and `ask_creator` prompts. All local (stdio) only, like the library.
 
 Reading several hundred videos means several hundred fetches, so a build is
 something that gets interrupted. Per-video state is recorded in a manifest and
-checkpointed as it goes: a cancelled, throttled or killed build leaves a valid
-brain, and calling `build_brain` again continues where it stopped. That is also
+checkpointed as it goes, and a cancelled build saves what it read before it
+stops: an interrupted, throttled or killed build leaves a valid brain, and
+calling `build_brain` again continues where it stopped.
+
+The manifest and the passages are two documents, and only one can be written
+first. Rather than trust that they agree, every build reconciles them: a video
+the corpus cannot account for goes back to pending and is read again on that
+same call. A brain cannot be stranded claiming to hold videos it can no longer
+search, and there is no repair tool to remember to run. That is also
 the refresh path — on a finished brain it reads only what is new — so there is no
 separate refresh tool. A video with no captions, or one behind a members-only
 wall, costs itself and nothing else.
