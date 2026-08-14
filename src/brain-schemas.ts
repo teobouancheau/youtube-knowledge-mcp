@@ -103,6 +103,8 @@ export const brainPassageSchema = z.object({
   url: z.string().describe('Link that opens the video at this moment'),
 });
 
+export type BrainPassage = z.infer<typeof brainPassageSchema>;
+
 /** One row of list_brains. */
 export const brainSummarySchema = z.object({
   channelId: z.string(),

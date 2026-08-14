@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { readFile, rename, writeFile } from 'node:fs/promises';
+import { readFile, rename, rm, writeFile } from 'node:fs/promises';
 import type { z } from 'zod';
 
 /**
@@ -35,11 +35,23 @@ export async function writeJsonAtomic(
   options: WriteJsonOptions = {}
 ): Promise<void> {
   const { pretty = true } = options;
-  const temporaryPath = `${path}.tmp`;
+  const serialised = JSON.stringify(value, null, pretty ? 2 : undefined);
 
-  await writeFile(temporaryPath, JSON.stringify(value, null, pretty ? 2 : undefined), 'utf-8');
-  await rename(temporaryPath, path);
+  // A shared temporary name would let two writers of the same document destroy
+  // each other's staging file, and the loser's rename would fail on a path that
+  // the winner had already moved away.
+  const temporaryPath = `${path}.${process.pid}.${writeSequence++}.tmp`;
+
+  try {
+    await writeFile(temporaryPath, serialised, 'utf-8');
+    await rename(temporaryPath, path);
+  } catch (error) {
+    await rm(temporaryPath, { force: true });
+    throw error;
+  }
 }
+
+let writeSequence = 0;
 
 /**
  * Read and validate a JSON document, or `undefined` if it is missing,

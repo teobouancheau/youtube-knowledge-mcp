@@ -1,4 +1,3 @@
-import { homedir } from 'os';
 import { join } from 'path';
 import { z } from 'zod';
 import { mkdir, readFile, rm, writeFile } from 'fs/promises';
@@ -8,10 +7,10 @@ import { hasCachedTranscript } from './youtube.js';
 import { SearchIndex, type SearchHit } from './search-index.js';
 import { libraryMetadataSchema, recordOfValid } from '../schemas.js';
 import { readJsonFile, writeJsonAtomic } from './json-file.js';
+import { dataDir } from './paths.js';
 
-const BASE_DIR = join(homedir(), '.youtube-knowledge');
-const LIBRARY_DIR = join(BASE_DIR, 'library');
-const INDEX_FILE = join(BASE_DIR, 'index.json');
+const LIBRARY_DIR = dataDir('library');
+const INDEX_FILE = dataDir('index.json');
 
 export type LibraryMetadata = z.infer<typeof libraryMetadataSchema>;
 
@@ -29,7 +28,7 @@ export const libraryIndexSchema = z.object({
 export type LibraryIndex = z.infer<typeof libraryIndexSchema>;
 
 async function ensureDirectories(): Promise<void> {
-  await mkdir(BASE_DIR, { recursive: true });
+  await mkdir(dataDir(), { recursive: true });
   await mkdir(LIBRARY_DIR, { recursive: true });
 }
 
@@ -248,7 +247,7 @@ export async function listTags(): Promise<string[]> {
 
 // -- Full-text search ----------------------------------------------------
 
-const INDEX_SEARCH_FILE = join(BASE_DIR, 'search-index.json');
+const INDEX_SEARCH_FILE = dataDir('search-index.json');
 
 async function loadSearchIndex(): Promise<SearchIndex> {
   await ensureDirectories();
