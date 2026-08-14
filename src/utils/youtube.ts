@@ -1,4 +1,3 @@
-import { homedir } from 'os';
 import { join } from 'path';
 import { z } from 'zod';
 import { mkdir, readFile, writeFile, unlink } from 'fs/promises';
@@ -8,6 +7,7 @@ import { YouTubeError, classifyPlayability } from './errors.js';
 import { TIMEOUTS, isRecord, parseYtDlpJson, parseYtDlpJsonLines, runYtDlp } from './ytdlp.js';
 import { assertLanguageTag, resolveOutputDir } from './validate.js';
 import { log } from './context.js';
+import { dataDir } from './paths.js';
 import {
   TRANSCRIPT_CACHE_VERSION,
   cachedTranscriptSchema,
@@ -17,7 +17,7 @@ import {
   type TranscriptSegment,
 } from './transcript.js';
 
-const CACHE_DIR = join(homedir(), '.youtube-knowledge', 'transcripts');
+const CACHE_DIR = dataDir('transcripts');
 
 export interface VideoInfo {
   id: string;
@@ -508,7 +508,7 @@ async function noCaptionsError(url: string, requested: string): Promise<YouTubeE
   );
 }
 
-const DOWNLOADS_DIR = join(homedir(), '.youtube-knowledge', 'downloads');
+const DOWNLOADS_DIR = dataDir('downloads');
 
 interface YtDlpFormat {
   format_id: string;
