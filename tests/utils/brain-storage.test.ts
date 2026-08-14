@@ -5,16 +5,15 @@ import { join } from 'node:path';
 import type { BrainChunk, BrainManifest } from '../../src/brain-schemas.js';
 import { readChunks, searchBrain, writeChunks } from '../../src/utils/brain-index.js';
 import { brainDir, brainsDir, lockPath } from '../../src/utils/brain-paths.js';
+import { LOCK_STALE_MS, withBuildLock } from '../../src/utils/brain-lock.js';
 import {
   BRAIN_MANIFEST_VERSION,
-  LOCK_STALE_MS,
   deleteBrain,
   hasProfile,
   listManifests,
   readManifest,
   readProfile,
   requireManifest,
-  withBuildLock,
   writeManifest,
   writeProfile,
 } from '../../src/utils/brain-storage.js';
