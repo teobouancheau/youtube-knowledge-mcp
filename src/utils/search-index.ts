@@ -89,6 +89,11 @@ const STOP_WORDS = new Set([
   'does',
 ]);
 
+/** Exposed so phrase detection can tell filler apart from content. */
+export function isStopWord(word: string): boolean {
+  return STOP_WORDS.has(word);
+}
+
 export function tokenize(text: string): string[] {
   return text
     .toLowerCase()
