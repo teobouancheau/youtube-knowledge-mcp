@@ -1,4 +1,3 @@
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { execa } from 'execa';
@@ -8,6 +7,7 @@ import { resolveOutputDir } from './validate.js';
 import { TIMEOUTS, runYtDlp } from './ytdlp.js';
 import { formatSrtTimestamp } from './transcript.js';
 import { getChapters, getVideoInfo } from './youtube.js';
+import { dataDir } from './paths.js';
 
 /**
  * Pulling usable excerpts out of a video for editing.
@@ -18,9 +18,9 @@ import { getChapters, getVideoInfo } from './youtube.js';
  * kinder to YouTube than pulling a three-hour file to keep 20 seconds of it.
  */
 
-const CLIPS_DIR = join(homedir(), '.youtube-knowledge', 'clips');
-const FRAMES_DIR = join(homedir(), '.youtube-knowledge', 'frames');
-const SUBTITLES_DIR = join(homedir(), '.youtube-knowledge', 'subtitles');
+const CLIPS_DIR = dataDir('clips');
+const FRAMES_DIR = dataDir('frames');
+const SUBTITLES_DIR = dataDir('subtitles');
 
 export interface ClipRange {
   start: number;

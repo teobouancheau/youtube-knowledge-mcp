@@ -1,12 +1,35 @@
 import { z } from 'zod';
 
 /**
- * Output schemas.
+ * Domain schemas.
  *
- * Every tool declares one, so a client receives typed `structuredContent`
- * alongside the readable text rather than having to parse prose. The domain
- * shapes live here because several tools return the same ones.
+ * Every tool declares an output schema, so a client receives typed
+ * `structuredContent` alongside the readable text rather than having to parse
+ * prose. The shapes live here because several tools return the same ones, and
+ * because the documents this server writes to disk are read back through the
+ * same definitions — a persisted shape and the shape a tool reports are the
+ * same shape, and declaring them twice is how they drift.
  */
+
+/**
+ * A record whose unreadable values are dropped rather than failing the parse.
+ *
+ * These describe files this process wrote but does not own: they survive
+ * upgrades, get synced between machines, and are plain JSON anyone can edit. A
+ * single corrupt entry should cost that one entry, not the whole document.
+ */
+export function recordOfValid<T>(
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>
+): z.ZodType<Record<string, T>, z.ZodTypeDef, Record<string, unknown>> {
+  return z.record(z.string(), z.unknown()).transform((entries) => {
+    const valid: Record<string, T> = {};
+    for (const [key, value] of Object.entries(entries)) {
+      const parsed = schema.safeParse(value);
+      if (parsed.success) valid[key] = parsed.data;
+    }
+    return valid;
+  });
+}
 
 export const paginationShape = {
   total: z.number().int().describe('Total items available'),

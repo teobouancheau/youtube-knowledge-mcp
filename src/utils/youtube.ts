@@ -1,4 +1,3 @@
-import { homedir } from 'os';
 import { join } from 'path';
 import { z } from 'zod';
 import { mkdir, readFile, writeFile, unlink } from 'fs/promises';
@@ -8,6 +7,7 @@ import { YouTubeError, classifyPlayability } from './errors.js';
 import { TIMEOUTS, isRecord, parseYtDlpJson, parseYtDlpJsonLines, runYtDlp } from './ytdlp.js';
 import { assertLanguageTag, resolveOutputDir } from './validate.js';
 import { log } from './context.js';
+import { dataDir } from './paths.js';
 import {
   TRANSCRIPT_CACHE_VERSION,
   cachedTranscriptSchema,
@@ -17,7 +17,7 @@ import {
   type TranscriptSegment,
 } from './transcript.js';
 
-const CACHE_DIR = join(homedir(), '.youtube-knowledge', 'transcripts');
+const CACHE_DIR = dataDir('transcripts');
 
 export interface VideoInfo {
   id: string;
@@ -508,7 +508,7 @@ async function noCaptionsError(url: string, requested: string): Promise<YouTubeE
   );
 }
 
-const DOWNLOADS_DIR = join(homedir(), '.youtube-knowledge', 'downloads');
+const DOWNLOADS_DIR = dataDir('downloads');
 
 interface YtDlpFormat {
   format_id: string;
@@ -669,20 +669,45 @@ export async function searchVideos(query: string, limit = 5): Promise<SearchResu
 }
 
 export async function getChapters(urlOrId: string): Promise<Chapter[]> {
+  return (await getVideoDetails(urlOrId)).chapters;
+}
+
+/**
+ * Publication date, length and chapters, from a single metadata fetch.
+ *
+ * Reading a channel needs all three per video, and asking for them separately
+ * spawns yt-dlp twice for one identical `-j` request — doubling the requests a
+ * build makes to YouTube, which is the thing most likely to get it throttled.
+ * `getChapters` is the same call with everything but the chapters discarded.
+ */
+export interface VideoDetails {
+  uploadDate: string;
+  durationSeconds: number;
+  chapters: Chapter[];
+}
+
+export async function getVideoDetails(urlOrId: string): Promise<VideoDetails> {
   const videoId = extractVideoId(urlOrId);
   const url = `https://www.youtube.com/watch?v=${videoId}`;
 
-  const stdout = await runYtDlp(['-j', '--skip-download', url], { label: 'get_chapters' });
-  const data = parseYtDlpJson<{ chapters?: YtDlpChapter[] }>(stdout, isRecord, 'video chapters');
-  const chapters = data.chapters ?? [];
+  const stdout = await runYtDlp(['-j', '--skip-download', url], { label: 'get_video_details' });
+  const data = parseYtDlpJson<{
+    chapters?: YtDlpChapter[];
+    upload_date?: string;
+    duration?: number;
+  }>(stdout, isRecord, 'video details');
 
-  return chapters.map((ch) => ({
-    title: ch.title,
-    startTime: ch.start_time,
-    startTimeFormatted: formatDuration(Math.floor(ch.start_time)),
-    endTime: ch.end_time,
-    endTimeFormatted: formatDuration(Math.floor(ch.end_time)),
-  }));
+  return {
+    uploadDate: formatYouTubeDate(data.upload_date ?? ''),
+    durationSeconds: typeof data.duration === 'number' ? data.duration : 0,
+    chapters: (data.chapters ?? []).map((ch) => ({
+      title: ch.title,
+      startTime: ch.start_time,
+      startTimeFormatted: formatDuration(Math.floor(ch.start_time)),
+      endTime: ch.end_time,
+      endTimeFormatted: formatDuration(Math.floor(ch.end_time)),
+    })),
+  };
 }
 
 export async function getComments(urlOrId: string, limit = 20): Promise<VideoComment[]> {

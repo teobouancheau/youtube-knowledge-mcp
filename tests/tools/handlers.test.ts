@@ -238,27 +238,30 @@ describe('library handlers', () => {
   });
 
   it('explains an empty search rather than returning a bare list', async () => {
-    vi.mocked(searchLibrary).mockResolvedValue([]);
+    vi.mocked(searchLibrary).mockResolvedValue({ hits: [], total: 0 });
 
-    const result = await searchLibraryHandler({ query: 'nothing', limit: 10 });
+    const result = await searchLibraryHandler({ query: 'nothing', limit: 10, offset: 0 });
 
     expect(textOf(result)).toContain('No saved notes match');
     expect(result.structuredContent).toMatchObject({ hits: [], total: 0 });
   });
 
   it('renders search hits with the call needed to read them', async () => {
-    vi.mocked(searchLibrary).mockResolvedValue([
-      {
-        id: 'v1:summary',
-        videoId: 'v1',
-        title: 'Hit',
-        kind: 'summary',
-        score: 1.2,
-        excerpt: '…x…',
-      },
-    ]);
+    vi.mocked(searchLibrary).mockResolvedValue({
+      hits: [
+        {
+          id: 'v1:summary',
+          videoId: 'v1',
+          title: 'Hit',
+          kind: 'summary',
+          score: 1.2,
+          excerpt: '…x…',
+        },
+      ],
+      total: 1,
+    });
 
-    const result = await searchLibraryHandler({ query: 'x', limit: 10 });
+    const result = await searchLibraryHandler({ query: 'x', limit: 10, offset: 0 });
 
     expect(textOf(result)).toContain('get_library_item videoId=v1');
     expect(result.structuredContent).toMatchObject({ total: 1 });

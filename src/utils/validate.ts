@@ -53,6 +53,27 @@ export function assertLanguageTag(language: string): string {
   return language;
 }
 
+/**
+ * YouTube channel ids are `UC` followed by 22 base64url characters.
+ *
+ * This is stricter than it looks like it needs to be. A channel id arrives from
+ * yt-dlp's output and is then used as a directory name under
+ * `~/.youtube-knowledge/brains`, so a value containing a separator or `..`
+ * would write outside that tree. Matching the real format exactly is cheaper
+ * than sanitising a value that should never have been unusual.
+ */
+const CHANNEL_ID_PATTERN = /^UC[A-Za-z0-9_-]{22}$/;
+
+export function assertChannelId(channelId: string): string {
+  if (!CHANNEL_ID_PATTERN.test(channelId)) {
+    throw new YouTubeError('INVALID_INPUT', `"${channelId}" is not a valid YouTube channel id.`, {
+      nextStep:
+        'Channel ids look like UCxxxxxxxxxxxxxxxxxxxxxx. Call get_channel_info or list_brains to get one.',
+    });
+  }
+  return channelId;
+}
+
 /** Accepts `90`, `1:30`, `01:02:03`, `1:30.5` and returns seconds. */
 export function parseTimestamp(value: string | number, field: string): number {
   if (typeof value === 'number') {

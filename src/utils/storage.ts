@@ -1,76 +1,45 @@
-import { homedir } from 'os';
 import { join } from 'path';
 import { z } from 'zod';
 import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { YouTubeError } from './errors.js';
 import { hasCachedTranscript } from './youtube.js';
-import { SearchIndex, type SearchHit } from './search-index.js';
+import { SearchIndex, type SearchResults } from './search-index.js';
+import { libraryMetadataSchema, recordOfValid } from '../schemas.js';
+import { readJsonFile, writeJsonAtomic } from './json-file.js';
+import { dataDir } from './paths.js';
 
-const BASE_DIR = join(homedir(), '.youtube-knowledge');
-const LIBRARY_DIR = join(BASE_DIR, 'library');
-const INDEX_FILE = join(BASE_DIR, 'index.json');
-
-/**
- * Both of these describe files on disk that this process wrote but does not
- * own: the user's library survives upgrades, gets synced between machines, and
- * is plain JSON anyone can edit. They are schemas rather than interfaces so
- * that reading them back validates rather than assumes.
- */
-export const libraryMetadataSchema = z.object({
-  videoId: z.string(),
-  title: z.string(),
-  channel: z.string(),
-  url: z.string(),
-  tags: z.array(z.string()),
-  dateSaved: z.string(),
-  hasTranscript: z.boolean(),
-  hasSummary: z.boolean(),
-  hasSkill: z.boolean(),
-});
+const LIBRARY_DIR = dataDir('library');
+const INDEX_FILE = dataDir('index.json');
 
 export type LibraryMetadata = z.infer<typeof libraryMetadataSchema>;
 
+/**
+ * The library index describes a file on disk that this process wrote but does
+ * not own: it survives upgrades, gets synced between machines, and is plain
+ * JSON anyone can edit. It is a schema rather than an interface so that reading
+ * it back validates rather than assumes.
+ */
 export const libraryIndexSchema = z.object({
   version: z.number(),
-  // A single corrupt entry should cost that one note, not the whole library, so
-  // unreadable values are dropped rather than failing the parse.
-  items: z.record(z.string(), z.unknown()).transform((items) => {
-    const valid: Record<string, LibraryMetadata> = {};
-    for (const [key, value] of Object.entries(items)) {
-      const parsed = libraryMetadataSchema.safeParse(value);
-      if (parsed.success) valid[key] = parsed.data;
-    }
-    return valid;
-  }),
+  items: recordOfValid(libraryMetadataSchema),
 });
 
 export type LibraryIndex = z.infer<typeof libraryIndexSchema>;
 
 async function ensureDirectories(): Promise<void> {
-  await mkdir(BASE_DIR, { recursive: true });
+  await mkdir(dataDir(), { recursive: true });
   await mkdir(LIBRARY_DIR, { recursive: true });
 }
 
 async function loadIndex(): Promise<LibraryIndex> {
   await ensureDirectories();
-
-  if (!existsSync(INDEX_FILE)) {
-    return { version: 1, items: {} };
-  }
-
-  try {
-    const content = await readFile(INDEX_FILE, 'utf-8');
-    const parsed = libraryIndexSchema.safeParse(JSON.parse(content));
-    return parsed.success ? parsed.data : { version: 1, items: {} };
-  } catch {
-    return { version: 1, items: {} };
-  }
+  return (await readJsonFile(INDEX_FILE, libraryIndexSchema)) ?? { version: 1, items: {} };
 }
 
 async function saveIndex(index: LibraryIndex): Promise<void> {
   await ensureDirectories();
-  await writeFile(INDEX_FILE, JSON.stringify(index, null, 2), 'utf-8');
+  await writeJsonAtomic(INDEX_FILE, index);
 }
 
 export interface SaveOptions {
@@ -90,31 +59,19 @@ export async function saveToLibrary(
 
   await ensureDirectories();
 
-  const itemDir = join(LIBRARY_DIR, videoId);
-  await mkdir(itemDir, { recursive: true });
+  const directory = itemDir(videoId);
+  await mkdir(directory, { recursive: true });
 
   // Save content
   const filename = contentType === 'summary' ? 'summary.md' : 'skill.md';
-  const filePath = join(itemDir, filename);
+  const filePath = join(directory, filename);
   await writeFile(filePath, content, 'utf-8');
 
-  // Update metadata
-  const metadataPath = join(itemDir, 'metadata.json');
-  let metadata: Partial<LibraryMetadata> = {};
-
-  if (existsSync(metadataPath)) {
-    try {
-      // Only the fields worth carrying forward need to survive validation, so
-      // this is the metadata schema made optional field by field rather than an
-      // "is an object" check that let anything through as metadata.
-      const parsed = libraryMetadataSchema
-        .partial()
-        .safeParse(JSON.parse(await readFile(metadataPath, 'utf-8')));
-      if (parsed.success) metadata = parsed.data;
-    } catch {
-      // Ignore parse errors
-    }
-  }
+  // Update metadata. Only the fields worth carrying forward need to survive
+  // validation, so this is the metadata schema made optional field by field
+  // rather than an "is an object" check that let anything through as metadata.
+  const metadata: Partial<LibraryMetadata> =
+    (await readJsonFile(metadataPath(videoId), libraryMetadataSchema.partial())) ?? {};
 
   const updatedMetadata: LibraryMetadata = {
     videoId,
@@ -130,7 +87,7 @@ export async function saveToLibrary(
     hasSkill: contentType === 'skill' ? true : (metadata.hasSkill ?? false),
   };
 
-  await writeFile(metadataPath, JSON.stringify(updatedMetadata, null, 2), 'utf-8');
+  await writeMetadata(updatedMetadata);
 
   // Update index
   const index = await loadIndex();
@@ -160,6 +117,14 @@ function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T
 
 function itemDir(videoId: string): string {
   return join(LIBRARY_DIR, videoId);
+}
+
+function metadataPath(videoId: string): string {
+  return join(itemDir(videoId), 'metadata.json');
+}
+
+async function writeMetadata(metadata: LibraryMetadata): Promise<void> {
+  await writeJsonAtomic(metadataPath(metadata.videoId), metadata);
 }
 
 async function readIfPresent(path: string): Promise<string | undefined> {
@@ -235,11 +200,7 @@ export async function deleteLibraryItem(
     index.items = withoutKey(index.items, videoId);
   } else {
     index.items[videoId] = updated;
-    await writeFile(
-      join(itemDir(videoId), 'metadata.json'),
-      JSON.stringify(updated, null, 2),
-      'utf-8'
-    );
+    await writeMetadata(updated);
   }
 
   await saveIndex(index);
@@ -269,11 +230,7 @@ export async function updateLibraryTags(
   const updated: LibraryMetadata = { ...metadata, tags };
   index.items[videoId] = updated;
   await saveIndex(index);
-  await writeFile(
-    join(itemDir(videoId), 'metadata.json'),
-    JSON.stringify(updated, null, 2),
-    'utf-8'
-  );
+  await writeMetadata(updated);
 
   return updated;
 }
@@ -290,22 +247,18 @@ export async function listTags(): Promise<string[]> {
 
 // -- Full-text search ----------------------------------------------------
 
-const INDEX_SEARCH_FILE = join(BASE_DIR, 'search-index.json');
+const INDEX_SEARCH_FILE = dataDir('search-index.json');
 
 async function loadSearchIndex(): Promise<SearchIndex> {
   await ensureDirectories();
-  if (!existsSync(INDEX_SEARCH_FILE)) return new SearchIndex();
-
-  try {
-    return SearchIndex.fromJSON(JSON.parse(await readFile(INDEX_SEARCH_FILE, 'utf-8')));
-  } catch {
-    // A corrupt index is a cache, not data: rebuild rather than fail.
-    return new SearchIndex();
-  }
+  // A corrupt index is a cache, not data: `fromJSON` rebuilds from what it can
+  // read rather than failing, and an unreadable file yields an empty index.
+  return SearchIndex.fromJSON(await readJsonFile(INDEX_SEARCH_FILE, z.unknown()));
 }
 
 async function persistSearchIndex(index: SearchIndex): Promise<void> {
-  await writeFile(INDEX_SEARCH_FILE, JSON.stringify(index.toJSON()), 'utf-8');
+  // Not pretty-printed: indentation is most of the bytes in an index nobody reads.
+  await writeJsonAtomic(INDEX_SEARCH_FILE, index.toJSON(), { pretty: false });
 }
 
 async function indexDocument(
@@ -329,9 +282,9 @@ async function removeFromIndex(videoId: string, kind?: string): Promise<void> {
   await persistSearchIndex(index);
 }
 
-export async function searchLibrary(query: string, limit = 10): Promise<SearchHit[]> {
+export async function searchLibrary(query: string, limit = 10, offset = 0): Promise<SearchResults> {
   const index = await loadSearchIndex();
-  return index.search(query, limit);
+  return index.search(query, limit, offset);
 }
 
 /** Rebuild the index from what is actually on disk. */

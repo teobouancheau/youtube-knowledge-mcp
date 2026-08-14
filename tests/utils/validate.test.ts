@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { assertLanguageTag, parseTimestamp, resolveOutputDir } from '../../src/utils/validate.js';
+import {
+  assertChannelId,
+  assertLanguageTag,
+  parseTimestamp,
+  resolveOutputDir,
+} from '../../src/utils/validate.js';
 import { YouTubeError } from '../../src/utils/errors.js';
 
 const HOME = homedir();
@@ -105,4 +110,32 @@ describe('parseTimestamp', () => {
     expect(error?.message).toContain('endTime');
     expect(error?.toToolMessage()).toContain('HH:MM:SS');
   });
+});
+
+describe('assertChannelId', () => {
+  it.each(['UCXuqSBlHAE6Xw-yeJA0Tunw', 'UC_x5XG1OV2P6uZZ5FSM9Ttw', 'UC-lHJZR3Gqxm24_Vd_AJ5Yw'])(
+    'accepts the real channel id %s',
+    (channelId) => {
+      expect(assertChannelId(channelId)).toBe(channelId);
+    }
+  );
+
+  it.each([
+    '',
+    'UC',
+    'XCXuqSBlHAE6Xw-yeJA0Tunw',
+    'UCXuqSBlHAE6Xw-yeJA0Tunww',
+    'UCXuqSBlHAE6Xw yeJA0Tunw',
+  ])('rejects the malformed id %s', (channelId) => {
+    expect(() => assertChannelId(channelId)).toThrow(YouTubeError);
+  });
+
+  // A channel id becomes a directory name, so anything that could climb out of
+  // the brains directory has to be refused before it reaches a path join.
+  it.each(['../../etc/passwd', 'UC../../../etc', 'UC/../../secrets', 'UC\0AAAAAAAAAAAAAAAAAAAA'])(
+    'rejects the traversal attempt %j',
+    (channelId) => {
+      expect(() => assertChannelId(channelId)).toThrow(YouTubeError);
+    }
+  );
 });

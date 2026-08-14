@@ -20,9 +20,25 @@ vi.mock('../src/utils/storage.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/utils/storage.js')>();
   return { ...actual, getLibraryItem: vi.fn(), listLibrary: vi.fn(), listTags: vi.fn() };
 });
+vi.mock('../src/utils/brain-storage.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/utils/brain-storage.js')>();
+  return {
+    ...actual,
+    listManifests: vi.fn(),
+    readProfile: vi.fn(),
+    requireManifest: vi.fn(),
+    hasProfile: vi.fn(() => false),
+  };
+});
 
 import { getTranscript } from '../src/utils/youtube.js';
 import { getLibraryItem, listLibrary, listTags } from '../src/utils/storage.js';
+import {
+  hasProfile,
+  listManifests,
+  readProfile,
+  requireManifest,
+} from '../src/utils/brain-storage.js';
 import { createServer } from '../src/index.js';
 import { YouTubeError } from '../src/utils/errors.js';
 
@@ -82,6 +98,8 @@ beforeEach(() => {
     skill: '# The skill',
   });
   vi.mocked(listTags).mockResolvedValue(['systems', 'syntax']);
+  vi.mocked(listManifests).mockResolvedValue([]);
+  vi.mocked(hasProfile).mockReturnValue(false);
 });
 
 describe('transcript resource', () => {
@@ -184,6 +202,99 @@ describe('library resource', () => {
     await expect(
       client.readResource({ uri: 'youtube://library/dQw4w9WgXcQ/summary' })
     ).rejects.toThrow();
+  });
+});
+
+describe('brain resource', () => {
+  const CHANNEL_ID = 'UCsBjURrPoezykLs9EqgamOA';
+
+  const MANIFEST = {
+    version: 1,
+    channel: {
+      name: 'Fireship',
+      channelId: CHANNEL_ID,
+      handle: '@Fireship',
+      subscriberCount: 10,
+      channelUrl: `https://www.youtube.com/channel/${CHANNEL_ID}`,
+      description: '',
+    },
+    language: 'en',
+    createdAt: '2025-01-01T00:00:00.000Z',
+    updatedAt: '2025-02-01T00:00:00.000Z',
+    videos: {},
+    stats: {
+      videoCount: 1,
+      excludedCount: 0,
+      indexedCount: 1,
+      noCaptionsCount: 0,
+      failedCount: 0,
+      pendingCount: 0,
+      chunkCount: 4,
+      totalWords: 900,
+      medianWordsPerMinute: 150,
+      uploadsPerMonth: [],
+      recurringPhrases: [],
+    },
+  };
+
+  beforeEach(() => {
+    vi.mocked(listManifests).mockResolvedValue([MANIFEST]);
+    vi.mocked(requireManifest).mockResolvedValue(MANIFEST);
+    vi.mocked(readProfile).mockResolvedValue(undefined);
+    vi.mocked(hasProfile).mockReturnValue(false);
+  });
+
+  it('lists a manifest for every brain, and a profile only where one was saved', async () => {
+    const client = await connect();
+
+    const withoutProfile = (await client.listResources()).resources.map((resource) => resource.uri);
+    expect(withoutProfile).toContain(`youtube://brain/${CHANNEL_ID}/manifest`);
+    expect(withoutProfile).not.toContain(`youtube://brain/${CHANNEL_ID}/profile`);
+
+    vi.mocked(hasProfile).mockReturnValue(true);
+    const withProfile = (await (await connect()).listResources()).resources.map(
+      (resource) => resource.uri
+    );
+    expect(withProfile).toContain(`youtube://brain/${CHANNEL_ID}/profile`);
+  });
+
+  it('reads the manifest back as JSON', async () => {
+    const client = await connect();
+    const result = await client.readResource({
+      uri: `youtube://brain/${CHANNEL_ID}/manifest`,
+    });
+
+    expect(JSON.parse(textOfContents(result))).toMatchObject({
+      channel: { channelId: CHANNEL_ID },
+      stats: { chunkCount: 4 },
+    });
+  });
+
+  it('reads the profile when one was saved', async () => {
+    vi.mocked(readProfile).mockResolvedValue('# Voice\n\nTerse.');
+
+    const client = await connect();
+    const result = await client.readResource({
+      uri: `youtube://brain/${CHANNEL_ID}/profile`,
+    });
+
+    expect(textOfContents(result)).toContain('Terse');
+  });
+
+  it('refuses a part of a brain that does not exist', async () => {
+    const client = await connect();
+
+    await expect(
+      client.readResource({ uri: `youtube://brain/${CHANNEL_ID}/passages` })
+    ).rejects.toThrow(/not part of a brain/i);
+  });
+
+  it('fails clearly when no profile has been written', async () => {
+    const client = await connect();
+
+    await expect(
+      client.readResource({ uri: `youtube://brain/${CHANNEL_ID}/profile` })
+    ).rejects.toThrow(/profile/i);
   });
 });
 
