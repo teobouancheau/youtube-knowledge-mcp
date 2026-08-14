@@ -144,6 +144,10 @@ export function segmentsToText(segments: TranscriptSegment[]): string {
     .trim();
 }
 
+export function countWords(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length;
+}
+
 export function segmentsToTimestamped(segments: TranscriptSegment[]): string {
   return segments
     .map((segment) => `[${formatTimestamp(segment.start)}] ${segment.text}`)

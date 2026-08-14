@@ -3,7 +3,7 @@ import { getChapters, getTranscript, getVideoInfo, listVideos } from '../utils/y
 import { toolResult } from '../utils/format.js';
 import { asYouTubeError } from '../utils/errors.js';
 import { reportProgress, throwIfAborted } from '../utils/context.js';
-import { formatTimestamp, segmentsToText, windowText } from '../utils/transcript.js';
+import { countWords, formatTimestamp, segmentsToText, windowText } from '../utils/transcript.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 /**
@@ -216,7 +216,7 @@ export async function digestPlaylistHandler({
     if (includeTranscriptStats) {
       try {
         const transcript = await getTranscript(video.id);
-        const words = segmentsToText(transcript.segments).split(/\s+/).filter(Boolean).length;
+        const words = countWords(segmentsToText(transcript.segments));
         lines.push(`transcript: ${words.toLocaleString()} words (${transcript.language})`);
         entry.transcriptWords = words;
       } catch (error) {

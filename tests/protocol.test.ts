@@ -61,6 +61,8 @@ describe('tool manifest', () => {
       'extract',
       'export',
       'digest',
+      'build',
+      'ask',
     ]);
 
     for (const tool of stdioTools) {
@@ -117,7 +119,14 @@ describe('tool manifest', () => {
 
     // Overwriting a saved note and replacing a tag set both discard content the
     // user cannot recover, so they belong here alongside the outright delete.
-    expect(destructive).toEqual(['delete_library_item', 'save_to_library', 'update_library_tags']);
+    expect(destructive).toEqual([
+      'build_brain',
+      'delete_brain',
+      'delete_library_item',
+      'save_brain_profile',
+      'save_to_library',
+      'update_library_tags',
+    ]);
   });
 
   it('never describes destructive behaviour while claiming to be non-destructive', () => {
@@ -184,6 +193,12 @@ describe('transport-mode gating', () => {
       'extract_clips',
       'extract_frame',
       'export_subtitles',
+      'build_brain',
+      'ask_brain',
+      'list_brains',
+      'get_brain_info',
+      'save_brain_profile',
+      'delete_brain',
     ];
 
     const remoteNames = httpTools.map((tool) => tool.name);
@@ -342,6 +357,14 @@ describe('prompts', () => {
     const { prompts } = await (await connect('http')).listPrompts();
     expect(prompts.map((prompt) => prompt.name)).not.toContain('review_library');
   });
+
+  it('withholds brain prompts from the remote surface', async () => {
+    const { prompts } = await (await connect('http')).listPrompts();
+    const names = prompts.map((prompt) => prompt.name);
+
+    expect(names).not.toContain('create_brain');
+    expect(names).not.toContain('ask_creator');
+  });
 });
 
 describe('resources', () => {
@@ -352,6 +375,15 @@ describe('resources', () => {
         'youtube://transcript/{videoId}'
       );
     }
+  });
+
+  it('exposes brains only locally', async () => {
+    const local = await (await connect('stdio')).listResourceTemplates();
+    const remote = await (await connect('http')).listResourceTemplates();
+
+    const uri = 'youtube://brain/{channelId}/{part}';
+    expect(local.resourceTemplates.map((template) => template.uriTemplate)).toContain(uri);
+    expect(remote.resourceTemplates.map((template) => template.uriTemplate)).not.toContain(uri);
   });
 
   it('exposes the library only locally', async () => {
@@ -391,5 +423,62 @@ describe('error reporting', () => {
     const content = result.content as { type: string; text: string }[];
     expect(content[0]?.text).toMatch(/^\[[A-Z_]+\]/);
     expect(content[0]?.text).not.toContain('    at ');
+  });
+});
+
+describe('documented surface', () => {
+  /**
+   * The README states how many tools there are and how they split across the
+   * two transports. Those numbers are the first thing a reader trusts and the
+   * easiest thing to forget, so they are checked against the server rather than
+   * maintained by hand.
+   */
+  async function readme(): Promise<string> {
+    const { readFile } = await import('node:fs/promises');
+    return readFile(new URL('../README.md', import.meta.url), 'utf-8');
+  }
+
+  it('never names a parameter a tool does not take', async () => {
+    const text = await readme();
+    const byName = new Map(stdioTools.map((tool) => [tool.name, tool]));
+
+    // The column is headed "Key parameters", so a row may leave one out. What
+    // it may not do is name one that was renamed or removed — a reader cannot
+    // tell that from an omission, and will pass it.
+    const rows = text.matchAll(/^\| `(\w+)`\s*\|([^|]*)\|/gm);
+    let checked = 0;
+
+    for (const [, name, parameters] of rows) {
+      const tool = byName.get(name ?? '');
+      if (tool === undefined) continue;
+
+      const actual = new Set(Object.keys(tool.inputSchema.properties ?? {}));
+      const documented = [...(parameters ?? '').matchAll(/`(\w+)`/g)].map((match) => match[1]);
+
+      for (const parameter of documented) {
+        expect(actual.has(parameter ?? ''), `${name} has no parameter "${parameter}"`).toBe(true);
+      }
+      checked++;
+    }
+
+    expect(checked, 'no tool rows found in the README').toBeGreaterThan(20);
+  });
+
+  it('counts tools the way the README says it does', async () => {
+    const claimed =
+      /(\d+) tools\. The (\d+) read-only ones work over both transports; the (\d+)/.exec(
+        await readme()
+      );
+
+    expect(
+      claimed,
+      'the README no longer states its tool counts in the expected form'
+    ).not.toBeNull();
+
+    const [total, remote, local] = [claimed?.[1], claimed?.[2], claimed?.[3]].map(Number);
+
+    expect(total, 'total tools').toBe(stdioTools.length);
+    expect(remote, 'tools available over HTTP').toBe(httpTools.length);
+    expect(local, 'tools registered only locally').toBe(stdioTools.length - httpTools.length);
   });
 });

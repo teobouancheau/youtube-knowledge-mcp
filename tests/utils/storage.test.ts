@@ -5,6 +5,9 @@ vi.mock('fs/promises', () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
   readFile: vi.fn(),
   writeFile: vi.fn().mockResolvedValue(undefined),
+  // JSON documents are written to a temporary file and renamed into place, so
+  // an interrupted write cannot truncate the previous one.
+  rename: vi.fn().mockResolvedValue(undefined),
   readdir: vi.fn().mockResolvedValue([]),
 }));
 

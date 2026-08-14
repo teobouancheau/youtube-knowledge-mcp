@@ -30,6 +30,12 @@ const serialisedIndexSchema = z.object({
   documents: z.array(z.unknown()),
 });
 
+export interface SearchResults {
+  hits: SearchHit[];
+  /** Documents matching the query, not documents returned. */
+  total: number;
+}
+
 export interface SearchHit {
   id: string;
   videoId: string;
@@ -89,6 +95,11 @@ const STOP_WORDS = new Set([
   'does',
 ]);
 
+/** Exposed so phrase detection can tell filler apart from content. */
+export function isStopWord(word: string): boolean {
+  return STOP_WORDS.has(word);
+}
+
 export function tokenize(text: string): string[] {
   return text
     .toLowerCase()
@@ -141,9 +152,17 @@ export class SearchIndex {
     return this.documents.size;
   }
 
-  search(query: string, limit = 10): SearchHit[] {
+  /**
+   * Ranked matches, and how many there were in total.
+   *
+   * The total is not `hits.length`. Reporting the size of the page as the size
+   * of the result set is how a caller gets told there is nothing more to see
+   * when there are forty more matches, and it is the number a paginating client
+   * trusts most.
+   */
+  search(query: string, limit = 10, offset = 0): SearchResults {
     const terms = tokenize(query);
-    if (terms.length === 0 || this.documents.size === 0) return [];
+    if (terms.length === 0 || this.documents.size === 0) return { hits: [], total: 0 };
 
     const totalDocuments = this.documents.size;
     const averageLength =
@@ -171,9 +190,9 @@ export class SearchIndex {
       }
     }
 
-    return [...scores.entries()]
+    const hits = [...scores.entries()]
       .sort((a, b) => b[1] - a[1])
-      .slice(0, limit)
+      .slice(offset, offset + limit)
       .flatMap(([id, score]) => {
         const document = this.documents.get(id);
         if (!document) return [];
@@ -188,6 +207,8 @@ export class SearchIndex {
           },
         ];
       });
+
+    return { hits, total: scores.size };
   }
 
   /** Serialisable form. Postings are rebuilt on load rather than stored. */

@@ -1,6 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getLibraryItem, listLibrary } from './utils/storage.js';
+import { hasProfile, listManifests, readProfile, requireManifest } from './utils/brain-storage.js';
+import { YouTubeError } from './utils/errors.js';
 import { getTranscript } from './utils/youtube.js';
 import { segmentsToTimestamped } from './utils/transcript.js';
 
@@ -85,4 +87,80 @@ export function registerResources(server: McpServer, mode: 'stdio' | 'http'): vo
       return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text }] };
     }
   );
+
+  server.registerResource(
+    'brain',
+    new ResourceTemplate('youtube://brain/{channelId}/{part}', {
+      // Only what a client can usefully attach: the manifest describes the
+      // whole brain, and the profile is the written account of it. The passages
+      // are not offered as a resource — they are tens of megabytes and exist to
+      // be searched, not read.
+      list: async () => {
+        const brains = await listManifests();
+        return {
+          resources: brains.flatMap((brain) => [
+            {
+              uri: `youtube://brain/${brain.channel.channelId}/manifest`,
+              name: `${brain.channel.name} (brain)`,
+              mimeType: 'application/json',
+            },
+            ...(hasProfile(brain.channel.channelId)
+              ? [
+                  {
+                    uri: `youtube://brain/${brain.channel.channelId}/profile`,
+                    name: `${brain.channel.name} (profile)`,
+                    mimeType: 'text/markdown',
+                  },
+                ]
+              : []),
+          ]),
+        };
+      },
+    }),
+    {
+      title: 'Channel brain',
+      description:
+        "A channel brain's manifest — what it covers and what it measured — or the written profile saved beside it.",
+      mimeType: 'application/json',
+    },
+    async (uri, { channelId, part }) => {
+      const id = first(channelId);
+      const wanted = first(part);
+
+      // Returning the manifest for an unrecognised part would answer a question
+      // nobody asked, and look like the URI was understood.
+      if (wanted !== 'manifest' && wanted !== 'profile') {
+        throw new YouTubeError('INVALID_INPUT', `"${wanted}" is not part of a brain.`, {
+          nextStep: `Read youtube://brain/${id}/manifest or youtube://brain/${id}/profile.`,
+        });
+      }
+
+      if (wanted === 'profile') {
+        const profile = await readProfile(id);
+        if (profile === undefined) {
+          throw new YouTubeError('NOT_FOUND', `No profile has been saved for ${id}.`, {
+            nextStep:
+              'Call save_brain_profile to write one, after reading the brain with ask_brain.',
+          });
+        }
+        return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: profile }] };
+      }
+
+      const manifest = await requireManifest(id);
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: 'application/json',
+            text: JSON.stringify(manifest, null, 2),
+          },
+        ],
+      };
+    }
+  );
+}
+
+/** Template variables arrive as a string or, for a repeated segment, an array. */
+function first(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value) ?? '';
 }
