@@ -74,9 +74,15 @@ export async function buildBrain(options: BuildBrainOptions): Promise<BuildBrain
   const states = reconciled(existing, videos, chunksByVideo, filters);
   const outstanding = videos.filter((video) => isOutstanding(states.get(video.id)));
 
-  const save = async (): Promise<BrainManifest> => {
+  /**
+   * `phrases` is the difference between a checkpoint and the end of a build:
+   * the phrase pass reads the whole corpus and takes seconds at the sizes a
+   * brain can reach, so it runs once, when there is a finished corpus to run it
+   * over. A checkpoint records what has been read, which is all it is for.
+   */
+  const save = async (phrases: boolean): Promise<BrainManifest> => {
     const passages = flatten(states, chunksByVideo);
-    const manifest = toManifest(channel, states, passages, createdAt, language);
+    const manifest = toManifest(channel, states, passages, createdAt, language, phrases);
 
     await writeChunks(channel.channelId, passages);
     await writeManifest(manifest);
@@ -112,17 +118,18 @@ export async function buildBrain(options: BuildBrainOptions): Promise<BuildBrain
       }
 
       reportProgress(attempted, outstanding.length, `Read ${attempted} of ${outstanding.length}`);
-      if (attempted % CHECKPOINT_EVERY_VIDEOS === 0) await save();
+      if (attempted % CHECKPOINT_EVERY_VIDEOS === 0) await save(false);
     });
   } catch (error) {
     // A cancelled build must not throw away the videos read since the last
     // checkpoint. Saving first is what makes "interrupt it and call it again"
-    // true rather than nearly true.
-    await save();
+    // true rather than nearly true — and it is a checkpoint, not a finished
+    // corpus, so it does not pay for the phrase pass either.
+    await save(false);
     throw error;
   }
 
-  const manifest = await save();
+  const manifest = await save(true);
   const excludedCount = videos.filter((video) => states.get(video.id)?.state === 'excluded').length;
 
   return {
@@ -243,7 +250,8 @@ function toManifest(
   states: Map<string, BrainVideoState>,
   passages: BrainChunk[],
   createdAt: string,
-  language: string
+  language: string,
+  phrases: boolean
 ): BrainManifest {
   return {
     version: BRAIN_MANIFEST_VERSION,
@@ -252,7 +260,7 @@ function toManifest(
     createdAt,
     updatedAt: new Date().toISOString(),
     videos: Object.fromEntries(states),
-    stats: computeStats([...states.values()], passages),
+    stats: computeStats([...states.values()], passages, { phrases }),
   };
 }
 

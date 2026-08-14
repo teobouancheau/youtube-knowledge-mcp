@@ -4,7 +4,7 @@ import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { YouTubeError } from './errors.js';
 import { hasCachedTranscript } from './youtube.js';
-import { SearchIndex, type SearchHit } from './search-index.js';
+import { SearchIndex, type SearchResults } from './search-index.js';
 import { libraryMetadataSchema, recordOfValid } from '../schemas.js';
 import { readJsonFile, writeJsonAtomic } from './json-file.js';
 import { dataDir } from './paths.js';
@@ -282,9 +282,9 @@ async function removeFromIndex(videoId: string, kind?: string): Promise<void> {
   await persistSearchIndex(index);
 }
 
-export async function searchLibrary(query: string, limit = 10): Promise<SearchHit[]> {
+export async function searchLibrary(query: string, limit = 10, offset = 0): Promise<SearchResults> {
   const index = await loadSearchIndex();
-  return index.search(query, limit);
+  return index.search(query, limit, offset);
 }
 
 /** Rebuild the index from what is actually on disk. */

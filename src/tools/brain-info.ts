@@ -116,7 +116,12 @@ export async function getBrainInfoHandler({
     );
   }
 
-  if (stats.recurringPhrases.length > 0) {
+  if (stats.recurringPhrases === undefined) {
+    lines.push(
+      '',
+      'Repeated phrases have not been measured yet — the last build did not finish. Call build_brain to complete it.'
+    );
+  } else if (stats.recurringPhrases.length > 0) {
     lines.push(
       '',
       'Phrases repeated across videos:',

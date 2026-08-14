@@ -46,6 +46,12 @@ stores an account written from passages that can be cited.
 
 ### Fixed
 
+**`search_library` reported the size of the page as the size of the result set.**
+`total` was the number of hits returned, so `hasMore` was always false and a
+caller was told there was nothing more when there might be forty more matches.
+Both search tools now report the real match count and accept an `offset`, so the
+`nextOffset` they hand back points at a parameter that exists.
+
 **JSON documents could be truncated by an interrupted write.** The library index,
 the search index and every note's metadata were written straight to their
 destination, so a process that died mid-write left a corrupt file where a valid

@@ -51,14 +51,14 @@ describe('tokenize', () => {
 
 describe('SearchIndex', () => {
   it('finds a document by a body term', () => {
-    const hits = seeded().search('throttling');
+    const { hits } = seeded().search('throttling');
 
     expect(hits).toHaveLength(1);
     expect(hits[0]?.videoId).toBe('v1');
   });
 
   it('finds a document by a title term', () => {
-    expect(seeded().search('indexing')[0]?.videoId).toBe('v2');
+    expect(seeded().search('indexing').hits[0]?.videoId).toBe('v2');
   });
 
   it('ranks a title match above an incidental body match', () => {
@@ -71,32 +71,32 @@ describe('SearchIndex', () => {
       text: 'A passing mention of indexing buried in the middle of other content.',
     });
 
-    expect(index.search('indexing')[0]?.videoId).toBe('v2');
+    expect(index.search('indexing').hits[0]?.videoId).toBe('v2');
   });
 
   it('scores multi-term queries higher when more terms match', () => {
-    const hits = seeded().search('bucket algorithms');
+    const { hits } = seeded().search('bucket algorithms');
     expect(hits[0]?.videoId).toBe('v1');
   });
 
   it('returns nothing for a query of only stop words', () => {
-    expect(seeded().search('the and of')).toEqual([]);
+    expect(seeded().search('the and of').hits).toEqual([]);
   });
 
   it('returns nothing when no document matches', () => {
-    expect(seeded().search('kubernetes')).toEqual([]);
+    expect(seeded().search('kubernetes').hits).toEqual([]);
   });
 
   it('returns nothing when the index is empty', () => {
-    expect(new SearchIndex().search('anything')).toEqual([]);
+    expect(new SearchIndex().search('anything').hits).toEqual([]);
   });
 
   it('respects the limit', () => {
-    expect(seeded().search('and', 1).length).toBeLessThanOrEqual(1);
+    expect(seeded().search('and', 1).hits.length).toBeLessThanOrEqual(1);
   });
 
   it('includes an excerpt around the match', () => {
-    expect(seeded().search('leaky')[0]?.excerpt).toContain('leaky');
+    expect(seeded().search('leaky').hits[0]?.excerpt).toContain('leaky');
   });
 
   it('replaces a document rather than duplicating it', () => {
@@ -110,8 +110,8 @@ describe('SearchIndex', () => {
     });
 
     expect(index.size).toBe(3);
-    expect(index.search('throttling')).toEqual([]);
-    expect(index.search('breakers')).toHaveLength(1);
+    expect(index.search('throttling').hits).toEqual([]);
+    expect(index.search('breakers').hits).toHaveLength(1);
   });
 
   it('removes a document and its postings', () => {
@@ -119,7 +119,7 @@ describe('SearchIndex', () => {
     index.remove('v1:summary');
 
     expect(index.size).toBe(2);
-    expect(index.search('throttling')).toEqual([]);
+    expect(index.search('throttling').hits).toEqual([]);
   });
 
   it('ignores removal of an unknown document', () => {
@@ -132,7 +132,7 @@ describe('SearchIndex', () => {
     const restored = SearchIndex.fromJSON(JSON.parse(JSON.stringify(seeded().toJSON())));
 
     expect(restored.size).toBe(3);
-    expect(restored.search('throttling')[0]?.videoId).toBe('v1');
+    expect(restored.search('throttling').hits[0]?.videoId).toBe('v1');
   });
 
   it.each([null, undefined, 42, 'string', {}, { documents: 'not an array' }])(

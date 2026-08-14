@@ -14,7 +14,22 @@ import { findRecurringPhrases } from './brain-phrases.js';
  * writes from passages it can cite.
  */
 
-export function computeStats(all: BrainVideoState[], chunks: BrainChunk[]): BrainStats {
+export interface StatsOptions {
+  /**
+   * Whether to run the phrase pass, which reads every word of the corpus. It is
+   * measured in seconds at the sizes a brain is allowed to reach — 12.6s over
+   * 100,000 passages on the machine this was written on — so a build that
+   * checkpoints every ten videos must not pay for it fifty times over. Omitted
+   * rather than guessed at when it has not been run.
+   */
+  phrases: boolean;
+}
+
+export function computeStats(
+  all: BrainVideoState[],
+  chunks: BrainChunk[],
+  options: StatsOptions
+): BrainStats {
   // A video the filters ruled out is not part of this brain, so it does not get
   // to move the brain's numbers — its date must not stretch the upload range,
   // and its length must not enter the speaking rate. It is reported as its own
@@ -37,7 +52,7 @@ export function computeStats(all: BrainVideoState[], chunks: BrainChunk[]): Brai
     medianWordsPerMinute: medianWordsPerMinute(videos),
     ...firstAndLast(uploadDates),
     uploadsPerMonth: uploadsPerMonth(uploadDates),
-    recurringPhrases: findRecurringPhrases(chunks),
+    ...(options.phrases ? { recurringPhrases: findRecurringPhrases(chunks) } : {}),
   };
 }
 

@@ -77,7 +77,10 @@ export const brainStatsSchema = z.object({
   uploadsPerMonth: z.array(brainMonthlyUploadsSchema),
   recurringPhrases: z
     .array(brainPhraseSchema)
-    .describe('Phrases repeated across several videos, which is what a catchphrase is'),
+    .optional()
+    .describe(
+      'Phrases repeated across several videos, which is what a catchphrase is. Absent while a build is unfinished: the pass reads the whole corpus, so it runs once at the end rather than at every checkpoint. An empty array means none recur; absent means not yet measured.'
+    ),
 });
 
 export type BrainStats = z.infer<typeof brainStatsSchema>;

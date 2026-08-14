@@ -37,7 +37,8 @@ describe('computeStats', () => {
         video({ videoId: 'c', state: 'failed' }),
         video({ videoId: 'd', state: 'pending' }),
       ],
-      []
+      [],
+      { phrases: true }
     );
 
     expect(stats).toMatchObject({
@@ -50,7 +51,7 @@ describe('computeStats', () => {
   });
 
   it('reports zero words per minute when nothing has been read yet', () => {
-    const stats = computeStats([video({ state: 'pending', wordCount: 0 })], []);
+    const stats = computeStats([video({ state: 'pending', wordCount: 0 })], [], { phrases: true });
 
     expect(stats.medianWordsPerMinute).toBe(0);
   });
@@ -62,7 +63,8 @@ describe('computeStats', () => {
         video({ videoId: 'b', durationSeconds: 600, wordCount: 1500 }),
         video({ videoId: 'c', durationSeconds: 1, wordCount: 4000 }),
       ],
-      []
+      [],
+      { phrases: true }
     );
 
     expect(stats.medianWordsPerMinute).toBe(150);
@@ -74,7 +76,8 @@ describe('computeStats', () => {
         video({ videoId: 'a', durationSeconds: 60, wordCount: 100 }),
         video({ videoId: 'b', durationSeconds: 60, wordCount: 200 }),
       ],
-      []
+      [],
+      { phrases: true }
     );
 
     expect(stats.medianWordsPerMinute).toBe(150);
@@ -87,7 +90,8 @@ describe('computeStats', () => {
         video({ videoId: 'b', uploadDate: '2024-03-20' }),
         video({ videoId: 'c', uploadDate: '2025-01-15' }),
       ],
-      []
+      [],
+      { phrases: true }
     );
 
     expect(stats.firstUpload).toBe('2024-03-02');
@@ -99,7 +103,7 @@ describe('computeStats', () => {
   });
 
   it('omits the upload range when YouTube reported no dates', () => {
-    const stats = computeStats([video({ uploadDate: '' })], []);
+    const stats = computeStats([video({ uploadDate: '' })], [], { phrases: true });
 
     expect(stats.firstUpload).toBeUndefined();
     expect(stats.lastUpload).toBeUndefined();
