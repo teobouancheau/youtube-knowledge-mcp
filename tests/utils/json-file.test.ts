@@ -48,6 +48,13 @@ describe('writeJsonAtomic', () => {
     expect(await readJsonFile(file, schema)).toEqual({ name: 'first', count: 1 });
   });
 
+  it('cleans up after a write that could not start', async () => {
+    const unreachable = join(directory, 'no-such-directory', 'document.json');
+
+    await expect(writeJsonAtomic(unreachable, { name: 'brain', count: 1 })).rejects.toThrow();
+    expect(await readdir(directory)).toEqual([]);
+  });
+
   it('omits indentation when asked, for documents nobody reads', async () => {
     await writeJsonAtomic(file, { name: 'brain', count: 3 }, { pretty: false });
 

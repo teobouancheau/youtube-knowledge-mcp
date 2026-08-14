@@ -221,13 +221,23 @@ describe('withBuildLock', () => {
 
   it('refuses a second build while one is running', async () => {
     let release: () => void = () => undefined;
+    let announceStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      announceStarted = resolve;
+    });
+
     const running = withBuildLock(
       CHANNEL_ID,
       () =>
         new Promise<void>((resolve) => {
           release = resolve;
+          announceStarted();
         })
     );
+
+    // Waiting for the build to actually begin, rather than assuming the first
+    // call wins the race: both are async, and either could reach the lock first.
+    await started;
 
     await expect(withBuildLock(CHANNEL_ID, () => Promise.resolve('second'))).rejects.toThrow(
       YouTubeError
@@ -235,6 +245,15 @@ describe('withBuildLock', () => {
 
     release();
     await running;
+  });
+
+  it('lets exactly one of two simultaneous builds through', async () => {
+    const outcomes = await Promise.allSettled([
+      withBuildLock(CHANNEL_ID, () => Promise.resolve('a')),
+      withBuildLock(CHANNEL_ID, () => Promise.resolve('b')),
+    ]);
+
+    expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
   });
 
   it('breaks a lock left by a process that is gone', async () => {
