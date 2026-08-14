@@ -61,6 +61,8 @@ describe('tool manifest', () => {
       'extract',
       'export',
       'digest',
+      'build',
+      'ask',
     ]);
 
     for (const tool of stdioTools) {
@@ -117,7 +119,13 @@ describe('tool manifest', () => {
 
     // Overwriting a saved note and replacing a tag set both discard content the
     // user cannot recover, so they belong here alongside the outright delete.
-    expect(destructive).toEqual(['delete_library_item', 'save_to_library', 'update_library_tags']);
+    expect(destructive).toEqual([
+      'delete_brain',
+      'delete_library_item',
+      'save_brain_profile',
+      'save_to_library',
+      'update_library_tags',
+    ]);
   });
 
   it('never describes destructive behaviour while claiming to be non-destructive', () => {
@@ -184,6 +192,12 @@ describe('transport-mode gating', () => {
       'extract_clips',
       'extract_frame',
       'export_subtitles',
+      'build_brain',
+      'ask_brain',
+      'list_brains',
+      'get_brain_info',
+      'save_brain_profile',
+      'delete_brain',
     ];
 
     const remoteNames = httpTools.map((tool) => tool.name);
@@ -342,6 +356,14 @@ describe('prompts', () => {
     const { prompts } = await (await connect('http')).listPrompts();
     expect(prompts.map((prompt) => prompt.name)).not.toContain('review_library');
   });
+
+  it('withholds brain prompts from the remote surface', async () => {
+    const { prompts } = await (await connect('http')).listPrompts();
+    const names = prompts.map((prompt) => prompt.name);
+
+    expect(names).not.toContain('create_brain');
+    expect(names).not.toContain('ask_creator');
+  });
 });
 
 describe('resources', () => {
@@ -352,6 +374,15 @@ describe('resources', () => {
         'youtube://transcript/{videoId}'
       );
     }
+  });
+
+  it('exposes brains only locally', async () => {
+    const local = await (await connect('stdio')).listResourceTemplates();
+    const remote = await (await connect('http')).listResourceTemplates();
+
+    const uri = 'youtube://brain/{channelId}/{part}';
+    expect(local.resourceTemplates.map((template) => template.uriTemplate)).toContain(uri);
+    expect(remote.resourceTemplates.map((template) => template.uriTemplate)).not.toContain(uri);
   });
 
   it('exposes the library only locally', async () => {

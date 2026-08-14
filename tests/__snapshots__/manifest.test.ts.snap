@@ -10,9 +10,63 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
       "readOnlyHint": true,
     },
     "hasOutputSchema": true,
+    "name": "ask_brain",
+    "parameters": [
+      "channel",
+      "limit",
+      "query",
+    ],
+    "required": [
+      "channel",
+      "query",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "build_brain",
+    "parameters": [
+      "channel",
+      "maxVideos",
+      "minDurationSeconds",
+      "since",
+    ],
+    "required": [
+      "channel",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
     "name": "check_health",
     "parameters": [],
     "required": [],
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "delete_brain",
+    "parameters": [
+      "channel",
+    ],
+    "required": [
+      "channel",
+    ],
   },
   {
     "annotations": {
@@ -193,6 +247,23 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "get_brain_info",
+    "parameters": [
+      "channel",
+      "includeVideos",
+    ],
+    "required": [
+      "channel",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
       "openWorldHint": true,
       "readOnlyHint": true,
     },
@@ -333,6 +404,18 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "list_brains",
+    "parameters": [],
+    "required": [],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
       "openWorldHint": true,
       "readOnlyHint": true,
     },
@@ -370,6 +453,24 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     "name": "rebuild_library_index",
     "parameters": [],
     "required": [],
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "save_brain_profile",
+    "parameters": [
+      "channel",
+      "content",
+    ],
+    "required": [
+      "channel",
+      "content",
+    ],
   },
   {
     "annotations": {
