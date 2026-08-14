@@ -74,10 +74,10 @@ export async function deleteBrainHandler({
   const { channelId, name } = manifest.channel;
   const deleted = await deleteBrain(channelId);
 
+  // `resolveBrain` already proved the brain was there, so there is no "nothing
+  // to delete" case to report — only the removal, and what survives it.
   return toolResult(
-    deleted
-      ? `Deleted the brain for ${name}. The transcripts it was built from are still cached, so rebuilding is fast.`
-      : `There was nothing left to delete for ${name}.`,
+    `Deleted the brain for ${name}. The transcripts it was built from are still cached, so rebuilding it is much faster than the first build was.`,
     { channelId, name, deleted }
   );
 }

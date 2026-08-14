@@ -31,10 +31,6 @@ export function chunksPath(channelId: string): string {
   return join(brainDir(channelId), 'chunks.json');
 }
 
-export function searchIndexPath(channelId: string): string {
-  return join(brainDir(channelId), 'search-index.json');
-}
-
 export function profilePath(channelId: string): string {
   return join(brainDir(channelId), 'profile.md');
 }

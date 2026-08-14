@@ -63,7 +63,8 @@ export function chunkTranscript(options: ChunkTranscriptOptions): BrainChunk[] {
       startsChapter = true;
     }
 
-    if (current.length > 0 && shouldBreak(current, segment, currentChars, startsChapter)) {
+    const previous = current[current.length - 1];
+    if (previous !== undefined && shouldBreak(previous, segment, currentChars, startsChapter)) {
       flush();
     }
 
@@ -77,16 +78,13 @@ export function chunkTranscript(options: ChunkTranscriptOptions): BrainChunk[] {
 }
 
 function shouldBreak(
-  current: TranscriptSegment[],
+  previous: TranscriptSegment,
   segment: TranscriptSegment,
   currentChars: number,
   startsChapter: boolean
 ): boolean {
   if (startsChapter) return true;
   if (currentChars >= CHUNK_MAX_CHARS) return true;
-
-  const previous = current[current.length - 1];
-  if (previous === undefined) return false;
 
   return (
     currentChars >= CHUNK_TARGET_CHARS && segment.start - previous.end >= CHUNK_BREAK_GAP_SECONDS
