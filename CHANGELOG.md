@@ -5,6 +5,102 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-09-05
+
+### Security
+
+The first audit of the whole server. Every finding below was verified in the
+source before it was fixed, and each fix comes with the test that would have
+caught it.
+
+- **yt-dlp argument injection.** A caller-supplied URL was the last positional
+  argument, so a value beginning with a dash was read by yt-dlp as an option.
+  Every target now follows a literal `--` and is a required option of the one
+  function that spawns yt-dlp.
+- **Server-side request forgery.** No URL was checked against a host allowlist,
+  so `fetch_videos`, `get_playlist_info`, `get_channel_info` and `build_brain`
+  could point yt-dlp's generic extractor at an internal address. Caller-supplied
+  URLs must now resolve to an allowlisted YouTube host before anything spawns.
+- **Path traversal in the library.** A video id became a directory name without
+  validation, and `delete_library_item` removed that directory recursively. Ids
+  are validated at the one place they become a path, as channel ids already
+  were.
+- **A rate limiter keyed on a request header.** `X-Forwarded-For` was read
+  directly, so any client could mint a fresh quota per request. The limiter now
+  keys on the address Express derives under an explicit trust-proxy setting,
+  applies to every route rather than only `POST /mcp`, and caps its own map.
+- **Regular expressions that could run for a very long time.** A pattern such
+  as `(a+)+$` passed to `search_transcript` held the event loop, and on the HTTP
+  transport every session with it. Patterns are checked for nested repetition
+  and backreferences, and capped in length, before they are compiled.
+- **An open server by default.** The HTTP transport bound every interface with
+  no token. It binds loopback now, refuses to start exposed without a token
+  unless told to in so many words, caps request bodies, sends no-store, nosniff,
+  referrer and frame headers, reserves session capacity before the awaits that
+  create a session, takes its public URL from configuration rather than the
+  `Host` header, and tells unauthenticated callers of `/health` only whether it
+  is up.
+- **Smaller things.** Resource reads no longer surface a raw error with a local
+  path; output directories are checked on their real path, so a symlink inside
+  the home directory cannot point a write outside it; ffmpeg is restricted to
+  https input; every yt-dlp JSON parse is validated against a schema; files the
+  server owns are written through a flushed temporary file with owner-only
+  permissions; numeric settings are validated, so a concurrency of `0` no
+  longer queues every call forever.
+
+### Added
+
+- **Channel thumbnails.** `fetch_channel_thumbnails` saves every video
+  thumbnail of a channel, plus its avatar and banner, resumably; one listing per
+  tab, then the images from YouTube's image hosts directly. For each video it
+  tries the largest image YouTube serves and keeps it only if it decodes wider
+  than the listed one. Every size in the manifest was decoded from the saved
+  bytes. `list_channel_thumbnails` and `delete_channel_thumbnails` read and
+  remove a saved set; a `youtube://thumbnails/{channelId}/manifest` resource
+  and a `study_thumbnails` prompt go with them.
+- **`get_thumbnail`.** Any video's thumbnail, or a channel's avatar or banner,
+  returned as an image block with its real pixel size, over both transports.
+  Locally it serves what a fetch saved.
+- **Signed-in access.** `YOUTUBE_MCP_COOKIES_FROM_BROWSER` and
+  `YOUTUBE_MCP_COOKIES_FILE` pass cookies to yt-dlp for age-restricted,
+  members-only and sign-in-gated videos, and for the bot check YouTube applies
+  to some addresses; `YOUTUBE_MCP_PROXY` and `YOUTUBE_MCP_SLEEP_REQUESTS_S`
+  configure a proxy and a pause between requests. All are validated at boot and
+  never echoed. A `BOT_CHECK` error code names the remedy when that check is
+  what stopped a read.
+- `get_channel_info` reports the channel's avatar and banner URLs, which it
+  always received and used to discard; `fetch_videos` reports each video's
+  listed thumbnail; `check_health` reports which session options are set.
+- HTTP settings: `MCP_TRUST_PROXY`, `MCP_PUBLIC_URL`, `MCP_MAX_BODY_BYTES`,
+  `MCP_ALLOW_UNAUTHENTICATED`. An `.env.example` lists every variable, and a
+  test keeps it and the README in step with the code.
+
+### Changed
+
+- The HTTP transport binds `127.0.0.1` by default; the Docker image sets
+  `MCP_BIND_HOST=0.0.0.0` explicitly. A non-loopback bind without
+  `MCP_AUTH_TOKEN` is a startup error.
+- `fetch_videos`, `digest_playlist`, `get_playlist_info`, `get_channel_info`
+  and `build_brain` reject a URL that is not on a YouTube host with
+  `INVALID_INPUT`.
+- `/health` returns only `status` to unauthenticated callers when a token is
+  configured; the token unlocks versions, uptime and the session count.
+- `get_video_info` reads one JSON object from yt-dlp rather than a delimited
+  row a description could break. Downloads and clips learn the finished file's
+  path from the same run that produced it instead of spawning yt-dlp again.
+- Clip extraction uses the same format-selector table as downloads, which has
+  longer fallback chains; several clips from one video are now cut under the
+  yt-dlp concurrency limit rather than one after another.
+- Tools are declared as a registry of records. Nothing about the tool surface
+  changed except the additions above; the manifest snapshot proves it.
+- Dates in this changelog for 1.1.1, 1.1.0, 1.0.2 and 1.0.0 are corrected from
+  the git tags; 1.1.1 was previously dated before the repository existed.
+
+### Removed
+
+- Internal only: the string form of `getTranscript`, the unused `textContent`
+  result helper and `TranscriptFormat` type.
+
 ## [2.1.0] - 2026-08-14
 
 ### Added
@@ -360,13 +456,13 @@ video but never say when something was said.
 - Dependabot, CODEOWNERS, SECURITY.md, a scheduled yt-dlp bump, and this
   changelog.
 
-## [1.1.1] - 2025-11-15
+## [1.1.1] - 2026-05-01
 
 ### Fixed
 
 - Missing `viewCount`, `likeCount`, and `commentCount` in test mocks.
 
-## [1.1.0]
+## [1.1.0] - 2026-05-01
 
 ### Added
 
@@ -374,20 +470,24 @@ video but never say when something was said.
   annotations.
 - Tests for all tools; tool parameters harmonized to camelCase.
 
-## [1.0.2]
+## [1.0.2] - 2026-01-25
 
 ### Fixed
 
 - Video and audio streams now merge correctly in MP4 downloads.
 
-## [1.0.0]
+## [1.0.0] - 2026-01-25
 
 Initial release.
 
-[unreleased]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v2.1.0...HEAD
+[unreleased]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v2.0.2...v2.1.0
 [2.0.2]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v1.2.0...v2.0.0
 [1.2.0]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v1.1.1...v1.2.0
-[1.1.1]: https://github.com/teobouancheau/youtube-knowledge-mcp/releases/tag/v1.1.1
+[1.1.1]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v1.1.0...v1.1.1
+[1.1.0]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v1.0.3...v1.1.0
+[1.0.2]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v1.0.1...v1.0.2
+[1.0.0]: https://github.com/teobouancheau/youtube-knowledge-mcp/commit/61dd58c7d6768c7d8d317c413e3a63f51d3818ac
