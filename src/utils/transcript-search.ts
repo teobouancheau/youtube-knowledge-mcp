@@ -10,24 +10,20 @@ export interface TranscriptMatch {
 }
 
 /**
- * Find a phrase or pattern in a transcript.
+ * Find a compiled pattern in a transcript.
  *
  * Matching runs over the joined text of a small window of segments, not each
  * segment alone, so a phrase split across a caption boundary is still found —
  * which is most phrases, since caption breaks fall mid-sentence.
+ *
+ * The pattern arrives compiled (see `compilePattern`), so it was validated
+ * exactly once, with the flags in force here.
  */
 export function searchSegments(
   segments: TranscriptSegment[],
-  query: string,
-  options: { regex?: boolean; caseSensitive?: boolean; limit?: number } = {}
+  pattern: RegExp,
+  limit = 20
 ): TranscriptMatch[] {
-  const { regex = false, caseSensitive = false, limit = 20 } = options;
-
-  const flags = caseSensitive ? 'g' : 'gi';
-  const pattern = regex
-    ? new RegExp(query, flags)
-    : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
-
   const matches: TranscriptMatch[] = [];
 
   for (let index = 0; index < segments.length && matches.length < limit; index++) {

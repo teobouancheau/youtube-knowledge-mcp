@@ -176,6 +176,17 @@ describe('searchTranscriptHandler', () => {
       expect(getTranscript).not.toHaveBeenCalled();
     });
 
+    // `(a+)+$` backtracks exponentially; on a shared HTTP transport that is a
+    // way to stall every session. It must be refused before any fetch.
+    it('rejects a catastrophic pattern before fetching anything', async () => {
+      const error = await searchTranscriptHandler(args({ query: '(a+)+$', regex: true })).catch(
+        (e: unknown) => e
+      );
+
+      expect(error).toMatchObject({ code: 'INVALID_INPUT' });
+      expect(getTranscript).not.toHaveBeenCalled();
+    });
+
     it('suggests the literal search as the way out of a bad pattern', async () => {
       const error = (await searchTranscriptHandler(args({ query: '(', regex: true })).catch(
         (e: unknown) => e
