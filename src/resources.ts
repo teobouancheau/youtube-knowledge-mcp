@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { getLibraryItem, listLibrary } from './utils/storage.js';
 import { hasProfile, listManifests, readProfile, requireManifest } from './utils/brain-storage.js';
+import { registerThumbnailResource } from './thumbnail-resource.js';
 import { YouTubeError } from './utils/errors.js';
 import { getTranscript } from './utils/youtube.js';
 import { segmentsToTimestamped } from './utils/transcript.js';
@@ -159,6 +160,8 @@ export function registerResources(server: McpServer, mode: 'stdio' | 'http'): vo
       };
     })
   );
+
+  registerThumbnailResource(server);
 }
 
 /** Template variables arrive as a string or, for a repeated segment, an array. */

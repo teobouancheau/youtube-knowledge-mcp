@@ -122,6 +122,7 @@ describe('tool manifest', () => {
     expect(destructive).toEqual([
       'build_brain',
       'delete_brain',
+      'delete_channel_thumbnails',
       'delete_library_item',
       'save_brain_profile',
       'save_to_library',
@@ -199,6 +200,9 @@ describe('transport-mode gating', () => {
       'get_brain_info',
       'save_brain_profile',
       'delete_brain',
+      'fetch_channel_thumbnails',
+      'list_channel_thumbnails',
+      'delete_channel_thumbnails',
     ];
 
     const remoteNames = httpTools.map((tool) => tool.name);
@@ -223,6 +227,7 @@ describe('transport-mode gating', () => {
       'get_transcripts',
       'digest_playlist',
       'check_health',
+      'get_thumbnail',
     ];
 
     const remoteNames = httpTools.map((tool) => tool.name);

@@ -39,6 +39,12 @@ src/
 ├── resources.ts          # Transcript, library and brain resources
 ├── schemas.ts            # Shared Zod domain schemas
 ├── brain-schemas.ts      # The shapes a channel brain is made of
+├── thumbnail-schemas.ts  # The shapes a channel's saved thumbnails are made of
+├── thumbnail-resource.ts # The saved-thumbnails resource
+├── prompts-shared.ts     # What every prompt needs
+├── prompts-research.ts   # Prompts that survey more than one video
+├── prompts-brain.ts      # Prompts for the channel brains
+├── registry/             # Every tool as a record: types.ts and one file per group
 ├── tools/                # One file per tool group: input schema, output schema, handler
 └── utils/
     ├── ytdlp.ts          # The only place yt-dlp is spawned
@@ -67,7 +73,27 @@ src/
     ├── brain-lookup.ts   # Finding a brain from whatever the channel was called
     ├── brain-phrases.ts  # Phrases a creator repeats across videos
     ├── brain-stats.ts    # What can be counted about a channel
+    ├── thumbnail-paths.ts # Every file a channel's thumbnails are made of
+    ├── thumbnail-store.ts # Thumbnail manifest persistence and lookup
+    ├── thumbnail-ladder.ts # The best image YouTube will serve for one video
+    ├── thumbnail-entry.ts # One thumbnail: recorded, fetched, saved
+    ├── thumbnail-fetch.ts # Fetching a channel's thumbnails, resumably
+    ├── thumbnail-listing.ts # Listing each channel tab for the fetch
+    ├── image-fetch.ts    # The only HTTP client: allowlisted image hosts
+    ├── image-dimensions.ts # Format and pixel size from an image's bytes
+    ├── flat-listing.ts   # Reading a flat channel or playlist listing
+    ├── channel-images.ts # Picking a channel's avatar and banner
+    ├── channel-lookup.ts # Finding a channel's records from whatever it was called
+    ├── file-lock.ts      # Exclusive access while a long job writes
+    ├── batches.ts        # Running work a few items at a time
+    ├── chapters.ts       # Resolving a chapter name to a chapter
+    ├── pattern.ts        # Compiling a search pattern that cannot run away
+    ├── guard.ts          # Request context and error normalisation for every handler
+    ├── env.ts            # Reading configuration without trusting it
+    ├── ytdlp-env.ts      # yt-dlp session options: cookies, proxy, pacing
+    ├── version.ts        # The version this build reports
     ├── validate.ts       # Path, language, channel id and timestamp validation
+    ├── validate-youtube.ts # Video ids, channel ids and YouTube URLs
     ├── format.ts         # Result construction and human-readable formatting
     ├── youtube.ts        # Barrel over the modules below
     ├── youtube-url.ts    # Video ids and watch URLs

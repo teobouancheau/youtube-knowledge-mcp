@@ -48,6 +48,7 @@ export const videoSummarySchema = z.object({
   channel: z.string().optional(),
   viewCount: z.number().optional(),
   uploadDate: z.string().optional(),
+  thumbnailUrl: z.string().optional().describe('The largest thumbnail the listing offered'),
 });
 
 export const videoInfoSchema = z.object({
@@ -89,6 +90,10 @@ export const channelInfoSchema = z.object({
   subscriberCount: z.number(),
   channelUrl: z.string(),
   description: z.string(),
+  // Optional because this shape is embedded in every brain manifest on disk,
+  // written before the images were read.
+  avatarUrl: z.string().optional().describe("The channel's uncropped avatar image"),
+  bannerUrl: z.string().optional().describe("The channel's uncropped banner image"),
 });
 
 export const playlistInfoSchema = z.object({
