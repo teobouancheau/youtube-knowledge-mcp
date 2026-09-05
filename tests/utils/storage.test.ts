@@ -32,7 +32,7 @@ describe('Storage Utils', () => {
       const { saveToLibrary } = await import('../../src/utils/storage.js');
 
       const result = await saveToLibrary({
-        videoId: 'test123',
+        videoId: 'testvid0001',
         title: 'Test Video',
         content: '# Summary\n\nThis is a test.',
         contentType: 'summary',
@@ -40,7 +40,7 @@ describe('Storage Utils', () => {
       });
 
       expect(result.saved).toBe(true);
-      expect(result.path).toContain('test123');
+      expect(result.path).toContain('testvid0001');
       expect(mkdir).toHaveBeenCalled();
       expect(writeFile).toHaveBeenCalled();
     });
@@ -65,7 +65,7 @@ describe('Storage Utils', () => {
         version: 1,
         items: {
           vid1: {
-            videoId: 'vid1',
+            videoId: 'vid00000001',
             title: 'Video 1',
             tags: ['programming', 'typescript'],
             dateSaved: '2024-01-01',
@@ -76,7 +76,7 @@ describe('Storage Utils', () => {
             hasTranscript: false,
           },
           vid2: {
-            videoId: 'vid2',
+            videoId: 'vid00000002',
             title: 'Video 2',
             tags: ['cooking'],
             dateSaved: '2024-01-02',
@@ -96,7 +96,7 @@ describe('Storage Utils', () => {
       const result = await listLibrary({ tag: 'programming' });
 
       expect(result).toHaveLength(1);
-      expect(result[0]?.videoId).toBe('vid1');
+      expect(result[0]?.videoId).toBe('vid00000001');
     });
   });
 });

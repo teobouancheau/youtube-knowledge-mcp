@@ -111,7 +111,7 @@ export async function getTranscriptsHandler({
 // -- digest_playlist -----------------------------------------------------
 
 export const digestPlaylistSchema = {
-  url: z.string().describe('Playlist or channel URL'),
+  url: z.string().max(2048).describe('Playlist or channel URL'),
   limit: z
     .number()
     .int()

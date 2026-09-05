@@ -38,7 +38,7 @@ afterEach(async () => {
 });
 
 const NOTE = {
-  videoId: 'vid1',
+  videoId: 'vid00000001',
   title: 'Rate limiting strategies',
   content: '# Rate limiting\n\nToken bucket and leaky bucket algorithms for throttling.',
   contentType: 'summary' as const,
@@ -51,7 +51,7 @@ describe('library round trip', () => {
     const { saveToLibrary, getLibraryItem } = await storage();
 
     await saveToLibrary(NOTE);
-    const item = await getLibraryItem('vid1');
+    const item = await getLibraryItem('vid00000001');
 
     expect(item.metadata.title).toBe(NOTE.title);
     expect(item.metadata.channel).toBe('Systems Talk');
@@ -75,7 +75,7 @@ describe('library round trip', () => {
     await saveToLibrary(NOTE);
     await saveToLibrary({ ...NOTE, contentType: 'skill', content: 'Step 1. Measure.' });
 
-    const item = await getLibraryItem('vid1');
+    const item = await getLibraryItem('vid00000001');
     expect(item.summary).toBe(NOTE.content);
     expect(item.skill).toBe('Step 1. Measure.');
     expect(item.metadata.hasSummary && item.metadata.hasSkill).toBe(true);
@@ -87,7 +87,7 @@ describe('library round trip', () => {
     await saveToLibrary(NOTE);
     await saveToLibrary({ ...NOTE, content: 'rewritten' });
 
-    expect((await getLibraryItem('vid1')).summary).toBe('rewritten');
+    expect((await getLibraryItem('vid00000001')).summary).toBe('rewritten');
     expect(await listLibrary()).toHaveLength(1);
   });
 
@@ -97,7 +97,7 @@ describe('library round trip', () => {
     await saveToLibrary(NOTE);
     await saveToLibrary({ ...NOTE, tags: ['api', 'throttling'] });
 
-    expect((await getLibraryItem('vid1')).metadata.tags.sort()).toEqual([
+    expect((await getLibraryItem('vid00000001')).metadata.tags.sort()).toEqual([
       'api',
       'systems',
       'throttling',
@@ -107,7 +107,7 @@ describe('library round trip', () => {
   it('reports a missing item with a next step rather than an empty result', async () => {
     const { getLibraryItem } = await storage();
 
-    await expect(getLibraryItem('nope')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(getLibraryItem('nope0000000')).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 
   it('only returns the requested content type', async () => {
@@ -116,7 +116,7 @@ describe('library round trip', () => {
     await saveToLibrary(NOTE);
     await saveToLibrary({ ...NOTE, contentType: 'skill', content: 'skill text' });
 
-    const item = await getLibraryItem('vid1', 'skill');
+    const item = await getLibraryItem('vid00000001', 'skill');
     expect(item.skill).toBe('skill text');
     expect(item.summary).toBeUndefined();
   });
@@ -141,7 +141,7 @@ describe('tag filtering', () => {
     const { saveToLibrary, listTags } = await storage();
 
     await saveToLibrary(NOTE);
-    await saveToLibrary({ ...NOTE, videoId: 'vid2', tags: ['api', 'databases'] });
+    await saveToLibrary({ ...NOTE, videoId: 'vid00000002', tags: ['api', 'databases'] });
 
     expect(await listTags()).toEqual(['api', 'databases', 'systems']);
   });
@@ -152,14 +152,14 @@ describe('updateLibraryTags', () => {
     const { saveToLibrary, updateLibraryTags } = await storage();
     await saveToLibrary(NOTE);
 
-    expect((await updateLibraryTags('vid1', { add: ['new'] })).tags).toContain('new');
+    expect((await updateLibraryTags('vid00000001', { add: ['new'] })).tags).toContain('new');
   });
 
   it('removes tags case-insensitively', async () => {
     const { saveToLibrary, updateLibraryTags } = await storage();
     await saveToLibrary(NOTE);
 
-    expect((await updateLibraryTags('vid1', { remove: ['SYSTEMS'] })).tags).not.toContain(
+    expect((await updateLibraryTags('vid00000001', { remove: ['SYSTEMS'] })).tags).not.toContain(
       'systems'
     );
   });
@@ -168,14 +168,14 @@ describe('updateLibraryTags', () => {
     const { saveToLibrary, updateLibraryTags } = await storage();
     await saveToLibrary(NOTE);
 
-    expect((await updateLibraryTags('vid1', { replace: ['only'] })).tags).toEqual(['only']);
+    expect((await updateLibraryTags('vid00000001', { replace: ['only'] })).tags).toEqual(['only']);
   });
 
   it('applies replace before add and remove', async () => {
     const { saveToLibrary, updateLibraryTags } = await storage();
     await saveToLibrary(NOTE);
 
-    const updated = await updateLibraryTags('vid1', {
+    const updated = await updateLibraryTags('vid00000001', {
       replace: ['a', 'b'],
       add: ['c'],
       remove: ['b'],
@@ -187,14 +187,14 @@ describe('updateLibraryTags', () => {
   it('persists across a reload', async () => {
     const { saveToLibrary, updateLibraryTags, listLibrary } = await storage();
     await saveToLibrary(NOTE);
-    await updateLibraryTags('vid1', { replace: ['persisted'] });
+    await updateLibraryTags('vid00000001', { replace: ['persisted'] });
 
     expect((await listLibrary())[0]?.tags).toEqual(['persisted']);
   });
 
   it('rejects an unknown video', async () => {
     const { updateLibraryTags } = await storage();
-    await expect(updateLibraryTags('nope', { add: ['x'] })).rejects.toMatchObject({
+    await expect(updateLibraryTags('nope0000000', { add: ['x'] })).rejects.toMatchObject({
       code: 'NOT_FOUND',
     });
   });
@@ -205,7 +205,7 @@ describe('deleteLibraryItem', () => {
     const { saveToLibrary, deleteLibraryItem, listLibrary } = await storage();
     await saveToLibrary(NOTE);
 
-    await deleteLibraryItem('vid1');
+    await deleteLibraryItem('vid00000001');
 
     expect(await listLibrary()).toHaveLength(0);
   });
@@ -215,9 +215,9 @@ describe('deleteLibraryItem', () => {
     await saveToLibrary(NOTE);
     await saveToLibrary({ ...NOTE, contentType: 'skill', content: 'skill text' });
 
-    await deleteLibraryItem('vid1', 'summary');
+    await deleteLibraryItem('vid00000001', 'summary');
 
-    const item = await getLibraryItem('vid1');
+    const item = await getLibraryItem('vid00000001');
     expect(item.summary).toBeUndefined();
     expect(item.skill).toBe('skill text');
     expect(item.metadata.hasSummary).toBe(false);
@@ -227,14 +227,14 @@ describe('deleteLibraryItem', () => {
     const { saveToLibrary, deleteLibraryItem, listLibrary } = await storage();
     await saveToLibrary(NOTE);
 
-    await deleteLibraryItem('vid1', 'summary');
+    await deleteLibraryItem('vid00000001', 'summary');
 
     expect(await listLibrary()).toHaveLength(0);
   });
 
   it('rejects an unknown video', async () => {
     const { deleteLibraryItem } = await storage();
-    await expect(deleteLibraryItem('nope')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(deleteLibraryItem('nope0000000')).rejects.toMatchObject({ code: 'NOT_FOUND' });
   });
 });
 
@@ -244,13 +244,13 @@ describe('search', () => {
     await saveToLibrary(NOTE);
 
     const { hits } = await searchLibrary('leaky bucket throttling');
-    expect(hits[0]?.videoId).toBe('vid1');
+    expect(hits[0]?.videoId).toBe('vid00000001');
   });
 
   it('stops returning a note once it is deleted', async () => {
     const { saveToLibrary, deleteLibraryItem, searchLibrary } = await storage();
     await saveToLibrary(NOTE);
-    await deleteLibraryItem('vid1');
+    await deleteLibraryItem('vid00000001');
 
     expect((await searchLibrary('throttling')).hits).toEqual([]);
   });
@@ -270,7 +270,7 @@ describe('search', () => {
 
     // Simulate a note edited by hand outside the server.
     await writeFile(
-      join(home, '.youtube-knowledge', 'library', 'vid1', 'summary.md'),
+      join(home, '.youtube-knowledge', 'library', 'vid00000001', 'summary.md'),
       'completely different subject matter about compilers',
       'utf-8'
     );

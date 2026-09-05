@@ -65,9 +65,8 @@ export async function getVideoInfo(urlOrId: string): Promise<VideoInfo> {
       '--ignore-no-formats-error',
       '--print',
       '%(id)s|||%(title)s|||%(channel)s|||%(duration)s|||%(upload_date)s|||%(description)s|||%(tags)j|||%(thumbnail)s|||%(view_count)s|||%(like_count)s|||%(comment_count)s|||%(availability)s|||%(live_status)s',
-      url,
     ],
-    { label: 'get_video_info' }
+    { label: 'get_video_info', target: url }
   );
 
   // yt-dlp prints "NA" for absent fields and simply omits trailing ones, so
@@ -141,7 +140,10 @@ export async function getVideoDetails(urlOrId: string): Promise<VideoDetails> {
   const videoId = extractVideoId(urlOrId);
   const url = watchUrl(videoId);
 
-  const stdout = await runYtDlp(['-j', '--skip-download', url], { label: 'get_video_details' });
+  const stdout = await runYtDlp(['-j', '--skip-download'], {
+    label: 'get_video_details',
+    target: url,
+  });
   const data = parseYtDlpJson<{
     chapters?: YtDlpChapter[];
     upload_date?: string;
@@ -172,9 +174,8 @@ export async function getComments(urlOrId: string, limit = 20): Promise<VideoCom
       '--write-comments',
       '--extractor-args',
       `youtube:comment_sort=top;max_comments=${limit}`,
-      url,
     ],
-    { label: 'get_comments', timeoutMs: TIMEOUTS.comments }
+    { label: 'get_comments', timeoutMs: TIMEOUTS.comments, target: url }
   );
 
   const data = parseYtDlpJson<{ comments?: YtDlpComment[] }>(stdout, isRecord, 'video comments');

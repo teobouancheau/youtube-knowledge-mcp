@@ -5,7 +5,10 @@ import { channelInfoSchema } from '../schemas.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const getChannelInfoSchema = {
-  channel: z.string().describe('YouTube channel URL, handle (e.g., @Fireship), or channel name'),
+  channel: z
+    .string()
+    .max(256)
+    .describe('YouTube channel URL, handle (e.g., @Fireship), or channel name'),
 };
 
 export const getChannelInfoOutputSchema = channelInfoSchema.shape;

@@ -7,6 +7,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 export const fetchVideosSchema = {
   url: z
     .string()
+    .max(2048)
     .describe(
       'YouTube playlist URL, channel URL, or channel handle (e.g., https://www.youtube.com/@channel)'
     ),
