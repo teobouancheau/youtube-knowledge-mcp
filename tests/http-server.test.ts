@@ -4,6 +4,14 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { startHttp, readHttpConfig, type HttpConfig, type HttpServerHandle } from '../src/http.js';
 
+// The boot log prints the preflight report only when a binary is missing, so
+// the suite has to be able to make preflight fail on demand.
+vi.mock('../src/utils/preflight.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/utils/preflight.js')>();
+  return { ...actual, runPreflight: vi.fn(actual.runPreflight) };
+});
+import { runPreflight } from '../src/utils/preflight.js';
+
 /**
  * Boots the real HTTP transport on an ephemeral port and drives it over the
  * network. Unit tests cover the helpers; this covers the wiring — that auth is
@@ -327,6 +335,52 @@ describe('HTTP shutdown', () => {
 
     await handle.close();
     await expect(handle.close()).resolves.toBeUndefined();
+  });
+
+  it('shuts down and exits the process on SIGTERM', async () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    try {
+      const handle = startHttp(() => new McpServer({ name: 'test', version: '0.0.0' }), {
+        ...readHttpConfig(),
+        port: 0,
+        bindHost: '127.0.0.1',
+      });
+      const { port } = await handle.ready;
+
+      process.emit('SIGTERM');
+      await vi.waitFor(() => {
+        expect(exit).toHaveBeenCalledWith(0);
+      });
+
+      await expect(fetch(`http://127.0.0.1:${port}/health`)).rejects.toThrow();
+    } finally {
+      exit.mockRestore();
+    }
+  });
+
+  it('prints the preflight report at boot when a binary is missing', async () => {
+    const missing = { name: 'yt-dlp', installed: false };
+    vi.mocked(runPreflight).mockResolvedValueOnce({
+      ok: false,
+      ytDlp: missing,
+      ffmpeg: { name: 'ffmpeg', installed: true, version: '7.0' },
+    });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const handle = startHttp(() => new McpServer({ name: 'test', version: '0.0.0' }), {
+        ...readHttpConfig(),
+        port: 0,
+        bindHost: '127.0.0.1',
+      });
+      await handle.ready;
+      await vi.waitFor(() => {
+        expect(log.mock.calls.flat().join('\n')).toMatch(/yt-dlp/);
+        expect(log.mock.calls.flat().join('\n')).toMatch(/not installed|missing/i);
+      });
+      await handle.close();
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it('does not accumulate signal handlers across server instances', async () => {

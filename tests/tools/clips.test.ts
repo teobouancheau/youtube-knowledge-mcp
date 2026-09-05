@@ -20,12 +20,11 @@ import { writeFile } from 'node:fs/promises';
 import { extractClip, extractFrame } from '../../src/utils/clips.js';
 import { getTranscript } from '../../src/utils/youtube.js';
 import {
-  exportSubtitlesHandler,
   extractAudioClipHandler,
   extractClipHandler,
   extractClipsHandler,
-  extractFrameHandler,
 } from '../../src/tools/clips.js';
+import { exportSubtitlesHandler, extractFrameHandler } from '../../src/tools/frames-subtitles.js';
 import { YouTubeError } from '../../src/utils/errors.js';
 
 const CLIP: ClipResult = {

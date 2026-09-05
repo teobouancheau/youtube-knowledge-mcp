@@ -20,8 +20,6 @@ export const transcriptSegmentSchema = z.object({
 
 export type TranscriptSegment = z.infer<typeof transcriptSegmentSchema>;
 
-export type TranscriptFormat = 'text' | 'timestamped' | 'segments';
-
 /** Bumped whenever the cache representation changes, so old files are refetched. */
 export const TRANSCRIPT_CACHE_VERSION = 2;
 
@@ -54,18 +52,6 @@ export function formatTimestamp(totalSeconds: number): string {
   const paddedSeconds = seconds.toString().padStart(2, '0');
   if (hours > 0) return `${hours}:${minutes.toString().padStart(2, '0')}:${paddedSeconds}`;
   return `${minutes}:${paddedSeconds}`;
-}
-
-/** 3723.5 -> "01:02:03,500" — the SRT wire format. */
-export function formatSrtTimestamp(totalSeconds: number): string {
-  const clamped = Math.max(0, totalSeconds);
-  const hours = Math.floor(clamped / 3600);
-  const minutes = Math.floor((clamped % 3600) / 60);
-  const seconds = Math.floor(clamped % 60);
-  const millis = Math.round((clamped - Math.floor(clamped)) * 1000);
-
-  const pad = (value: number, width = 2): string => value.toString().padStart(width, '0');
-  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)},${pad(millis, 3)}`;
 }
 
 /**
@@ -172,59 +158,6 @@ export function sliceSegments(
   return segments.filter((segment) => segment.end > from && segment.start < to);
 }
 
-export interface TranscriptMatch {
-  segment: TranscriptSegment;
-  /** The matched text, for highlighting. */
-  match: string;
-  url: string;
-}
-
-/**
- * Find a phrase or pattern in a transcript.
- *
- * Matching runs over the joined text of a small window of segments, not each
- * segment alone, so a phrase split across a caption boundary is still found —
- * which is most phrases, since caption breaks fall mid-sentence.
- */
-export function searchSegments(
-  segments: TranscriptSegment[],
-  query: string,
-  options: { regex?: boolean; caseSensitive?: boolean; limit?: number } = {}
-): TranscriptMatch[] {
-  const { regex = false, caseSensitive = false, limit = 20 } = options;
-
-  const flags = caseSensitive ? 'g' : 'gi';
-  const pattern = regex
-    ? new RegExp(query, flags)
-    : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
-
-  const matches: TranscriptMatch[] = [];
-
-  for (let index = 0; index < segments.length && matches.length < limit; index++) {
-    const current = segments[index];
-    if (!current) continue;
-
-    // Two segments of lookahead covers phrases spanning a caption break.
-    const haystack = segments
-      .slice(index, index + 3)
-      .map((segment) => segment.text)
-      .join(' ');
-
-    pattern.lastIndex = 0;
-    const found = pattern.exec(haystack);
-    if (!found) continue;
-
-    // The lookahead window means a hit can start in a *later* segment. Only
-    // accept it here if it begins inside this one; otherwise the same hit is
-    // reported once per preceding segment, and attributed to the wrong time.
-    if (found.index > current.text.length) continue;
-
-    matches.push({ segment: current, match: found[0], url: '' });
-  }
-
-  return matches;
-}
-
 export interface TruncationResult {
   text: string;
   truncated: boolean;
@@ -256,29 +189,5 @@ export function windowText(text: string, offset = 0, maxChars?: number): Truncat
   return { text: text.slice(from, end), truncated: true, nextOffset: end, totalChars };
 }
 
-export function toSrt(segments: TranscriptSegment[]): string {
-  return (
-    segments
-      .map((segment, index) =>
-        [
-          index + 1,
-          `${formatSrtTimestamp(segment.start)} --> ${formatSrtTimestamp(segment.end)}`,
-          segment.text,
-        ].join('\n')
-      )
-      .join('\n\n') + '\n'
-  );
-}
-
-export function toVtt(segments: TranscriptSegment[]): string {
-  const body = segments
-    .map((segment) =>
-      [
-        `${formatSrtTimestamp(segment.start).replace(',', '.')} --> ${formatSrtTimestamp(segment.end).replace(',', '.')}`,
-        segment.text,
-      ].join('\n')
-    )
-    .join('\n\n');
-
-  return `WEBVTT\n\n${body}\n`;
-}
+export * from './subtitles.js';
+export * from './transcript-search.js';

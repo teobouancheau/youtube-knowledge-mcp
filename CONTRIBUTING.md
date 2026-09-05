@@ -26,9 +26,15 @@ Run the `check_health` tool at any time to confirm both are present and current
 
 ```
 src/
-├── cli.ts                # The executable `bin` entry: calls main(), nothing else
-├── index.ts              # Server construction, tool registration, transport start
-├── http.ts               # Streamable HTTP transport: auth, sessions, rate limits
+├── cli.ts                # Executable entry (`bin`); never import it
+├── index.ts              # Server construction and tool registration; safe to import
+├── http.ts               # Streamable HTTP transport: process lifecycle and re-exports
+├── http/
+│   ├── config.ts         # Environment-driven HTTP configuration
+│   ├── app.ts            # Express routes, auth and rate limiting
+│   ├── auth.ts           # Bearer tokens, session ids, JSON-RPC errors
+│   ├── rate-limiter.ts   # Fixed-window per-client counter
+│   └── sessions.ts       # Live MCP sessions and their idle sweep
 ├── prompts.ts            # Reusable workflow prompts
 ├── resources.ts          # Transcript, library and brain resources
 ├── schemas.ts            # Shared Zod domain schemas
@@ -36,10 +42,16 @@ src/
 ├── tools/                # One file per tool group: input schema, output schema, handler
 └── utils/
     ├── ytdlp.ts          # The only place yt-dlp is spawned
+    ├── ytdlp-limiter.ts  # Concurrency cap every spawn passes through
+    ├── ytdlp-parse.ts    # Guarded parsing of yt-dlp JSON
     ├── errors.ts         # Typed failure codes and stderr classification
     ├── preflight.ts      # yt-dlp / ffmpeg presence and staleness checks
     ├── context.ts        # Per-request abort signal, progress and logging
-    ├── transcript.ts     # WebVTT parsing, slicing, search, subtitle export
+    ├── transcript.ts     # WebVTT parsing, slicing and windowing
+    ├── transcript-search.ts # Finding a phrase in a transcript
+    ├── subtitles.ts      # SRT and WebVTT export
+    ├── transcript-cache.ts # Fetching captions and keeping them on disk
+    ├── caption-probe.ts  # Naming the caption languages a video does have
     ├── clips.ts          # Clip, audio and frame extraction
     ├── search-index.ts   # BM25 index, shared by the library and the brains
     ├── storage.ts        # Library persistence
@@ -57,7 +69,12 @@ src/
     ├── brain-stats.ts    # What can be counted about a channel
     ├── validate.ts       # Path, language, channel id and timestamp validation
     ├── format.ts         # Result construction and human-readable formatting
-    └── youtube.ts        # URL and ID parsing
+    ├── youtube.ts        # Barrel over the modules below
+    ├── youtube-url.ts    # Video ids and watch URLs
+    ├── youtube-video.ts  # Video metadata, chapters and comments
+    ├── youtube-channel.ts # Channel and playlist listings and metadata
+    ├── youtube-search.ts # Keyword search for videos and channels
+    └── youtube-download.ts # Format listing and whole-video downloads
 tests/                    # Unit, protocol-level and filesystem tests
 scripts/smoke.mjs         # Post-build check that boots the server as a real client
 ```
