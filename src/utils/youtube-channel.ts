@@ -1,7 +1,14 @@
 import { formatYouTubeDate } from './format.js';
-import { TIMEOUTS, parseYtDlpJson, runYtDlp } from './ytdlp.js';
+import { TIMEOUTS, parseYtDlpJson, parseYtDlpJsonLines, runYtDlp } from './ytdlp.js';
+import {
+  FLAT_PRINT_TEMPLATE,
+  flatEntrySchema,
+  toVideoListItem,
+  type ListedImage,
+} from './flat-listing.js';
+import { selectChannelImages } from './channel-images.js';
 import { channelMetaSchema, playlistMetaSchema } from './youtube-schemas.js';
-import { channelUrlFor, formatDuration, resolveListTarget, watchUrl } from './youtube-url.js';
+import { channelUrlFor, resolveListTarget } from './youtube-url.js';
 
 /** Listings and metadata for channels and playlists. */
 
@@ -10,8 +17,15 @@ export interface VideoListItem {
   title: string;
   duration: number;
   durationFormatted: string;
+  /** Empty for a flat listing, which carries no publication date. */
   uploadDate: string;
   url: string;
+  /** The largest thumbnail the listing offered. */
+  thumbnailUrl?: string;
+  /** Every thumbnail the listing offered, with sizes where known. */
+  thumbnails?: ListedImage[];
+  viewCount?: number;
+  liveStatus?: string;
 }
 
 export interface ChannelInfo {
@@ -21,6 +35,10 @@ export interface ChannelInfo {
   subscriberCount: number;
   channelUrl: string;
   description: string;
+  /** The channel's uncropped avatar, when yt-dlp listed one. */
+  avatarUrl?: string;
+  /** The channel's uncropped banner, when yt-dlp listed one. */
+  bannerUrl?: string;
 }
 
 export interface PlaylistInfo {
@@ -41,7 +59,7 @@ export async function listVideos(urlOrChannel: string, limit = 20): Promise<Vide
       '--skip-download',
       '--flat-playlist',
       '--print',
-      '%(id)s|||%(title)s|||%(duration)s|||%(upload_date)s',
+      FLAT_PRINT_TEMPLATE,
       '--playlist-end',
       limit.toString(),
     ],
@@ -52,24 +70,7 @@ export async function listVideos(urlOrChannel: string, limit = 20): Promise<Vide
     }
   );
 
-  const lines = stdout.trim().split('\n').filter(Boolean);
-
-  return lines.map((line) => {
-    const parts = line.split('|||');
-    const field = (index: number): string => parts[index] ?? '';
-
-    const id = field(0);
-    const duration = parseInt(field(2), 10) || 0;
-
-    return {
-      id,
-      title: field(1) || 'Unknown title',
-      duration,
-      durationFormatted: formatDuration(duration),
-      uploadDate: formatYouTubeDate(field(3)),
-      url: watchUrl(id),
-    };
-  });
+  return parseYtDlpJsonLines(stdout, flatEntrySchema).map(toVideoListItem);
 }
 
 export async function getPlaylistInfo(playlistUrl: string): Promise<PlaylistInfo> {
@@ -118,5 +119,8 @@ export async function getChannelInfo(channel: string): Promise<ChannelInfo> {
     subscriberCount: data.channel_follower_count ?? 0,
     channelUrl: data.channel_url ?? channelUrl,
     description: data.description ?? '',
+    // The same listing carries the avatar and banner; they were discarded here
+    // for two releases.
+    ...selectChannelImages(data.thumbnails),
   };
 }

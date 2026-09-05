@@ -114,6 +114,8 @@ export const channelMetaSchema = z.object({
   uploader_id: z.string().nullish(),
   channel_follower_count: z.number().nullish(),
   description: z.string().nullish(),
+  /** Checked by `selectChannelImages`, which tolerates any shape. */
+  thumbnails: z.unknown(),
 });
 
 export const playlistMetaSchema = z.object({

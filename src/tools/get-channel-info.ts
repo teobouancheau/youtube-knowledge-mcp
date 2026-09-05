@@ -27,6 +27,9 @@ export async function getChannelInfoHandler({
     info.channelUrl,
   ].filter(Boolean);
 
+  if (info.avatarUrl !== undefined) lines.push(`Avatar: ${info.avatarUrl}`);
+  if (info.bannerUrl !== undefined) lines.push(`Banner: ${info.bannerUrl}`);
+
   if (info.description) {
     lines.push('');
     lines.push(info.description);
