@@ -205,11 +205,10 @@ describe('extractClip', () => {
     vi.mocked(requireFfmpeg).mockResolvedValue(undefined);
   });
 
-  /** The download call returns nothing; the follow-up prints the filename. */
+  /** The one download run prints, at its after_move stage, where the file went. */
   function ytDlpReturns(filename: string): void {
-    vi.mocked(execa)
-      .mockResolvedValueOnce({ stdout: '' } as never)
-      .mockResolvedValueOnce({ stdout: filename } as never);
+    const stdout = filename.trim() === '' ? filename : JSON.stringify({ filepath: filename });
+    vi.mocked(execa).mockResolvedValueOnce({ stdout } as never);
   }
 
   /** The argv of the nth yt-dlp invocation. */
@@ -304,14 +303,16 @@ describe('extractClip', () => {
     expect(argvOf(0)[argvOf(0).indexOf('--audio-format') + 1]).toBe('mp3');
   });
 
-  it('corrects the extension yt-dlp reports to the container actually written', async () => {
-    // yt-dlp prints the pre-merge filename, so its extension is the intermediate
-    // one; reporting it verbatim would hand back a path that does not exist.
-    ytDlpReturns('/home/u/clips/A Talk [10-20].webm');
+  it('trusts the after_move path, which is the file post-processing produced', async () => {
+    // The stage fires after the merge, so the extension it reports is the real
+    // one; an earlier version guessed it from the container and could be wrong.
+    ytDlpReturns('/home/u/clips/A Talk [10-20].mp4');
 
     const result = await extractClip('v', { start: 10, end: 20 }, OPTIONS);
 
     expect(result.filePath).toBe('/home/u/clips/A Talk [10-20].mp4');
+    expect(execa).toHaveBeenCalledTimes(1);
+    expect(argvOf(0)).toContain('after_move:%(.{title,filepath})j');
   });
 
   it('falls back to a computed path when yt-dlp prints no filename', async () => {

@@ -24,16 +24,11 @@ export function formatFilesize(bytes?: number): string {
   return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
 }
 
-export function textContent(text: string): CallToolResult {
-  return { content: [{ type: 'text' as const, text }] };
-}
-
 /**
  * A tool result carrying both a human-readable rendering and machine-readable
  * data.
  *
- * The text block is byte-identical to what `textContent` produced before, so
- * nothing a client already displays changes; `structuredContent` is additive and
+ * The text block is what a client displays; `structuredContent` is additive and
  * is what the tool's `outputSchema` describes. Every tool that declares an
  * output schema must return this, because the SDK validates the two against
  * each other.

@@ -84,12 +84,8 @@ export function hasCachedTranscript(videoId: string): boolean {
 
 export async function getTranscript(
   urlOrId: string,
-  preferredLangOrOptions: string | GetTranscriptOptions = 'en'
+  options: GetTranscriptOptions = {}
 ): Promise<TranscriptResult> {
-  const options =
-    typeof preferredLangOrOptions === 'string'
-      ? { language: preferredLangOrOptions }
-      : preferredLangOrOptions;
   const preferredLang = options.language ?? 'en';
 
   const videoId = extractVideoId(urlOrId);

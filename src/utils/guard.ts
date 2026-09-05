@@ -68,10 +68,19 @@ function contextOf(args: unknown[]): RequestContext {
   };
 }
 
-export function guarded<A extends unknown[]>(
-  handler: (...args: A) => Promise<CallToolResult>
-): (...args: A) => Promise<CallToolResult> {
-  return async (...args: A): Promise<CallToolResult> =>
+/** Any tool handler: whatever it takes, it answers with a tool result. */
+type ToolLike = (...args: never[]) => CallToolResult | Promise<CallToolResult>;
+
+/**
+ * Wrap a tool handler, keeping its exact type.
+ *
+ * A Proxy rather than an arrow function because the SDK's `registerTool` is
+ * generic over the input schema and demands a callback of the precise type it
+ * derives from it; a new function would need a cast to claim that type, while
+ * a Proxy over the original *is* that type.
+ */
+export function guarded<F extends ToolLike>(handler: F): F {
+  const run = (args: Parameters<F>): Promise<CallToolResult> =>
     runWithRequestContext(contextOf(args), async () => {
       try {
         return await handler(...args);
@@ -79,6 +88,10 @@ export function guarded<A extends unknown[]>(
         return toToolError(error);
       }
     });
+
+  return new Proxy(handler, {
+    apply: (_target, _thisArg, args: Parameters<F>) => run(args),
+  });
 }
 
 /**

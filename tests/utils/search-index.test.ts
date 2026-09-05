@@ -122,6 +122,18 @@ describe('SearchIndex', () => {
     expect(index.search('throttling').hits).toEqual([]);
   });
 
+  it('leaves other documents findable after a removal, and forgets the removed one', () => {
+    const index = new SearchIndex();
+    index.add({ id: 'a', videoId: 'a', title: 'shared word', kind: 'summary', text: 'alpha' });
+    index.add({ id: 'b', videoId: 'b', title: 'shared word', kind: 'summary', text: 'beta' });
+
+    index.remove('a');
+
+    expect(index.search('shared').hits.map((hit) => hit.id)).toEqual(['b']);
+    expect(index.search('alpha').total).toBe(0);
+    expect(index.search('beta').total).toBe(1);
+  });
+
   it('ignores removal of an unknown document', () => {
     const index = seeded();
     index.remove('does-not-exist');
