@@ -25,6 +25,8 @@ are in scope:
 - Reaching the local filesystem, or any local-only tool, through the HTTP transport
 - Bypassing bearer authentication when `MCP_AUTH_TOKEN` is set
 - Leaking local paths, tokens or command lines through tool output
+- Leaking a cookies file's path or contents, or a proxy URL, through output or logs
+- Fetching an image from a host outside YouTube's image hosts, or following a redirect to one
 
 ## Deployment notes
 

@@ -18,6 +18,7 @@ Supports both **local** (stdio) and **remote** (Streamable HTTP) transports.
 - **Search** videos and channels by keyword
 - **Fetch** videos from a playlist or channel
 - **Video, channel and playlist metadata**, chapters, and top comments
+- **Thumbnails**: look at any video's thumbnail or a channel's avatar or banner as an image, or save every thumbnail of a channel to disk
 - **Transcripts with timestamps**, sliced by time range or chapter, and capped so a
   three-hour video cannot flood your context
 - **Search inside a transcript** and get back `?t=` links that open the video at
@@ -50,6 +51,10 @@ Supports both **local** (stdio) and **remote** (Streamable HTTP) transports.
   speaking rate, and the phrases it repeats across videos
 - **Keep a written profile** beside the corpus, grounded in passages you can cite
 
+**Study a channel's thumbnails** (local mode)
+
+- **Save every thumbnail** of a channel, plus its avatar and banner, resumably, at the largest size YouTube serves, with each image's real pixel size recorded
+
 **Built to stay working**
 
 - WebVTT parsed by the W3C reference implementation, not a hand-written matcher
@@ -57,6 +62,7 @@ Supports both **local** (stdio) and **remote** (Streamable HTTP) transports.
   wall of yt-dlp stderr
 - Timeouts, retry with backoff, and a concurrency limit on every yt-dlp call
 - `check_health` diagnoses missing or outdated yt-dlp and ffmpeg
+- Bearer auth, a loopback default bind, an allowlist on every URL and image host, and typed error codes on every failure
 - Structured output on every tool, plus MCP resources, prompts and completions
 
 ## Prerequisites
@@ -367,24 +373,42 @@ them, each prefixed with a code and followed by a next step.
 
 All optional.
 
-| Variable                        | Default     | Purpose                                                                                                                                                      |
-| ------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `MCP_AUTH_TOKEN`                | unset       | Require this bearer token on the HTTP transport. **Set this if you expose the server beyond localhost.**                                                     |
-| `MCP_ALLOWED_HOSTS`             | unset       | Comma-separated Host allowlist; enables DNS-rebinding protection                                                                                             |
-| `MCP_ALLOWED_ORIGINS`           | unset       | Comma-separated Origin allowlist                                                                                                                             |
-| `MCP_BIND_HOST`                 | `127.0.0.1` | Interface to bind. The Docker image sets `0.0.0.0`. A non-loopback bind refuses to start without `MCP_AUTH_TOKEN` unless `MCP_ALLOW_UNAUTHENTICATED=true`    |
-| `MCP_ALLOW_UNAUTHENTICATED`     | `false`     | Explicit consent to listen on a network interface with no token                                                                                              |
-| `MCP_TRUST_PROXY`               | `false`     | `true`, `false`, or the number of reverse-proxy hops whose `X-Forwarded-*` headers to believe. Off, forwarded headers are ignored for rate limiting and URLs |
-| `MCP_PUBLIC_URL`                | unset       | The URL clients reach the server at; used in the OAuth metadata it publishes instead of the request's Host                                                   |
-| `MCP_MAX_BODY_BYTES`            | `1048576`   | Largest request body accepted                                                                                                                                |
-| `MCP_MODE`                      | unset       | `http` selects the HTTP transport when no `--http` flag is given                                                                                             |
-| `PORT`                          | `3000`      | HTTP port. The Docker image sets `10000`; Render and similar platforms inject their own                                                                      |
-| `MCP_RATE_LIMIT`                | `60`        | Requests per window, per client                                                                                                                              |
-| `MCP_RATE_WINDOW_MS`            | `60000`     | Rate-limit window                                                                                                                                            |
-| `MCP_SESSION_IDLE_MS`           | `1800000`   | Close HTTP sessions idle this long                                                                                                                           |
-| `MCP_MAX_SESSIONS`              | `1000`      | Reject new sessions past this many                                                                                                                           |
-| `YOUTUBE_MCP_MAX_CONCURRENCY`   | `3`         | Concurrent yt-dlp processes                                                                                                                                  |
-| `YOUTUBE_MCP_TRANSCRIPT_TTL_MS` | 30 days     | Transcript cache lifetime                                                                                                                                    |
+| Variable                           | Default     | Purpose                                                                                                                                                      |
+| ---------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `MCP_AUTH_TOKEN`                   | unset       | Require this bearer token on the HTTP transport. **Set this if you expose the server beyond localhost.**                                                     |
+| `MCP_ALLOWED_HOSTS`                | unset       | Comma-separated Host allowlist; enables DNS-rebinding protection                                                                                             |
+| `MCP_ALLOWED_ORIGINS`              | unset       | Comma-separated Origin allowlist                                                                                                                             |
+| `MCP_BIND_HOST`                    | `127.0.0.1` | Interface to bind. The Docker image sets `0.0.0.0`. A non-loopback bind refuses to start without `MCP_AUTH_TOKEN` unless `MCP_ALLOW_UNAUTHENTICATED=true`    |
+| `MCP_ALLOW_UNAUTHENTICATED`        | `false`     | Explicit consent to listen on a network interface with no token                                                                                              |
+| `MCP_TRUST_PROXY`                  | `false`     | `true`, `false`, or the number of reverse-proxy hops whose `X-Forwarded-*` headers to believe. Off, forwarded headers are ignored for rate limiting and URLs |
+| `MCP_PUBLIC_URL`                   | unset       | The URL clients reach the server at; used in the OAuth metadata it publishes instead of the request's Host                                                   |
+| `MCP_MAX_BODY_BYTES`               | `1048576`   | Largest request body accepted                                                                                                                                |
+| `MCP_MODE`                         | unset       | `http` selects the HTTP transport when no `--http` flag is given                                                                                             |
+| `PORT`                             | `3000`      | HTTP port. The Docker image sets `10000`; Render and similar platforms inject their own                                                                      |
+| `MCP_RATE_LIMIT`                   | `60`        | Requests per window, per client                                                                                                                              |
+| `MCP_RATE_WINDOW_MS`               | `60000`     | Rate-limit window                                                                                                                                            |
+| `MCP_SESSION_IDLE_MS`              | `1800000`   | Close HTTP sessions idle this long                                                                                                                           |
+| `MCP_MAX_SESSIONS`                 | `1000`      | Reject new sessions past this many                                                                                                                           |
+| `YOUTUBE_MCP_MAX_CONCURRENCY`      | `3`         | Concurrent yt-dlp processes                                                                                                                                  |
+| `YOUTUBE_MCP_TRANSCRIPT_TTL_MS`    | 30 days     | Transcript cache lifetime                                                                                                                                    |
+| `YOUTUBE_MCP_COOKIES_FROM_BROWSER` | unset       | Browser whose cookies yt-dlp should read: `brave`, `chrome`, `chromium`, `edge`, `firefox`, `opera`, `safari`, `vivaldi` or `whale`. See Signed-in content   |
+| `YOUTUBE_MCP_COOKIES_FILE`         | unset       | A Netscape-format cookies file inside your home directory, as an alternative to a browser                                                                    |
+| `YOUTUBE_MCP_PROXY`                | unset       | An `http`, `https`, `socks4` or `socks5` proxy URL for yt-dlp                                                                                                |
+| `YOUTUBE_MCP_SLEEP_REQUESTS_S`     | unset       | Seconds yt-dlp sleeps between its own requests, to stay under YouTube's limits                                                                               |
+
+### Signed-in content
+
+Some videos need a signed-in session — age-restricted, members-only, private
+ones you have access to — and YouTube sometimes asks an address to prove it is
+not a bot before serving any video at all. Those failures arrive as
+`LOGIN_REQUIRED`, `AGE_GATED` or `BOT_CHECK`, and each names the fix: set
+`YOUTUBE_MCP_COOKIES_FROM_BROWSER` to a browser you are signed in with, or
+`YOUTUBE_MCP_COOKIES_FILE` to a cookies file, and restart the server.
+
+Cookies are your account. Use them in local (stdio) mode, keep a cookies file
+readable by you alone, and know that content read this way may be personal.
+The server validates both settings at boot, never logs the file's path or
+contents, and never surfaces yt-dlp's output.
 
 ## Library Storage
 
