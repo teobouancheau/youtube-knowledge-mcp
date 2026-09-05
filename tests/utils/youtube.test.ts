@@ -15,17 +15,33 @@ vi.mock('execa', () => ({
   ExecaError: class ExecaError extends Error {},
 }));
 
-vi.mock('fs/promises', () => ({
-  mkdir: vi.fn().mockResolvedValue(undefined),
-  readFile: vi.fn(),
-  writeFile: vi.fn().mockResolvedValue(undefined),
-  unlink: vi.fn().mockResolvedValue(undefined),
-}));
+// The transcript cache is written atomically through a file handle; its write
+// is routed to the `writeFile` mock so the cache tests can read it back.
+vi.mock('fs/promises', () => {
+  const writeFile = vi.fn((_path: string, _data: unknown): Promise<void> => Promise.resolve());
+  return {
+    mkdir: vi.fn().mockResolvedValue(undefined),
+    readFile: vi.fn(),
+    writeFile,
+    unlink: vi.fn().mockResolvedValue(undefined),
+    rename: vi.fn().mockResolvedValue(undefined),
+    rm: vi.fn().mockResolvedValue(undefined),
+    open: vi.fn(() =>
+      Promise.resolve({
+        writeFile: (data: unknown) => writeFile('handle', data),
+        sync: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      })
+    ),
+  };
+});
 
-vi.mock('fs', () => ({
-  existsSync: vi.fn(),
-  readdirSync: vi.fn(() => []),
-}));
+// Only the two calls the code under test makes are faked; `realpathSync`
+// stays real so path containment can resolve the (real) home directory.
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>();
+  return { ...actual, existsSync: vi.fn(), readdirSync: vi.fn(() => []) };
+});
 
 /**
  * getVideoInfo prints 13 pipe-delimited fields. Building the mock from a record

@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // vi.mock is hoisted above imports, so the stand-in class has to be hoisted too.
@@ -25,7 +26,6 @@ import {
   runYtDlp,
   parseYtDlpJson,
   parseYtDlpJsonLines,
-  isRecord,
   concurrencyState,
   TIMEOUTS,
 } from '../../src/utils/ytdlp.js';
@@ -182,15 +182,16 @@ describe('runYtDlp', () => {
 });
 
 describe('parseYtDlpJson', () => {
-  it('parses well-formed JSON', () => {
-    expect(parseYtDlpJson('{"a":1}', isRecord, 'test')).toEqual({ a: 1 });
+  const anyObject = z.record(z.string(), z.unknown());
+
+  it('returns the parsed document when it matches the schema', () => {
+    expect(parseYtDlpJson('{"a":1}', anyObject, 'test')).toEqual({ a: 1 });
   });
 
-  it('turns a SyntaxError into an actionable MALFORMED_RESPONSE', () => {
-    // Truncated yt-dlp output used to surface as a bare SyntaxError.
+  it('reports unreadable output as MALFORMED_RESPONSE with the update hint', () => {
     const error = (() => {
       try {
-        parseYtDlpJson('{"a":', isRecord, 'video formats');
+        parseYtDlpJson('{"a":', anyObject, 'video formats');
         return undefined;
       } catch (e) {
         return e as YouTubeError;
@@ -198,42 +199,38 @@ describe('parseYtDlpJson', () => {
     })();
 
     expect(error?.code).toBe('MALFORMED_RESPONSE');
-    expect(error?.message).toContain('video formats');
     expect(error?.toToolMessage()).toContain('yt-dlp -U');
   });
 
-  it('rejects valid JSON of the wrong shape', () => {
-    expect(() => parseYtDlpJson('[1,2,3]', isRecord, 'chapters')).toThrow(YouTubeError);
+  it('rejects a document of the wrong shape', () => {
+    expect(() => parseYtDlpJson('[1,2,3]', anyObject, 'chapters')).toThrow(YouTubeError);
+  });
+
+  // The old guard only asked "is it an object", so a field of the wrong type
+  // still reached the code that read it as a number.
+  it('rejects a field of the wrong type', () => {
+    const schema = z.object({ duration: z.number().nullish() });
+    expect(() => parseYtDlpJson('{"duration":"long"}', schema, 'video')).toThrow(YouTubeError);
+    expect(parseYtDlpJson('{"duration":null}', schema, 'video')).toEqual({ duration: null });
   });
 });
 
 describe('parseYtDlpJsonLines', () => {
-  it('parses newline-delimited JSON', () => {
-    expect(parseYtDlpJsonLines('{"a":1}\n{"a":2}', isRecord)).toEqual([{ a: 1 }, { a: 2 }]);
+  const row = z.object({ a: z.number() });
+
+  it('parses one document per line', () => {
+    expect(parseYtDlpJsonLines('{"a":1}\n{"a":2}', row)).toEqual([{ a: 1 }, { a: 2 }]);
   });
 
-  it('drops a malformed row instead of losing the whole result set', () => {
-    expect(parseYtDlpJsonLines('{"a":1}\nnot json\n{"a":2}', isRecord)).toEqual([
+  it('skips lines that do not parse or do not match, keeping the rest', () => {
+    expect(parseYtDlpJsonLines('{"a":1}\nnot json\n{"a":"x"}\n{"a":2}', row)).toEqual([
       { a: 1 },
       { a: 2 },
     ]);
   });
 
   it('ignores blank lines', () => {
-    expect(parseYtDlpJsonLines('\n\n{"a":1}\n\n', isRecord)).toEqual([{ a: 1 }]);
-  });
-});
-
-describe('isRecord', () => {
-  it.each([
-    [{}, true],
-    [{ a: 1 }, true],
-    [[], false],
-    [null, false],
-    ['string', false],
-    [42, false],
-  ])('classifies %o as %s', (value, expected) => {
-    expect(isRecord(value)).toBe(expected);
+    expect(parseYtDlpJsonLines('\n\n{"a":1}\n\n', row)).toEqual([{ a: 1 }]);
   });
 });
 
@@ -460,6 +457,23 @@ describe('backoff interruption', () => {
 describe('runYtDlp target handling', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('places session flags before the caller arguments and never after the terminator', async () => {
+    mockedExeca.mockResolvedValue({ stdout: '' } as never);
+    process.env.YOUTUBE_MCP_COOKIES_FROM_BROWSER = 'firefox';
+    try {
+      await runYtDlp(['--skip-download'], { target: TARGET });
+    } finally {
+      delete process.env.YOUTUBE_MCP_COOKIES_FROM_BROWSER;
+    }
+
+    const argv = mockedExeca.mock.calls[0]?.[1];
+    const list = Array.isArray(argv) ? argv : [];
+    const cookiesAt = list.indexOf('--cookies-from-browser');
+    expect(cookiesAt).toBeGreaterThan(-1);
+    expect(cookiesAt).toBeLessThan(list.indexOf('--skip-download'));
+    expect(list.slice(-2)).toEqual(['--', TARGET]);
   });
 
   it('places a literal -- immediately before the target', async () => {

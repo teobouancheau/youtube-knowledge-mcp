@@ -1,5 +1,5 @@
-import { z } from 'zod';
-import { isRecord, parseYtDlpJsonLines, runYtDlp } from './ytdlp.js';
+import { parseYtDlpJsonLines, runYtDlp } from './ytdlp.js';
+import { channelSearchRowSchema, searchResultSchema } from './youtube-schemas.js';
 import type { ChannelInfo } from './youtube-channel.js';
 import { formatDuration, watchUrl } from './youtube-url.js';
 
@@ -15,44 +15,13 @@ export interface SearchResult {
   url: string;
 }
 
-/**
- * yt-dlp's search rows. Only `id` is required — the rest are absent often
- * enough (age-gated entries, deleted uploads still in the index) that treating
- * them as guaranteed is what produced `undefined` in rendered output.
- */
-const searchResultSchema = z.object({
-  id: z.string(),
-  title: z.string().optional(),
-  duration: z.number().optional(),
-  channel: z.string().optional(),
-  view_count: z.number().optional(),
-  url: z.string().optional(),
-});
-
-type YtDlpSearchResult = z.infer<typeof searchResultSchema>;
-
-function isSearchResult(value: unknown): value is YtDlpSearchResult {
-  return searchResultSchema.safeParse(value).success;
-}
-
-interface YtDlpChannelSearchResult {
-  id?: string;
-  title?: string;
-  channel?: string;
-  channel_id?: string;
-  channel_url?: string;
-  uploader_id?: string;
-  channel_follower_count?: number;
-  description?: string;
-}
-
 export async function searchVideos(query: string, limit = 5): Promise<SearchResult[]> {
   const stdout = await runYtDlp(['--dump-json', '--flat-playlist'], {
     label: 'search_videos',
     target: `ytsearch${limit}:${query}`,
   });
 
-  return parseYtDlpJsonLines(stdout, isSearchResult).map((data) => {
+  return parseYtDlpJsonLines(stdout, searchResultSchema).map((data) => {
     return {
       id: data.id,
       title: data.title ?? 'Unknown',
@@ -77,7 +46,7 @@ export async function searchChannels(query: string, limit = 5): Promise<ChannelI
     }
   );
 
-  return parseYtDlpJsonLines<YtDlpChannelSearchResult>(stdout, isRecord).map((data) => {
+  return parseYtDlpJsonLines(stdout, channelSearchRowSchema).map((data) => {
     return {
       name: data.channel ?? data.title ?? 'Unknown',
       channelId: data.channel_id ?? data.id ?? '',

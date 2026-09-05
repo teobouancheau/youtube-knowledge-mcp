@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs';
-import { mkdir, stat } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 import { brainChunkFileSchema, type BrainChunk, type BrainPassage } from '../brain-schemas.js';
 import { brainDir, chunksPath } from './brain-paths.js';
+import { ensurePrivateDir } from './paths.js';
 import { readJsonFile, writeJsonAtomic } from './json-file.js';
 import { SearchIndex } from './search-index.js';
 import { deepLink, formatTimestamp } from './transcript.js';
@@ -51,7 +52,7 @@ export async function readChunks(channelId: string): Promise<BrainChunk[]> {
 }
 
 export async function writeChunks(channelId: string, chunks: BrainChunk[]): Promise<void> {
-  await mkdir(brainDir(channelId), { recursive: true });
+  await ensurePrivateDir(brainDir(channelId));
   // Not pretty-printed: indentation would be a fifth of a file nobody reads.
   await writeJsonAtomic(
     chunksPath(channelId),

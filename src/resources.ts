@@ -5,6 +5,7 @@ import { hasProfile, listManifests, readProfile, requireManifest } from './utils
 import { YouTubeError } from './utils/errors.js';
 import { getTranscript } from './utils/youtube.js';
 import { segmentsToTimestamped } from './utils/transcript.js';
+import { guardedResource } from './utils/guard.js';
 
 /**
  * Saved notes and cached transcripts, exposed as MCP resources.
@@ -23,7 +24,7 @@ export function registerResources(server: McpServer, mode: 'stdio' | 'http'): vo
       description: 'Timestamped transcript for a YouTube video, fetched and cached on first read.',
       mimeType: 'text/plain',
     },
-    async (uri, { videoId }) => {
+    guardedResource(async (uri, { videoId }) => {
       const id = Array.isArray(videoId) ? videoId[0] : videoId;
       const transcript = await getTranscript(id ?? '');
 
@@ -36,7 +37,7 @@ export function registerResources(server: McpServer, mode: 'stdio' | 'http'): vo
           },
         ],
       };
-    }
+    })
   );
 
   if (mode !== 'stdio') return;
@@ -45,7 +46,7 @@ export function registerResources(server: McpServer, mode: 'stdio' | 'http'): vo
     'library-item',
     new ResourceTemplate('youtube://library/{videoId}/{contentType}', {
       // Enumerate what is actually saved, so a client can browse the library.
-      list: async () => {
+      list: guardedResource(async () => {
         const items = await listLibrary();
         return {
           resources: items.flatMap((item) => [
@@ -69,14 +70,14 @@ export function registerResources(server: McpServer, mode: 'stdio' | 'http'): vo
               : []),
           ]),
         };
-      },
+      }),
     }),
     {
       title: 'Saved library note',
       description: 'A summary or skill note previously saved to the local knowledge library.',
       mimeType: 'text/markdown',
     },
-    async (uri, { videoId, contentType }) => {
+    guardedResource(async (uri, { videoId, contentType }) => {
       const id = Array.isArray(videoId) ? videoId[0] : videoId;
       const type = Array.isArray(contentType) ? contentType[0] : contentType;
       const wanted = type === 'skill' ? 'skill' : 'summary';
@@ -85,7 +86,7 @@ export function registerResources(server: McpServer, mode: 'stdio' | 'http'): vo
       const text = (wanted === 'skill' ? item.skill : item.summary) ?? '';
 
       return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text }] };
-    }
+    })
   );
 
   server.registerResource(
@@ -95,7 +96,7 @@ export function registerResources(server: McpServer, mode: 'stdio' | 'http'): vo
       // whole brain, and the profile is the written account of it. The passages
       // are not offered as a resource — they are tens of megabytes and exist to
       // be searched, not read.
-      list: async () => {
+      list: guardedResource(async () => {
         const brains = await listManifests();
         return {
           resources: brains.flatMap((brain) => [
@@ -115,7 +116,7 @@ export function registerResources(server: McpServer, mode: 'stdio' | 'http'): vo
               : []),
           ]),
         };
-      },
+      }),
     }),
     {
       title: 'Channel brain',
@@ -123,7 +124,7 @@ export function registerResources(server: McpServer, mode: 'stdio' | 'http'): vo
         "A channel brain's manifest — what it covers and what it measured — or the written profile saved beside it.",
       mimeType: 'application/json',
     },
-    async (uri, { channelId, part }) => {
+    guardedResource(async (uri, { channelId, part }) => {
       const id = first(channelId);
       const wanted = first(part);
 
@@ -156,7 +157,7 @@ export function registerResources(server: McpServer, mode: 'stdio' | 'http'): vo
           },
         ],
       };
-    }
+    })
   );
 }
 

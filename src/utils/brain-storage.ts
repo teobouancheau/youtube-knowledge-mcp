@@ -1,9 +1,10 @@
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { readFile, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { brainManifestSchema, type BrainManifest } from '../brain-schemas.js';
 import { YouTubeError } from './errors.js';
-import { readJsonFile, writeJsonAtomic } from './json-file.js';
+import { readJsonFile, writeFileAtomic, writeJsonAtomic } from './json-file.js';
+import { ensurePrivateDir } from './paths.js';
 import { brainDir, brainsDir, manifestPath, profilePath } from './brain-paths.js';
 import { forgetBrainCorpus } from './brain-index.js';
 
@@ -20,8 +21,7 @@ export const BRAIN_MANIFEST_VERSION = 1;
 
 export async function ensureBrainDir(channelId: string): Promise<string> {
   const directory = brainDir(channelId);
-  await mkdir(directory, { recursive: true });
-  return directory;
+  return ensurePrivateDir(directory);
 }
 
 // -- Manifest ------------------------------------------------------------
@@ -98,7 +98,7 @@ export async function readProfile(channelId: string): Promise<string | undefined
 export async function writeProfile(channelId: string, content: string): Promise<string> {
   await ensureBrainDir(channelId);
   const path = profilePath(channelId);
-  await writeFile(path, content, 'utf-8');
+  await writeFileAtomic(path, content);
   return path;
 }
 
