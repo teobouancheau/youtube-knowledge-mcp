@@ -5,7 +5,14 @@ on:
     types: [published]
 
 jobs:
+  # The end-to-end lane runs on the same release event (see e2e.yml); a release
+  # whose lane fails is not published.
+  e2e:
+    uses: ./.github/workflows/e2e.yml
+    secrets: inherit
+
   publish:
+    needs: e2e
     runs-on: ubuntu-latest
     permissions:
       contents: read

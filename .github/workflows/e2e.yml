@@ -1,0 +1,73 @@
+name: End to end
+
+# The built server, real MCP clients, real yt-dlp and the real network. The
+# unit lane mocks every spawn, so this is the only thing that proves the server
+# still works against YouTube — and against the yt-dlp release the weekly bump
+# proposes.
+on:
+  schedule:
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - Dockerfile
+      - .github/workflows/e2e.yml
+      - tests/e2e/**
+  release:
+    types: [published]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      # System-wide, as the Dockerfile installs it: a per-user pip install lives
+      # under the runner's home, and the harness starts every server with an
+      # isolated HOME where Python would not find the module.
+      - name: Install the pinned yt-dlp
+        run: |
+          version=$(grep -oP 'ARG YT_DLP_VERSION=\K.*' Dockerfile)
+          sudo pip3 install --break-system-packages "yt-dlp==${version}"
+          yt-dlp --version
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Write the cookies file when the secret is present
+        env:
+          COOKIES: ${{ secrets.E2E_COOKIES_FILE }}
+        run: |
+          if [ -n "$COOKIES" ]; then
+            printf '%s' "$COOKIES" > "$HOME/e2e-cookies.txt"
+            chmod 600 "$HOME/e2e-cookies.txt"
+            echo "YOUTUBE_MCP_COOKIES_FILE=$HOME/e2e-cookies.txt" >> "$GITHUB_ENV"
+            echo "Signed-in lane: enabled"
+          else
+            echo "Signed-in lane: not configured (no E2E_COOKIES_FILE secret)"
+          fi
+
+      - name: Run the end-to-end lane
+        env:
+          E2E: '1'
+        run: npm run test:e2e
+
+      - name: Keep the run's home on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-home
+          path: /tmp/ykm-e2e-*
+          if-no-files-found: ignore
