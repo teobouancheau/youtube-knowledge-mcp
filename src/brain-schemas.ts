@@ -130,8 +130,3 @@ export const brainSummarySchema = z.object({
   indexedCount: z.number().int(),
   chunkCount: z.number().int(),
 });
-
-export const brainLockSchema = z.object({
-  pid: z.number().int(),
-  startedAt: z.string(),
-});
