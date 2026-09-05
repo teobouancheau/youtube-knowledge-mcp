@@ -102,6 +102,7 @@ src/
     ├── youtube-search.ts # Keyword search for videos and channels
     └── youtube-download.ts # Format listing and whole-video downloads
 tests/                    # Unit, protocol-level and filesystem tests
+└── e2e/                  # The built server against real yt-dlp (opt-in, see below)
 scripts/smoke.mjs         # Post-build check that boots the server as a real client
 ```
 
@@ -114,6 +115,7 @@ scripts/smoke.mjs         # Post-build check that boots the server as a real cli
 | `npm test`              | Run the test suite                                          |
 | `npm run test:watch`    | Run tests in watch mode                                     |
 | `npm run test:coverage` | Run tests and enforce coverage thresholds                   |
+| `npm run test:e2e`      | Build, then drive the built server against real yt-dlp      |
 | `npm run typecheck`     | Typecheck without emitting                                  |
 | `npm run lint`          | Lint; warnings fail the build                               |
 | `npm run format`        | Format with Prettier                                        |
@@ -214,3 +216,36 @@ version — YouTube changes frequently and many failures are fixed by `yt-dlp -U
 
 Please do not report security issues in a public issue; see
 [SECURITY.md](SECURITY.md).
+
+## Running the end-to-end suite
+
+The unit suite mocks every yt-dlp spawn. The end-to-end lane in `tests/e2e/`
+drives the built server through real MCP clients, over stdio and HTTP, against
+real yt-dlp and the real network, in an isolated temporary home. It is opt-in:
+
+```bash
+E2E=1 npm run test:e2e
+E2E=1 E2E_DOCKER=1 npm run test:e2e -- tests/e2e/docker.e2e.ts
+```
+
+It needs `yt-dlp` and `ffmpeg` on PATH and a built `dist/`. `fixtures.e2e.ts`
+runs first and re-verifies every public target the other specs rely on, so a
+target that changed on YouTube fails by name. Nothing in the lane is retried,
+and nothing is skipped without saying so.
+
+YouTube refuses per-video data to addresses it distrusts, which is every
+datacenter address: a VPN that exits in one, and every CI runner. The global
+setup reads one video through the built server first; when YouTube answers with
+its bot check, the four per-video spec files (transcripts, video reads, media,
+brains) are skipped and the reason is printed, and in CI written to the job
+summary. Everything listing-based still runs. To run the per-video specs from
+such an address, set `YOUTUBE_MCP_COOKIES_FROM_BROWSER`, `YOUTUBE_MCP_COOKIES_FILE`
+or `YOUTUBE_MCP_PROXY` in the shell that runs the lane; the harness passes them
+through to the server under test. In CI the `E2E_COOKIES_FILE` secret, a
+Netscape-format cookies export, does the same; the workflow writes it to an
+owner-only file for the run.
+
+CI runs the lane weekly, on every release before publishing, and on a pull
+request that touches the Dockerfile's yt-dlp pin. yt-dlp there is installed
+system-wide on purpose: a per-user pip install lives under the runner's home,
+which the harness replaces.

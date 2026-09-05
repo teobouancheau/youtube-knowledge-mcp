@@ -64,6 +64,7 @@ Supports both **local** (stdio) and **remote** (Streamable HTTP) transports.
 - `check_health` diagnoses missing or outdated yt-dlp and ffmpeg
 - Bearer auth, a loopback default bind, an allowlist on every URL and image host, and typed error codes on every failure
 - Structured output on every tool, plus MCP resources, prompts and completions
+- An end-to-end suite runs the built server against real yt-dlp over both transports every week
 
 ## Prerequisites
 
@@ -531,6 +532,11 @@ The suite covers the pure logic directly, drives the real server through an MCP
 client over an in-memory transport, exercises the library against a real
 temporary filesystem, and snapshots the tool manifest so any change to the
 public surface shows up as a reviewable diff.
+
+An end-to-end lane (`E2E=1 npm run test:e2e`) drives the built server through
+real MCP clients over both transports against real yt-dlp and the real network,
+in an isolated temporary home. It runs weekly in CI and on every release before
+anything is published; see CONTRIBUTING.md.
 
 ## Development
 
