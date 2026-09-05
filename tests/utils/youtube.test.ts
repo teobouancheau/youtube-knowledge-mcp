@@ -842,6 +842,73 @@ and welcome
     expect(execa).toHaveBeenCalled();
   });
 
+  describe('cache validity', () => {
+    /** A cache file is on disk; `readFile` serves it first, then the fetched VTT. */
+    async function withCachedEntry(entry: Record<string, unknown>): Promise<void> {
+      const { existsSync } = await import('fs');
+      const { readFile } = await import('fs/promises');
+      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(readFile).mockResolvedValueOnce(JSON.stringify(entry)).mockResolvedValueOnce(VTT);
+      vi.mocked(execa).mockResolvedValue(execaSuccess(''));
+    }
+
+    const FRESH = {
+      videoId: 'dQw4w9WgXcQ',
+      language: 'en',
+      segments: [{ start: 0, end: 1, text: 'cached' }],
+    };
+
+    it('refetches a cache written by an older version', async () => {
+      await withCachedEntry({ ...FRESH, version: 1, fetchedAt: new Date().toISOString() });
+
+      const { getTranscript } = await import('../../src/utils/youtube.js');
+      const result = await getTranscript('dQw4w9WgXcQ', 'en');
+
+      expect(result.cached).toBe(false);
+      expect(execa).toHaveBeenCalled();
+    });
+
+    it('refetches a cache older than the TTL', async () => {
+      await withCachedEntry({ ...FRESH, version: 2, fetchedAt: '2000-01-01T00:00:00.000Z' });
+
+      const { getTranscript } = await import('../../src/utils/youtube.js');
+      const result = await getTranscript('dQw4w9WgXcQ', 'en');
+
+      expect(result.cached).toBe(false);
+      expect(execa).toHaveBeenCalled();
+    });
+
+    it('serves a fresh cache without spawning yt-dlp', async () => {
+      await withCachedEntry({ ...FRESH, version: 2, fetchedAt: new Date().toISOString() });
+
+      const { getTranscript } = await import('../../src/utils/youtube.js');
+      const result = await getTranscript('dQw4w9WgXcQ', 'en');
+
+      expect(result).toMatchObject({ cached: true, transcript: 'cached' });
+      expect(execa).not.toHaveBeenCalled();
+    });
+  });
+
+  it('still returns the transcript when the temporary subtitle file cannot be removed', async () => {
+    await withSubtitleFile('.en.vtt');
+    const { unlink } = await import('fs/promises');
+    vi.mocked(unlink).mockRejectedValueOnce(new Error('EPERM'));
+
+    const { getTranscript } = await import('../../src/utils/youtube.js');
+
+    expect((await getTranscript('dQw4w9WgXcQ', 'en')).cached).toBe(false);
+  });
+
+  it('defaults to English when the options carry no language', async () => {
+    await withSubtitleFile('.en.vtt');
+
+    const { getTranscript } = await import('../../src/utils/youtube.js');
+    await getTranscript('dQw4w9WgXcQ', {});
+
+    const argv = vi.mocked(execa).mock.calls[0]?.[1];
+    expect(Array.isArray(argv) && argv).toContain('en,en-orig');
+  });
+
   it('rejects a language tag that is not one', async () => {
     const { getTranscript } = await import('../../src/utils/youtube.js');
 

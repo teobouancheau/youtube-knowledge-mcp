@@ -1,6 +1,10 @@
 import { execa, ExecaError } from 'execa';
 import { currentContext, log } from './context.js';
 import { YouTubeError, classifyYtDlpFailure } from './errors.js';
+import { acquireSlot, releaseSlot } from './ytdlp-limiter.js';
+
+export { concurrencyState } from './ytdlp-limiter.js';
+export { isRecord, parseYtDlpJson, parseYtDlpJsonLines } from './ytdlp-parse.js';
 
 /**
  * The single place this server spawns yt-dlp.
@@ -23,7 +27,6 @@ export const TIMEOUTS = {
   download: 0,
 } as const;
 
-const MAX_CONCURRENT = Number(process.env.YOUTUBE_MCP_MAX_CONCURRENCY ?? '3');
 const MAX_ATTEMPTS = 3;
 const BASE_BACKOFF_MS = 750;
 /** Guards against a pathological video description blowing up memory. */
@@ -39,75 +42,6 @@ const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
  * progress is never interrupted.
  */
 const SOCKET_TIMEOUT_S = '30';
-
-interface Waiter {
-  grant: () => void;
-  cancel: (error: YouTubeError) => void;
-}
-
-let active = 0;
-const waiting: Waiter[] = [];
-
-/**
- * Takes a concurrency slot, waiting for one when the limiter is full.
- *
- * The wait honours the request's abort signal. It used to be a bare promise
- * with no way out, so a client that gave up stayed queued forever — and since a
- * media transfer runs without a wall-clock timeout, three stalled downloads
- * held every slot and every later call queued behind them, uncancellable. The
- * server was not slow, it was wedged, and no tool could run again.
- */
-async function acquireSlot(signal: AbortSignal | undefined): Promise<void> {
-  // No already-aborted check here: `runYtDlp` makes it before every attempt and
-  // nothing awaits in between, so a second one could never fire — an
-  // unreachable guard that reads like a reachable one.
-  if (active < MAX_CONCURRENT) {
-    active++;
-    return;
-  }
-
-  await new Promise<void>((resolve, reject) => {
-    const waiter: Waiter = {
-      grant: () => {
-        signal?.removeEventListener('abort', onAbort);
-        resolve();
-      },
-      cancel: (error) => {
-        signal?.removeEventListener('abort', onAbort);
-        reject(error);
-      },
-    };
-
-    function onAbort(): void {
-      const index = waiting.indexOf(waiter);
-      if (index !== -1) waiting.splice(index, 1);
-      waiter.cancel(new YouTubeError('CANCELLED', 'The request was cancelled.'));
-    }
-
-    signal?.addEventListener('abort', onAbort, { once: true });
-    waiting.push(waiter);
-  });
-}
-
-/**
- * Hands the slot to the next waiter rather than freeing it and letting them
- * race for it: decrementing first left `active` below the limit for a tick, so
- * a fresh caller could take the slot the queue was already promised and the
- * limiter would run over its own ceiling.
- */
-function releaseSlot(): void {
-  const next = waiting.shift();
-  if (next) {
-    next.grant();
-    return;
-  }
-  active--;
-}
-
-/** Test seam: lets the suite assert the limiter without spawning processes. */
-export function concurrencyState(): { active: number; queued: number; limit: number } {
-  return { active, queued: waiting.length, limit: MAX_CONCURRENT };
-}
 
 export interface RunOptions {
   /** Milliseconds before the child is killed. 0 disables the timeout. */
@@ -235,60 +169,4 @@ function asText(value: unknown): string {
     return value.filter((line): line is string => typeof line === 'string').join('\n');
   }
   return '';
-}
-
-/**
- * Parse yt-dlp JSON output behind a type guard.
- *
- * Every JSON.parse in this codebase used to be unguarded, so a truncated or
- * non-JSON response surfaced as a raw SyntaxError.
- */
-export function parseYtDlpJson<T>(
-  stdout: string,
-  guard: (value: unknown) => value is T,
-  what: string
-): T {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(stdout);
-  } catch (error) {
-    throw new YouTubeError('MALFORMED_RESPONSE', `yt-dlp returned unreadable output for ${what}.`, {
-      nextStep: 'This usually means yt-dlp is out of date. Run `yt-dlp -U` and try again.',
-      retryable: true,
-      cause: error,
-    });
-  }
-
-  if (!guard(parsed)) {
-    throw new YouTubeError(
-      'MALFORMED_RESPONSE',
-      `yt-dlp returned an unexpected shape for ${what}.`,
-      {
-        nextStep: 'This usually means yt-dlp is out of date. Run `yt-dlp -U` and try again.',
-      }
-    );
-  }
-
-  return parsed;
-}
-
-/** Parse newline-delimited JSON, skipping unparseable lines rather than failing the call. */
-export function parseYtDlpJsonLines<T>(stdout: string, guard: (value: unknown) => value is T): T[] {
-  const results: T[] = [];
-
-  for (const line of stdout.trim().split('\n')) {
-    if (!line.trim()) continue;
-    try {
-      const parsed: unknown = JSON.parse(line);
-      if (guard(parsed)) results.push(parsed);
-    } catch {
-      // A single malformed row should not lose the whole result set.
-    }
-  }
-
-  return results;
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

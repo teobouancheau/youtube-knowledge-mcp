@@ -97,13 +97,15 @@ import {
   extractClipsSchema,
   extractClipsOutputSchema,
   extractClipsHandler,
+} from './tools/clips.js';
+import {
   extractFrameSchema,
   extractFrameOutputSchema,
   extractFrameHandler,
   exportSubtitlesSchema,
   exportSubtitlesOutputSchema,
   exportSubtitlesHandler,
-} from './tools/clips.js';
+} from './tools/frames-subtitles.js';
 import {
   getLibraryItemSchema,
   getLibraryItemOutputSchema,
