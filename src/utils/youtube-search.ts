@@ -47,8 +47,9 @@ interface YtDlpChannelSearchResult {
 }
 
 export async function searchVideos(query: string, limit = 5): Promise<SearchResult[]> {
-  const stdout = await runYtDlp([`ytsearch${limit}:${query}`, '--dump-json', '--flat-playlist'], {
+  const stdout = await runYtDlp(['--dump-json', '--flat-playlist'], {
     label: 'search_videos',
+    target: `ytsearch${limit}:${query}`,
   });
 
   return parseYtDlpJsonLines(stdout, isSearchResult).map((data) => {
@@ -69,8 +70,11 @@ export async function searchChannels(query: string, limit = 5): Promise<ChannelI
   const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAg%3D%3D`;
 
   const stdout = await runYtDlp(
-    [searchUrl, '--dump-json', '--flat-playlist', '--playlist-items', `1-${limit}`],
-    { label: 'search_channels' }
+    ['--dump-json', '--flat-playlist', '--playlist-items', `1-${limit}`],
+    {
+      label: 'search_channels',
+      target: searchUrl,
+    }
   );
 
   return parseYtDlpJsonLines<YtDlpChannelSearchResult>(stdout, isRecord).map((data) => {

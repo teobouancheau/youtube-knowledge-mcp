@@ -28,7 +28,8 @@ export default defineConfig({
         // because it is where a silent wrong answer would originate.
         'src/utils/transcript.ts': { lines: 100, functions: 100, branches: 95, statements: 98 },
         'src/utils/search-index.ts': { lines: 100, functions: 100, branches: 92, statements: 97 },
-        'src/utils/validate.ts': { lines: 100, functions: 100, branches: 93, statements: 100 },
+        'src/utils/validate*.ts': { lines: 100, functions: 100, branches: 93, statements: 100 },
+        'src/utils/env.ts': { lines: 100, functions: 100, branches: 93, statements: 100 },
         'src/utils/preflight.ts': { lines: 100, functions: 100, branches: 93, statements: 100 },
         'src/utils/errors.ts': { lines: 100, functions: 100, branches: 95, statements: 100 },
         'src/utils/youtube*.ts': { lines: 100, functions: 97, branches: 93, statements: 98 },

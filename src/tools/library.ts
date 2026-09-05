@@ -7,6 +7,7 @@ import {
   updateLibraryTags,
 } from '../utils/storage.js';
 import { pageInfo, toolResult } from '../utils/format.js';
+import { VIDEO_ID_PATTERN } from '../utils/validate.js';
 import { libraryMetadataSchema, librarySearchHitSchema, paginationShape } from '../schemas.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
@@ -20,7 +21,10 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 // -- get_library_item ----------------------------------------------------
 
 export const getLibraryItemSchema = {
-  videoId: z.string().describe('Video ID of the saved item, as shown by list_library'),
+  videoId: z
+    .string()
+    .regex(VIDEO_ID_PATTERN, 'an 11-character YouTube video id')
+    .describe('Video ID of the saved item, as shown by list_library'),
   contentType: z
     .enum(['summary', 'skill'])
     .optional()
@@ -125,7 +129,10 @@ export async function searchLibraryHandler({
 // -- delete_library_item -------------------------------------------------
 
 export const deleteLibraryItemSchema = {
-  videoId: z.string().describe('Video ID of the saved item to delete'),
+  videoId: z
+    .string()
+    .regex(VIDEO_ID_PATTERN, 'an 11-character YouTube video id')
+    .describe('Video ID of the saved item to delete'),
   contentType: z
     .enum(['summary', 'skill'])
     .optional()
@@ -151,7 +158,10 @@ export async function deleteLibraryItemHandler({
 // -- update_library_tags -------------------------------------------------
 
 export const updateLibraryTagsSchema = {
-  videoId: z.string().describe('Video ID of the saved item to retag'),
+  videoId: z
+    .string()
+    .regex(VIDEO_ID_PATTERN, 'an 11-character YouTube video id')
+    .describe('Video ID of the saved item to retag'),
   add: z.array(z.string()).optional().describe('Tags to add'),
   remove: z.array(z.string()).optional().describe('Tags to remove, matched case-insensitively'),
   replace: z

@@ -5,6 +5,7 @@ import { YouTubeError } from './errors.js';
 import { TIMEOUTS, runYtDlp } from './ytdlp.js';
 import { noCaptionsError } from './caption-probe.js';
 import { assertLanguageTag } from './validate.js';
+import { envInt } from './env.js';
 import { dataDir } from './paths.js';
 import {
   TRANSCRIPT_CACHE_VERSION,
@@ -38,7 +39,7 @@ export interface GetTranscriptOptions {
 }
 
 /** Captions rarely change, but a cache with no expiry is a cache that goes wrong. */
-const TRANSCRIPT_TTL_MS = Number(process.env.YOUTUBE_MCP_TRANSCRIPT_TTL_MS ?? 30 * 86_400_000);
+const TRANSCRIPT_TTL_MS = envInt('YOUTUBE_MCP_TRANSCRIPT_TTL_MS', 30 * 86_400_000, { min: 0 });
 
 function cachePath(videoId: string, language: string): string {
   return join(CACHE_DIR, `${videoId}.${language}.json`);
@@ -127,9 +128,8 @@ export async function getTranscript(
         'vtt',
         '-o',
         outputTemplate,
-        url,
       ],
-      { label: 'get_transcript', timeoutMs: TIMEOUTS.transcript }
+      { label: 'get_transcript', timeoutMs: TIMEOUTS.transcript, target: url }
     );
 
     const candidates = [

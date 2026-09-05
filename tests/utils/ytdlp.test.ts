@@ -29,6 +29,8 @@ import {
   concurrencyState,
   TIMEOUTS,
 } from '../../src/utils/ytdlp.js';
+
+const TARGET = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
 import { runWithRequestContext } from '../../src/utils/context.js';
 import { YouTubeError } from '../../src/utils/errors.js';
 
@@ -50,11 +52,11 @@ describe('runYtDlp', () => {
   it('applies a timeout to every call', async () => {
     mockedExeca.mockResolvedValue(ok('output'));
 
-    await runYtDlp(['--version']);
+    await runYtDlp(['--version'], { target: TARGET });
 
     expect(mockedExeca).toHaveBeenCalledWith(
       'yt-dlp',
-      ['--socket-timeout', '30', '--version'],
+      ['--socket-timeout', '30', '--version', '--', TARGET],
       expect.objectContaining({ timeout: expect.any(Number) })
     );
   });
@@ -64,11 +66,11 @@ describe('runYtDlp', () => {
     // holds its concurrency slot for as long as it stays silent.
     mockedExeca.mockResolvedValue(ok('output'));
 
-    await runYtDlp(['--download'], { timeoutMs: TIMEOUTS.download });
+    await runYtDlp(['--download'], { target: TARGET, timeoutMs: TIMEOUTS.download });
 
     expect(mockedExeca).toHaveBeenCalledWith(
       'yt-dlp',
-      ['--socket-timeout', '30', '--download'],
+      ['--socket-timeout', '30', '--download', '--', TARGET],
       expect.objectContaining({ timeout: undefined })
     );
   });
@@ -76,7 +78,7 @@ describe('runYtDlp', () => {
   it('omits the timeout only when explicitly disabled, for transfers', async () => {
     mockedExeca.mockResolvedValue(ok('output'));
 
-    await runYtDlp(['-f', 'best'], { timeoutMs: 0 });
+    await runYtDlp(['-f', 'best'], { target: TARGET, timeoutMs: 0 });
 
     expect(mockedExeca).toHaveBeenCalledWith(
       'yt-dlp',
@@ -88,7 +90,9 @@ describe('runYtDlp', () => {
   it('reports a timeout as an actionable TIMEOUT rather than a raw execa error', async () => {
     mockedExeca.mockRejectedValue(failWith({ timedOut: true }));
 
-    const error = await runYtDlp(['--version'], { retry: false }).catch((e: unknown) => e);
+    const error = await runYtDlp(['--version'], { target: TARGET, retry: false }).catch(
+      (e: unknown) => e
+    );
 
     expect(error).toBeInstanceOf(YouTubeError);
     expect((error as YouTubeError).code).toBe('TIMEOUT');
@@ -97,7 +101,7 @@ describe('runYtDlp', () => {
   it('explains how to install yt-dlp when the binary is missing', async () => {
     mockedExeca.mockRejectedValue(failWith({ code: 'ENOENT' }));
 
-    const error = (await runYtDlp(['--version'], { retry: false }).catch(
+    const error = (await runYtDlp(['--version'], { target: TARGET, retry: false }).catch(
       (e: unknown) => e
     )) as YouTubeError;
 
@@ -110,14 +114,16 @@ describe('runYtDlp', () => {
       .mockRejectedValueOnce(failWith({ stderr: 'HTTP Error 429: Too Many Requests' }))
       .mockResolvedValueOnce(ok('recovered'));
 
-    await expect(runYtDlp(['--version'])).resolves.toBe('recovered');
+    await expect(runYtDlp(['--version'], { target: TARGET })).resolves.toBe('recovered');
     expect(mockedExeca).toHaveBeenCalledTimes(2);
   });
 
   it('gives up after the attempt cap', async () => {
     mockedExeca.mockRejectedValue(failWith({ stderr: 'HTTP Error 429: Too Many Requests' }));
 
-    await expect(runYtDlp(['--version'])).rejects.toMatchObject({ code: 'RATE_LIMITED' });
+    await expect(runYtDlp(['--version'], { target: TARGET })).rejects.toMatchObject({
+      code: 'RATE_LIMITED',
+    });
     expect(mockedExeca).toHaveBeenCalledTimes(3);
   });
 
@@ -131,14 +137,16 @@ describe('runYtDlp', () => {
       })
     );
 
-    await expect(runYtDlp(['--version'])).rejects.toMatchObject({ code: 'FFMPEG_MISSING' });
+    await expect(runYtDlp(['--version'], { target: TARGET })).rejects.toMatchObject({
+      code: 'FFMPEG_MISSING',
+    });
     expect(mockedExeca).toHaveBeenCalledTimes(1);
   });
 
   it('does not retry at all when retry is disabled', async () => {
     mockedExeca.mockRejectedValue(failWith({ stderr: 'HTTP Error 429' }));
 
-    await expect(runYtDlp(['-f', 'best'], { retry: false })).rejects.toMatchObject({
+    await expect(runYtDlp(['-f', 'best'], { target: TARGET, retry: false })).rejects.toMatchObject({
       code: 'RATE_LIMITED',
     });
     expect(mockedExeca).toHaveBeenCalledTimes(1);
@@ -148,7 +156,9 @@ describe('runYtDlp', () => {
     mockedExeca.mockResolvedValue(ok('output'));
     const controller = new AbortController();
 
-    await runWithRequestContext({ signal: controller.signal }, () => runYtDlp(['--version']));
+    await runWithRequestContext({ signal: controller.signal }, () =>
+      runYtDlp(['--version'], { target: TARGET })
+    );
 
     expect(mockedExeca).toHaveBeenCalledWith(
       'yt-dlp',
@@ -163,7 +173,9 @@ describe('runYtDlp', () => {
     controller.abort();
 
     await expect(
-      runWithRequestContext({ signal: controller.signal }, () => runYtDlp(['--version']))
+      runWithRequestContext({ signal: controller.signal }, () =>
+        runYtDlp(['--version'], { target: TARGET })
+      )
     ).rejects.toMatchObject({ code: 'CANCELLED' });
     expect(mockedExeca).not.toHaveBeenCalled();
   });
@@ -245,7 +257,9 @@ describe('concurrency limit', () => {
     });
     mockedExeca.mockImplementation((() => held.then(() => ok('done'))) as never);
 
-    const inFlight = Array.from({ length: limit + 2 }, () => runYtDlp(['--version']));
+    const inFlight = Array.from({ length: limit + 2 }, () =>
+      runYtDlp(['--version'], { target: TARGET })
+    );
 
     // Let the scheduler run so the first `limit` calls have taken their slots.
     await Promise.resolve();
@@ -274,7 +288,9 @@ describe('concurrency limit', () => {
         })) as never
     );
 
-    const inFlight = Array.from({ length: limit * 2 }, () => runYtDlp(['--version']));
+    const inFlight = Array.from({ length: limit * 2 }, () =>
+      runYtDlp(['--version'], { target: TARGET })
+    );
     await Promise.resolve();
     await Promise.resolve();
 
@@ -313,7 +329,7 @@ describe('concurrency limit', () => {
     );
 
     const stalled = Array.from({ length: limit }, () =>
-      runYtDlp(['--stall'], { timeoutMs: TIMEOUTS.download }).catch(() => undefined)
+      runYtDlp(['--stall'], { target: TARGET, timeoutMs: TIMEOUTS.download }).catch(() => undefined)
     );
     await Promise.resolve();
     await Promise.resolve();
@@ -322,7 +338,7 @@ describe('concurrency limit', () => {
     try {
       const controller = new AbortController();
       const queued = runWithRequestContext({ signal: controller.signal }, () =>
-        runYtDlp(['--queued'], { timeoutMs: TIMEOUTS.download, retry: false })
+        runYtDlp(['--queued'], { target: TARGET, timeoutMs: TIMEOUTS.download, retry: false })
       );
       await Promise.resolve();
       controller.abort();
@@ -346,7 +362,7 @@ describe('cancellation', () => {
   it('reports a cancelled child as CANCELLED rather than a generic failure', async () => {
     mockedExeca.mockRejectedValue(failWith({ isCanceled: true }));
 
-    const error = (await runYtDlp(['--version'], { retry: false }).catch(
+    const error = (await runYtDlp(['--version'], { target: TARGET, retry: false }).catch(
       (e: unknown) => e
     )) as YouTubeError;
 
@@ -365,7 +381,7 @@ describe('cancellation', () => {
     }) as never);
 
     const error = await runWithRequestContext({ signal: controller.signal }, () =>
-      runYtDlp(['--version']).catch((e: unknown) => e)
+      runYtDlp(['--version'], { target: TARGET }).catch((e: unknown) => e)
     );
 
     expect(error).toMatchObject({ code: 'CANCELLED' });
@@ -385,7 +401,7 @@ describe('stderr shapes', () => {
       failWith({ stderr: ['ERROR: something', 'HTTP Error 429: Too Many Requests'] as never })
     );
 
-    await expect(runYtDlp(['--version'], { retry: false })).rejects.toMatchObject({
+    await expect(runYtDlp(['--version'], { target: TARGET, retry: false })).rejects.toMatchObject({
       code: 'RATE_LIMITED',
     });
   });
@@ -395,7 +411,7 @@ describe('stderr shapes', () => {
       failWith({ stderr: '', shortMessage: 'HTTP Error 429: Too Many Requests' })
     );
 
-    await expect(runYtDlp(['--version'], { retry: false })).rejects.toMatchObject({
+    await expect(runYtDlp(['--version'], { target: TARGET, retry: false })).rejects.toMatchObject({
       code: 'RATE_LIMITED',
     });
   });
@@ -403,7 +419,7 @@ describe('stderr shapes', () => {
   it('ignores a stderr shape it cannot read at all', async () => {
     mockedExeca.mockRejectedValue(failWith({ stderr: 42 as never, shortMessage: '' }));
 
-    await expect(runYtDlp(['--version'], { retry: false })).rejects.toMatchObject({
+    await expect(runYtDlp(['--version'], { target: TARGET, retry: false })).rejects.toMatchObject({
       code: 'YTDLP_FAILED',
     });
   });
@@ -430,7 +446,7 @@ describe('backoff interruption', () => {
 
     const started = Date.now();
     const error = await runWithRequestContext({ signal: controller.signal }, () =>
-      runYtDlp(['--version']).catch((e: unknown) => e)
+      runYtDlp(['--version'], { target: TARGET }).catch((e: unknown) => e)
     );
 
     expect(error).toMatchObject({ code: 'CANCELLED' });
@@ -438,5 +454,33 @@ describe('backoff interruption', () => {
     // The first backoff is measured in hundreds of ms; waking immediately is
     // the whole point of threading the signal into the sleep.
     expect(Date.now() - started).toBeLessThan(400);
+  });
+});
+
+describe('runYtDlp target handling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('places a literal -- immediately before the target', async () => {
+    mockedExeca.mockResolvedValue({ stdout: '' } as never);
+
+    await runYtDlp(['--skip-download', '-j'], { target: TARGET });
+
+    const argv = mockedExeca.mock.calls[0]?.[1];
+    expect(Array.isArray(argv) ? argv.slice(-2) : []).toEqual(['--', TARGET]);
+  });
+
+  // The whole point of the terminator: a caller-controlled value that looks
+  // like an option reaches yt-dlp as a URL it cannot fetch, never as a flag.
+  it('passes a flag-shaped target as the target, after the terminator', async () => {
+    mockedExeca.mockResolvedValue({ stdout: '' } as never);
+
+    await runYtDlp(['--version'], { target: '--exec=id' });
+
+    const argv = mockedExeca.mock.calls[0]?.[1];
+    const list = Array.isArray(argv) ? argv : [];
+    expect(list.slice(-2)).toEqual(['--', '--exec=id']);
+    expect(list.filter((arg) => arg === '--exec=id')).toHaveLength(1);
   });
 });

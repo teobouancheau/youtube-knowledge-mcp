@@ -1,10 +1,14 @@
 import { z } from 'zod';
 import { saveToLibrary } from '../utils/storage.js';
 import { fileResult } from '../utils/format.js';
+import { VIDEO_ID_PATTERN } from '../utils/validate.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 export const saveToLibrarySchema = {
-  videoId: z.string().describe('YouTube video ID (e.g., dQw4w9WgXcQ)'),
+  videoId: z
+    .string()
+    .regex(VIDEO_ID_PATTERN, 'an 11-character YouTube video id')
+    .describe('YouTube video ID (e.g., dQw4w9WgXcQ)'),
   title: z.string().describe('Video title for library indexing'),
   content: z
     .string()

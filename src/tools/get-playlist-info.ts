@@ -7,6 +7,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 export const getPlaylistInfoSchema = {
   url: z
     .string()
+    .max(2048)
     .describe(
       'YouTube playlist URL (e.g., https://www.youtube.com/playlist?list=PLlrATfBNZ98dudnM48yfGUldqGD0S4FFb)'
     ),

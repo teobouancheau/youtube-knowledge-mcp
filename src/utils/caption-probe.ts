@@ -9,8 +9,9 @@ export async function noCaptionsError(url: string, requested: string): Promise<Y
   let available: string[] = [];
 
   try {
-    const stdout = await runYtDlp(['-j', '--skip-download', url], {
+    const stdout = await runYtDlp(['-j', '--skip-download'], {
       label: 'get_transcript (caption probe)',
+      target: url,
     });
     const data = parseYtDlpJson<{
       subtitles?: Record<string, unknown>;
