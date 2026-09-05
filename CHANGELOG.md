@@ -74,6 +74,10 @@ caught it.
 - HTTP settings: `MCP_TRUST_PROXY`, `MCP_PUBLIC_URL`, `MCP_MAX_BODY_BYTES`,
   `MCP_ALLOW_UNAUTHENTICATED`. An `.env.example` lists every variable, and a
   test keeps it and the README in step with the code.
+- An end-to-end lane (`E2E=1 npm run test:e2e`) that drives the built server
+  through real MCP clients over both transports against real yt-dlp, with
+  kill-and-resume checks for brains and thumbnails; weekly in CI, and on every
+  release before anything is published.
 
 ### Changed
 
@@ -95,6 +99,12 @@ caught it.
   changed except the additions above; the manifest snapshot proves it.
 - Dates in this changelog for 1.1.1, 1.1.0, 1.0.2 and 1.0.0 are corrected from
   the git tags; 1.1.1 was previously dated before the repository existed.
+
+### Fixed
+
+- An allowlisted Host that carried a port was refused at the transport while the
+  middleware accepted it, so every `MCP_ALLOWED_HOSTS` deployment on a
+  non-default port failed to initialize. Found by the end-to-end lane.
 
 ### Removed
 
