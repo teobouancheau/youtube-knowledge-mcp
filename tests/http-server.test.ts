@@ -254,6 +254,13 @@ describe('HTTP endpoints', () => {
     // a foreign Host is refused, the allowed one reaches the transport.
     expect((await postWithHost(base, 'evil.example')).status).toBe(403);
     expect((await postWithHost(base, 'my-service.onrender.com')).status).not.toBe(403);
+
+    // Clients send the port with the Host on anything but 80/443, and the
+    // allowlist names hostnames; the check has to be port-agnostic all the way
+    // down to the transport, or every non-default-port deployment is refused.
+    const withPort = await postWithHost(base, 'my-service.onrender.com:10000');
+    expect(withPort.status).not.toBe(403);
+    expect(withPort.status).not.toBe(400);
   });
 
   it('serves health without a token, since probes cannot carry one', async () => {
