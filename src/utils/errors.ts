@@ -24,6 +24,7 @@ export type YouTubeErrorCode =
   | 'YTDLP_MISSING'
   | 'FFMPEG_MISSING'
   | 'YTDLP_FAILED'
+  | 'FETCH_FAILED'
   | 'MALFORMED_RESPONSE'
   | 'INVALID_INPUT';
 
