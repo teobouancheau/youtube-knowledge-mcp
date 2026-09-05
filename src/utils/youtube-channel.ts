@@ -1,5 +1,6 @@
 import { formatYouTubeDate } from './format.js';
-import { TIMEOUTS, isRecord, parseYtDlpJson, runYtDlp } from './ytdlp.js';
+import { TIMEOUTS, parseYtDlpJson, runYtDlp } from './ytdlp.js';
+import { channelMetaSchema, playlistMetaSchema } from './youtube-schemas.js';
 import { channelUrlFor, formatDuration, resolveListTarget, watchUrl } from './youtube-url.js';
 
 /** Listings and metadata for channels and playlists. */
@@ -32,27 +33,6 @@ export interface PlaylistInfo {
   lastModified: string;
   url: string;
   description: string;
-}
-
-interface YtDlpChannelMeta {
-  channel?: string;
-  channel_id?: string;
-  channel_url?: string;
-  uploader_id?: string;
-  channel_follower_count?: number;
-  description?: string;
-}
-
-interface YtDlpPlaylistMeta {
-  id?: string;
-  title?: string;
-  channel?: string;
-  channel_url?: string;
-  uploader_id?: string;
-  playlist_count?: number;
-  modified_date?: string;
-  webpage_url?: string;
-  description?: string;
 }
 
 export async function listVideos(urlOrChannel: string, limit = 20): Promise<VideoListItem[]> {
@@ -102,7 +82,7 @@ export async function getPlaylistInfo(playlistUrl: string): Promise<PlaylistInfo
     }
   );
 
-  const data = parseYtDlpJson<YtDlpPlaylistMeta>(stdout, isRecord, 'playlist metadata');
+  const data = parseYtDlpJson(stdout, playlistMetaSchema, 'playlist metadata');
   const modDate = data.modified_date ?? '';
 
   return {
@@ -129,7 +109,7 @@ export async function getChannelInfo(channel: string): Promise<ChannelInfo> {
     }
   );
 
-  const data = parseYtDlpJson<YtDlpChannelMeta>(stdout, isRecord, 'channel metadata');
+  const data = parseYtDlpJson(stdout, channelMetaSchema, 'channel metadata');
 
   return {
     name: data.channel ?? 'Unknown',

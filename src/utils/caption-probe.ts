@@ -1,5 +1,6 @@
 import { YouTubeError } from './errors.js';
-import { isRecord, parseYtDlpJson, runYtDlp } from './ytdlp.js';
+import { parseYtDlpJson, runYtDlp } from './ytdlp.js';
+import { captionTracksSchema } from './youtube-schemas.js';
 
 /**
  * Ask yt-dlp which caption tracks the video actually has, so the error can name
@@ -13,10 +14,7 @@ export async function noCaptionsError(url: string, requested: string): Promise<Y
       label: 'get_transcript (caption probe)',
       target: url,
     });
-    const data = parseYtDlpJson<{
-      subtitles?: Record<string, unknown>;
-      automatic_captions?: Record<string, unknown>;
-    }>(stdout, isRecord, 'caption tracks');
+    const data = parseYtDlpJson(stdout, captionTracksSchema, 'caption tracks');
 
     available = [
       ...Object.keys(data.subtitles ?? {}),

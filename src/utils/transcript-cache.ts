@@ -1,12 +1,13 @@
 import { join } from 'path';
-import { mkdir, readFile, writeFile, unlink } from 'fs/promises';
+import { readFile, unlink } from 'fs/promises';
 import { existsSync, readdirSync } from 'fs';
 import { YouTubeError } from './errors.js';
 import { TIMEOUTS, runYtDlp } from './ytdlp.js';
 import { noCaptionsError } from './caption-probe.js';
 import { assertLanguageTag } from './validate.js';
 import { envInt } from './env.js';
-import { dataDir } from './paths.js';
+import { dataDir, ensurePrivateDir } from './paths.js';
+import { writeJsonAtomic } from './json-file.js';
 import {
   TRANSCRIPT_CACHE_VERSION,
   cachedTranscriptSchema,
@@ -95,7 +96,7 @@ export async function getTranscript(
   assertLanguageTag(preferredLang);
   const url = watchUrl(videoId);
 
-  await mkdir(CACHE_DIR, { recursive: true });
+  await ensurePrivateDir(CACHE_DIR);
 
   if (!options.refresh) {
     const cached = await readCachedTranscript(videoId, preferredLang);
@@ -111,7 +112,7 @@ export async function getTranscript(
   }
 
   const tempDir = join(CACHE_DIR, 'temp');
-  await mkdir(tempDir, { recursive: true });
+  await ensurePrivateDir(tempDir);
   const outputTemplate = join(tempDir, videoId);
 
   try {
@@ -154,7 +155,7 @@ export async function getTranscript(
       fetchedAt: new Date().toISOString(),
       segments,
     };
-    await writeFile(cachePath(videoId, preferredLang), JSON.stringify(entry), 'utf-8');
+    await writeJsonAtomic(cachePath(videoId, preferredLang), entry, { pretty: false });
     await unlink(found.file).catch(() => undefined);
 
     return {

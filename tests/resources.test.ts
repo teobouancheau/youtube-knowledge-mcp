@@ -482,6 +482,34 @@ describe('request context', () => {
     expect(messages.every((message) => message.level.length > 0)).toBe(true);
   });
 
+  // Resources have no isError envelope, so a failure becomes a protocol error.
+  // The message must be the normalised one, never the raw ENOENT with a path.
+  it('never leaks a local path when a resource read fails', async () => {
+    vi.mocked(getLibraryItem).mockRejectedValue(
+      new Error('ENOENT: no such file, open /Users/someone/.youtube-knowledge/library/x/summary.md')
+    );
+
+    const client = await connect();
+    const error = await client
+      .readResource({ uri: 'youtube://library/dQw4w9WgXcQ/summary' })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(Error);
+    const message = error instanceof Error ? error.message : '';
+    expect(message).toMatch(/\[YTDLP_FAILED\]/);
+    expect(message).not.toContain('/Users/');
+    expect(message).not.toContain('ENOENT');
+  });
+
+  it('reports a bad resource argument as invalid params with its code', async () => {
+    const client = await connect();
+    const error = await client
+      .readResource({ uri: 'youtube://brain/UCXuqSBlHAE6Xw-yeJA0Tunw/passages' })
+      .catch((e: unknown) => e);
+
+    expect(error instanceof Error ? error.message : '').toMatch(/\[INVALID_INPUT\]/);
+  });
+
   it('reports a tool failure as an isError result rather than throwing', async () => {
     vi.mocked(getTranscript).mockRejectedValue(new Error('boom'));
 

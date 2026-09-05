@@ -6,9 +6,14 @@ vi.mock('../../src/utils/preflight.js', () => ({
   formatPreflightReport: vi.fn(() => 'yt-dlp: 2026.07.04\nffmpeg: not installed'),
 }));
 vi.mock('../../src/utils/ytdlp.js', () => ({ concurrencyState: vi.fn() }));
+vi.mock('../../src/utils/ytdlp-env.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/utils/ytdlp-env.js')>();
+  return { ...actual, readYtDlpEnv: vi.fn(() => ({ args: [], cookies: 'none', proxy: false })) };
+});
 
 import { runPreflight } from '../../src/utils/preflight.js';
 import { concurrencyState } from '../../src/utils/ytdlp.js';
+import { readYtDlpEnv } from '../../src/utils/ytdlp-env.js';
 import { checkHealthHandler } from '../../src/tools/check-health.js';
 
 const REPORT = {
@@ -55,5 +60,19 @@ describe('checkHealthHandler', () => {
     vi.mocked(runPreflight).mockResolvedValue({ ...REPORT, ok: false });
 
     expect(structuredOf(await checkHealthHandler())).toMatchObject({ ok: false });
+  });
+
+  it('reports which session options are configured, never their values', async () => {
+    vi.mocked(readYtDlpEnv).mockReturnValue({
+      args: ['--cookies', '/home/u/secret-cookies.txt', '--proxy', 'http://secret:1'],
+      cookies: 'file',
+      proxy: true,
+    });
+
+    const result = await checkHealthHandler();
+
+    expect(structuredOf(result)).toMatchObject({ cookies: 'file', proxy: true });
+    expect(textOf(result)).toContain('cookies: file');
+    expect(textOf(result)).not.toContain('secret');
   });
 });

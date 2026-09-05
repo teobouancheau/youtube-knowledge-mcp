@@ -1,6 +1,7 @@
 import { join } from 'path';
 import { mkdir } from 'fs/promises';
-import { TIMEOUTS, isRecord, parseYtDlpJson, runYtDlp } from './ytdlp.js';
+import { TIMEOUTS, parseYtDlpJson, runYtDlp } from './ytdlp.js';
+import { formatsRowSchema } from './youtube-schemas.js';
 import { resolveOutputDir } from './validate.js';
 import { log } from './context.js';
 import { dataDir } from './paths.js';
@@ -28,26 +29,12 @@ export interface DownloadResult {
   format: string;
 }
 
-interface YtDlpFormat {
-  format_id: string;
-  ext: string;
-  resolution?: string;
-  width?: number;
-  height?: number;
-  fps?: number;
-  vcodec?: string;
-  acodec?: string;
-  filesize?: number;
-  filesize_approx?: number;
-  format_note?: string;
-}
-
 export async function listFormats(urlOrId: string): Promise<VideoFormat[]> {
   const videoId = extractVideoId(urlOrId);
   const url = watchUrl(videoId);
   const stdout = await runYtDlp(['-j', '--skip-download'], { label: 'list_formats', target: url });
 
-  const data = parseYtDlpJson<{ formats?: YtDlpFormat[] }>(stdout, isRecord, 'video formats');
+  const data = parseYtDlpJson(stdout, formatsRowSchema, 'video formats');
   const formats = data.formats ?? [];
 
   return formats
@@ -60,10 +47,10 @@ export async function listFormats(urlOrId: string): Promise<VideoFormat[]> {
         formatId: f.format_id,
         ext: f.ext,
         resolution,
-        fps: f.fps,
+        fps: f.fps ?? undefined,
         vcodec: f.vcodec ?? 'none',
         acodec: f.acodec ?? 'none',
-        filesize: f.filesize ?? f.filesize_approx,
+        filesize: f.filesize ?? f.filesize_approx ?? undefined,
         note: f.format_note ?? '',
       };
     });

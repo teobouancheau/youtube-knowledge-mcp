@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { readJsonFile, writeJsonAtomic } from '../../src/utils/json-file.js';
+import { readJsonFile, writeFileAtomic, writeJsonAtomic } from '../../src/utils/json-file.js';
 
 /**
  * Against a real filesystem, because the property worth proving — that a failed
@@ -59,6 +59,34 @@ describe('writeJsonAtomic', () => {
     await writeJsonAtomic(file, { name: 'brain', count: 3 }, { pretty: false });
 
     expect(await readFile(file, 'utf-8')).toBe('{"name":"brain","count":3}');
+  });
+});
+
+describe('writeFileAtomic', () => {
+  it('writes binary data verbatim', async () => {
+    const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0x00, 0x10]);
+    const target = join(directory, 'image.jpg');
+
+    await writeFileAtomic(target, bytes);
+
+    expect(new Uint8Array(await readFile(target))).toEqual(bytes);
+    expect(await readdir(directory)).toEqual(['image.jpg']);
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'creates the file readable by its owner only',
+    async () => {
+      await writeFileAtomic(file, 'private');
+
+      expect((await stat(file)).mode & 0o777).toBe(0o600);
+    }
+  );
+
+  it('honours an explicit mode', async () => {
+    await writeFileAtomic(file, 'shared', { mode: 0o644 });
+
+    // The mask may narrow it but never widen it.
+    expect((await stat(file)).mode & 0o777).toBeLessThanOrEqual(0o644);
   });
 });
 

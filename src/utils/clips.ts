@@ -254,7 +254,10 @@ export async function extractFrame(
     .trim()
     .split('\n')[0];
 
-  if (mediaUrl === undefined || mediaUrl === '') {
+  // ffmpeg accepts file:, pipe:, concat: and more as inputs; the only thing
+  // yt-dlp should have resolved is an https media URL, and the allowlist
+  // below makes ffmpeg refuse anything else even if it had.
+  if (!mediaUrl?.startsWith('https://')) {
     throw new YouTubeError('YTDLP_FAILED', 'Could not resolve a video stream for this video.', {
       nextStep: 'Check the video is playable, or call check_health.',
     });
@@ -269,6 +272,8 @@ export async function extractFrame(
     await execa(
       'ffmpeg',
       [
+        '-protocol_whitelist',
+        'https,tls,tcp,crypto',
         // -ss before -i seeks without decoding everything up to that point.
         '-ss',
         String(timestamp),

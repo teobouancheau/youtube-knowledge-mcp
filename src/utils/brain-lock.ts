@@ -4,7 +4,6 @@ import { ensureBrainDir } from './brain-storage.js';
 import { lockPath } from './brain-paths.js';
 import { YouTubeError } from './errors.js';
 import { readJsonFile } from './json-file.js';
-import { isRecord } from './ytdlp.js';
 
 /**
  * Exclusive access to a brain while it is being built.
@@ -79,7 +78,7 @@ async function acquire(path: string): Promise<boolean> {
     await writeFile(path, JSON.stringify(lock), { encoding: 'utf-8', flag: 'wx' });
     return true;
   } catch (error) {
-    if (isRecord(error) && error.code === 'EEXIST') return false;
+    if (errorCode(error) === 'EEXIST') return false;
     throw error;
   }
 }
@@ -100,6 +99,13 @@ function isProcessAlive(pid: number): boolean {
   } catch (error) {
     // EPERM means the process exists but belongs to another user, which for
     // this purpose is very much alive.
-    return isRecord(error) && error.code === 'EPERM';
+    return errorCode(error) === 'EPERM';
   }
+}
+
+/** The `code` a Node system error carries, when it is one. */
+function errorCode(error: unknown): string | undefined {
+  return typeof error === 'object' && error !== null && 'code' in error
+    ? String(error.code)
+    : undefined;
 }

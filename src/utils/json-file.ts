@@ -1,9 +1,9 @@
 import { existsSync } from 'node:fs';
-import { readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { open, readFile, rename, rm } from 'node:fs/promises';
 import type { z } from 'zod';
 
 /**
- * Reading and writing the JSON documents this server keeps on disk.
+ * Reading and writing the documents this server keeps on disk.
  *
  * Both halves exist because the library and the brains make the same two
  * mistakes otherwise. Writing straight to the destination means an interrupted
@@ -14,7 +14,12 @@ import type { z } from 'zod';
  * into code that assumed a shape.
  */
 
-export interface WriteJsonOptions {
+export interface WriteFileOptions {
+  /** Permission bits for the new file. Owner-only by default: these are the user's notes and caches. */
+  mode?: number;
+}
+
+export interface WriteJsonOptions extends WriteFileOptions {
   /**
    * Indent the output. Worth it for files a human may open; not for a search
    * index, where indentation is most of the bytes.
@@ -22,20 +27,25 @@ export interface WriteJsonOptions {
   pretty?: boolean;
 }
 
+export const PRIVATE_FILE_MODE = 0o600;
+
+let writeSequence = 0;
+
 /**
- * Write JSON through a temporary file and rename it into place.
+ * Write a file through a temporary name and rename it into place.
  *
+ * The data is flushed to disk before the rename: without `fsync` a power loss
+ * after the rename could leave a zero-length file under the final name, which
+ * is exactly the half-written document the rename was meant to rule out.
  * `rename` within a directory is atomic on POSIX and on Windows via
- * `MoveFileEx`, so a reader sees either the previous document or the new one,
- * never a partial write.
+ * `MoveFileEx`, so a reader sees either the previous document or the new one.
  */
-export async function writeJsonAtomic(
+export async function writeFileAtomic(
   path: string,
-  value: unknown,
-  options: WriteJsonOptions = {}
+  data: string | Uint8Array,
+  options: WriteFileOptions = {}
 ): Promise<void> {
-  const { pretty = true } = options;
-  const serialised = JSON.stringify(value, null, pretty ? 2 : undefined);
+  const { mode = PRIVATE_FILE_MODE } = options;
 
   // A shared temporary name would let two writers of the same document destroy
   // each other's staging file, and the loser's rename would fail on a path that
@@ -43,7 +53,13 @@ export async function writeJsonAtomic(
   const temporaryPath = `${path}.${process.pid}.${writeSequence++}.tmp`;
 
   try {
-    await writeFile(temporaryPath, serialised, 'utf-8');
+    const handle = await open(temporaryPath, 'w', mode);
+    try {
+      await handle.writeFile(data);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
     await rename(temporaryPath, path);
   } catch (error) {
     await rm(temporaryPath, { force: true });
@@ -51,7 +67,16 @@ export async function writeJsonAtomic(
   }
 }
 
-let writeSequence = 0;
+/** Serialise and write a JSON document atomically. */
+export async function writeJsonAtomic(
+  path: string,
+  value: unknown,
+  options: WriteJsonOptions = {}
+): Promise<void> {
+  const { pretty = true, ...fileOptions } = options;
+  const serialised = JSON.stringify(value, null, pretty ? 2 : undefined);
+  await writeFileAtomic(path, serialised, fileOptions);
+}
 
 /**
  * Read and validate a JSON document, or `undefined` if it is missing,
