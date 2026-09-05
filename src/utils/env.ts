@@ -1,7 +1,7 @@
 /**
  * Reading configuration from the environment without trusting it.
  *
- * A bare `Number(process.env.X)` turns a typo into `NaN`, and `NaN` compares
+ * A bare `Number()` of an environment value turns a typo into `NaN`, and `NaN` compares
  * false with everything: a concurrency limit of `NaN` queued every yt-dlp call
  * forever, and a cache TTL of `NaN` never expired anything. Every numeric or
  * enumerated setting therefore comes through here, where an unusable value
