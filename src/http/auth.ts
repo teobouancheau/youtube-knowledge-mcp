@@ -1,7 +1,8 @@
 import { timingSafeEqual } from 'node:crypto';
-import type { Request, Response } from 'express';
+import type { Request, RequestHandler, Response } from 'express';
+import type { HttpConfig } from './config.js';
 
-/** Bearer tokens, session ids and the JSON-RPC error envelope. */
+/** Bearer tokens, client identity, session ids and the JSON-RPC error envelope. */
 
 /**
  * Compare a presented token against the configured one in constant time, so the
@@ -28,10 +29,16 @@ export function bearerToken(header: string | undefined): string | undefined {
   return match?.[1];
 }
 
+/**
+ * The key a client is rate-limited under.
+ *
+ * `req.ip` is what Express derives after applying the `trust proxy` setting:
+ * the socket address by default, and the forwarded client only when the
+ * operator has said which proxies to believe. Reading `X-Forwarded-For`
+ * directly, as this once did, let any caller mint a fresh quota per request.
+ */
 export function clientKey(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  const first = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-  return first?.split(',')[0]?.trim() ?? req.socket.remoteAddress ?? 'unknown';
+  return req.ip ?? req.socket.remoteAddress ?? 'unknown';
 }
 
 /**
@@ -50,4 +57,28 @@ export function jsonRpcError(res: Response, status: number, code: number, messag
   if (res.headersSent) return;
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ jsonrpc: '2.0', error: { code, message }, id: null }));
+}
+
+/**
+ * The base URL this server publishes in OAuth metadata.
+ *
+ * Configuration first; the request's own view of itself only when a proxy is
+ * trusted to have set it. Reflecting `Host` unconditionally let anyone who
+ * could reach the endpoint choose the address other clients were told to use.
+ */
+export function publicBaseUrl(config: HttpConfig, req: Request, port: number): string {
+  if (config.publicUrl !== undefined) return config.publicUrl;
+  if (config.trustProxy !== false) return `${req.protocol}://${req.get('host') ?? ''}`;
+  return `http://${config.bindHost}:${port}`;
+}
+
+/** Headers every response carries; none of them cost anything for an API. */
+export function securityHeaders(): RequestHandler {
+  return (_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-Frame-Options', 'DENY');
+    next();
+  };
 }

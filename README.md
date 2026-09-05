@@ -154,7 +154,11 @@ npm run build
 npm run start:http
 ```
 
-The server listens on `PORT` (default 3000). Set `PORT` environment variable to change.
+The server listens on `127.0.0.1:PORT` (default 3000). To reach it from another
+machine set `MCP_BIND_HOST=0.0.0.0` together with `MCP_AUTH_TOKEN`; the server
+refuses to start exposed and unauthenticated unless you also set
+`MCP_ALLOW_UNAUTHENTICATED=true`. Behind a reverse proxy, set `MCP_TRUST_PROXY`
+to the number of hops and `MCP_PUBLIC_URL` to the address clients use.
 
 #### Docker
 
@@ -340,19 +344,24 @@ them, each prefixed with a code and followed by a next step.
 
 All optional.
 
-| Variable                        | Default   | Purpose                                                                                                  |
-| ------------------------------- | --------- | -------------------------------------------------------------------------------------------------------- |
-| `MCP_AUTH_TOKEN`                | unset     | Require this bearer token on the HTTP transport. **Set this if you expose the server beyond localhost.** |
-| `MCP_ALLOWED_HOSTS`             | unset     | Comma-separated Host allowlist; enables DNS-rebinding protection                                         |
-| `MCP_ALLOWED_ORIGINS`           | unset     | Comma-separated Origin allowlist                                                                         |
-| `MCP_BIND_HOST`                 | `0.0.0.0` | Interface to bind                                                                                        |
-| `PORT`                          | `3000`    | HTTP port. The Docker image sets `10000`; Render and similar platforms inject their own                  |
-| `MCP_RATE_LIMIT`                | `60`      | Requests per window, per client                                                                          |
-| `MCP_RATE_WINDOW_MS`            | `60000`   | Rate-limit window                                                                                        |
-| `MCP_SESSION_IDLE_MS`           | `1800000` | Close HTTP sessions idle this long                                                                       |
-| `MCP_MAX_SESSIONS`              | `1000`    | Reject new sessions past this many                                                                       |
-| `YOUTUBE_MCP_MAX_CONCURRENCY`   | `3`       | Concurrent yt-dlp processes                                                                              |
-| `YOUTUBE_MCP_TRANSCRIPT_TTL_MS` | 30 days   | Transcript cache lifetime                                                                                |
+| Variable                        | Default     | Purpose                                                                                                                                                      |
+| ------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `MCP_AUTH_TOKEN`                | unset       | Require this bearer token on the HTTP transport. **Set this if you expose the server beyond localhost.**                                                     |
+| `MCP_ALLOWED_HOSTS`             | unset       | Comma-separated Host allowlist; enables DNS-rebinding protection                                                                                             |
+| `MCP_ALLOWED_ORIGINS`           | unset       | Comma-separated Origin allowlist                                                                                                                             |
+| `MCP_BIND_HOST`                 | `127.0.0.1` | Interface to bind. The Docker image sets `0.0.0.0`. A non-loopback bind refuses to start without `MCP_AUTH_TOKEN` unless `MCP_ALLOW_UNAUTHENTICATED=true`    |
+| `MCP_ALLOW_UNAUTHENTICATED`     | `false`     | Explicit consent to listen on a network interface with no token                                                                                              |
+| `MCP_TRUST_PROXY`               | `false`     | `true`, `false`, or the number of reverse-proxy hops whose `X-Forwarded-*` headers to believe. Off, forwarded headers are ignored for rate limiting and URLs |
+| `MCP_PUBLIC_URL`                | unset       | The URL clients reach the server at; used in the OAuth metadata it publishes instead of the request's Host                                                   |
+| `MCP_MAX_BODY_BYTES`            | `1048576`   | Largest request body accepted                                                                                                                                |
+| `MCP_MODE`                      | unset       | `http` selects the HTTP transport when no `--http` flag is given                                                                                             |
+| `PORT`                          | `3000`      | HTTP port. The Docker image sets `10000`; Render and similar platforms inject their own                                                                      |
+| `MCP_RATE_LIMIT`                | `60`        | Requests per window, per client                                                                                                                              |
+| `MCP_RATE_WINDOW_MS`            | `60000`     | Rate-limit window                                                                                                                                            |
+| `MCP_SESSION_IDLE_MS`           | `1800000`   | Close HTTP sessions idle this long                                                                                                                           |
+| `MCP_MAX_SESSIONS`              | `1000`      | Reject new sessions past this many                                                                                                                           |
+| `YOUTUBE_MCP_MAX_CONCURRENCY`   | `3`         | Concurrent yt-dlp processes                                                                                                                                  |
+| `YOUTUBE_MCP_TRANSCRIPT_TTL_MS` | 30 days     | Transcript cache lifetime                                                                                                                                    |
 
 ## Library Storage
 
@@ -490,9 +499,11 @@ project layout, coding standards, and how to add a tool.
 
 ## Security
 
-The HTTP transport is unauthenticated unless you set `MCP_AUTH_TOKEN`. See
-[SECURITY.md](SECURITY.md) before exposing it beyond localhost, and to report a
-vulnerability.
+The HTTP transport binds loopback and refuses to listen on a network interface
+without `MCP_AUTH_TOKEN`. Caller-supplied URLs must be on a YouTube host before
+anything is handed to yt-dlp, every yt-dlp target follows a `--` terminator, and
+ids are validated before they become paths. See [SECURITY.md](SECURITY.md) for
+the deployment checklist and how to report a vulnerability.
 
 ## License
 

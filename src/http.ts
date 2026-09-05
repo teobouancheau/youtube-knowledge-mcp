@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { buildApp } from './http/app.js';
-import { readHttpConfig, type HttpConfig } from './http/config.js';
+import { assertSafeToStart, readHttpConfig, type HttpConfig } from './http/config.js';
 import { RateLimiter } from './http/rate-limiter.js';
 import { SessionStore } from './http/sessions.js';
 import { formatPreflightReport, runPreflight } from './utils/preflight.js';
@@ -15,7 +15,7 @@ import { formatPreflightReport, runPreflight } from './utils/preflight.js';
  */
 
 export { bearerToken, clientKey, sessionIdOf, tokenMatches } from './http/auth.js';
-export { readHttpConfig, type HttpConfig } from './http/config.js';
+export { assertSafeToStart, isLoopback, readHttpConfig, type HttpConfig } from './http/config.js';
 export { RateLimiter } from './http/rate-limiter.js';
 
 export interface HttpServerHandle {
@@ -28,9 +28,20 @@ export function startHttp(
   createServer: (mode: 'http') => McpServer,
   config: HttpConfig = readHttpConfig()
 ): HttpServerHandle {
+  // Before anything listens: an exposed, unauthenticated server is refused,
+  // not warned about.
+  assertSafeToStart(config);
+
+  let boundPort = config.port;
   const limiter = new RateLimiter(config.rateLimit, config.rateWindowMs);
-  const sessions = new SessionStore();
-  const app = buildApp(config, createServer, sessions, limiter);
+  const sessions = new SessionStore(config.maxSessions);
+  const app = buildApp(config, {
+    createServer,
+    sessions,
+    limiter,
+    port: () => boundPort,
+    startedAt: Date.now(),
+  });
 
   // Both timers are unref'd: they must never be the reason the process stays up.
   const sweeper = setInterval(() => {
@@ -47,13 +58,13 @@ export function startHttp(
     announceReady = resolve;
   });
 
-  const httpServer = app.listen(config.port, () => {
+  const httpServer = app.listen(config.port, config.bindHost, () => {
     const address = httpServer.address();
-    const port = typeof address === 'object' && address !== null ? address.port : config.port;
-    announceReady({ port });
+    boundPort = typeof address === 'object' && address !== null ? address.port : config.port;
+    announceReady({ port: boundPort });
 
-    console.error(`MCP Streamable HTTP server listening on ${config.bindHost}:${port}`);
-    console.error(`MCP endpoint: http://localhost:${port}/mcp`);
+    console.error(`MCP Streamable HTTP server listening on ${config.bindHost}:${boundPort}`);
+    console.error(`MCP endpoint: http://localhost:${boundPort}/mcp`);
     console.error(
       config.authToken
         ? 'Authentication: bearer token required'
