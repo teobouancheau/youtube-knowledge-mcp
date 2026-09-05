@@ -1,6 +1,7 @@
 import { formatYouTubeDate } from './format.js';
 import { classifyPlayability } from './errors.js';
-import { TIMEOUTS, isRecord, parseYtDlpJson, runYtDlp } from './ytdlp.js';
+import { TIMEOUTS, parseYtDlpJson, runYtDlp } from './ytdlp.js';
+import { commentsRowSchema, videoDetailsRowSchema } from './youtube-schemas.js';
 import { extractVideoId, formatDuration, watchUrl } from './youtube-url.js';
 
 /** Everything read about one video: metadata, chapters and comments. */
@@ -34,20 +35,6 @@ export interface VideoComment {
   text: string;
   likeCount: number;
   isPinned: boolean;
-}
-
-interface YtDlpChapter {
-  title: string;
-  start_time: number;
-  end_time: number;
-}
-
-interface YtDlpComment {
-  author?: string;
-  text?: string;
-  like_count?: number;
-  is_pinned?: boolean;
-  parent?: string;
 }
 
 export async function getVideoInfo(urlOrId: string): Promise<VideoInfo> {
@@ -144,11 +131,7 @@ export async function getVideoDetails(urlOrId: string): Promise<VideoDetails> {
     label: 'get_video_details',
     target: url,
   });
-  const data = parseYtDlpJson<{
-    chapters?: YtDlpChapter[];
-    upload_date?: string;
-    duration?: number;
-  }>(stdout, isRecord, 'video details');
+  const data = parseYtDlpJson(stdout, videoDetailsRowSchema, 'video details');
 
   return {
     uploadDate: formatYouTubeDate(data.upload_date ?? ''),
@@ -178,7 +161,7 @@ export async function getComments(urlOrId: string, limit = 20): Promise<VideoCom
     { label: 'get_comments', timeoutMs: TIMEOUTS.comments, target: url }
   );
 
-  const data = parseYtDlpJson<{ comments?: YtDlpComment[] }>(stdout, isRecord, 'video comments');
+  const data = parseYtDlpJson(stdout, commentsRowSchema, 'video comments');
   const comments = data.comments ?? [];
 
   return comments

@@ -1,7 +1,5 @@
-import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 import {
   fetchVideosSchema,
@@ -142,11 +140,11 @@ import {
   saveBrainProfileOutputSchema,
   saveBrainProfileSchema,
 } from './tools/manage-brain.js';
-import { runWithRequestContext } from './utils/context.js';
-import { toToolError } from './utils/errors.js';
 import { formatPreflightReport, runPreflight } from './utils/preflight.js';
 import { startHttp } from './http.js';
 import { serverVersion } from './utils/version.js';
+import { guarded } from './utils/guard.js';
+import { describeYtDlpEnv, readYtDlpEnv } from './utils/ytdlp-env.js';
 import { registerPrompts } from './prompts.js';
 import { registerResources } from './resources.js';
 
@@ -160,81 +158,6 @@ Recommended workflows:
 - Combine transcript + chapters for structured, timestamped summaries
 
 All tools accept YouTube video IDs (e.g., dQw4w9WgXcQ) or full URLs.`;
-
-/**
- * Wrap a tool handler so that every call gets a request context and no call can
- * throw out of the server.
- *
- * Two things happen here, once, instead of thirteen times in thirteen files:
- * the MCP request's AbortSignal is published to the request context so an
- * in-flight yt-dlp is killed when the client cancels, and anything thrown is
- * rendered as an `isError` result carrying an actionable message rather than a
- * raw stack trace or yt-dlp command line.
- */
-/**
- * The parts of the SDK's `RequestHandlerExtra` this server uses.
- *
- * `sendNotification` is described with `z.custom` because a function is not
- * something Zod can take apart structurally — the predicate is a real runtime
- * check, and it is what lets the property be called without asserting a type
- * over it.
- */
-const requestExtraSchema = z.object({
-  signal: z.instanceof(AbortSignal).optional(),
-  sendNotification: z
-    .custom<(notification: unknown) => Promise<void>>((value) => typeof value === 'function')
-    .optional(),
-  _meta: z.object({ progressToken: z.union([z.string(), z.number()]).optional() }).optional(),
-});
-
-function guarded<A extends unknown[]>(
-  handler: (...args: A) => Promise<CallToolResult>
-): (...args: A) => Promise<CallToolResult> {
-  return async (...args: A): Promise<CallToolResult> => {
-    // Handlers declare only their own parameters; the SDK appends
-    // RequestHandlerExtra to every call, so it is whatever arrived last.
-    const parsed = requestExtraSchema.safeParse(args[args.length - 1]);
-    const context = parsed.success ? parsed.data : undefined;
-    const signal = context?.signal;
-
-    return runWithRequestContext(
-      {
-        signal,
-        // Progress is only meaningful when the client asked for it by sending a
-        // token; without one the notification would be dropped anyway.
-        reportProgress:
-          context?.sendNotification && context._meta?.progressToken !== undefined
-            ? (progress, total, message) => {
-                void context.sendNotification?.({
-                  method: 'notifications/progress',
-                  params: {
-                    progressToken: context._meta?.progressToken,
-                    progress,
-                    ...(total === undefined ? {} : { total }),
-                    ...(message === undefined ? {} : { message }),
-                  },
-                });
-              }
-            : undefined,
-        log: context?.sendNotification
-          ? (level, message) => {
-              void context.sendNotification?.({
-                method: 'notifications/message',
-                params: { level, logger: 'youtube-knowledge-mcp', data: message },
-              });
-            }
-          : undefined,
-      },
-      async () => {
-        try {
-          return await handler(...args);
-        } catch (error) {
-          return toToolError(error);
-        }
-      }
-    );
-  };
-}
 
 /**
  * Build a fully configured server.
@@ -900,6 +823,10 @@ export async function announcePreflight(): Promise<void> {
 
 export async function main(): Promise<void> {
   const mode = getTransportMode();
+  // Validated once, here, so a misspelt browser name or an unreadable cookies
+  // file stops the server at boot rather than failing the first tool call.
+  const session = readYtDlpEnv();
+  if (session.cookies !== 'none' || session.proxy) console.error(describeYtDlpEnv(session));
   await announcePreflight();
 
   if (mode === 'http') {

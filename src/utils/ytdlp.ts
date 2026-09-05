@@ -2,9 +2,10 @@ import { execa, ExecaError } from 'execa';
 import { currentContext, log } from './context.js';
 import { YouTubeError, classifyYtDlpFailure } from './errors.js';
 import { acquireSlot, releaseSlot } from './ytdlp-limiter.js';
+import { readYtDlpEnv } from './ytdlp-env.js';
 
 export { concurrencyState } from './ytdlp-limiter.js';
-export { isRecord, parseYtDlpJson, parseYtDlpJsonLines } from './ytdlp-parse.js';
+export { parseYtDlpJson, parseYtDlpJsonLines } from './ytdlp-parse.js';
 
 /**
  * The single place this server spawns yt-dlp.
@@ -123,7 +124,16 @@ async function spawnOnce(
 ): Promise<string> {
   await acquireSlot(signal);
   try {
-    const argv = ['--socket-timeout', SOCKET_TIMEOUT_S, ...args, '--', target];
+    // Session flags (cookies, proxy, pacing) go first so a caller's argument can
+    // never be read as their value; the target goes last, behind `--`.
+    const argv = [
+      '--socket-timeout',
+      SOCKET_TIMEOUT_S,
+      ...readYtDlpEnv().args,
+      ...args,
+      '--',
+      target,
+    ];
     const { stdout } = await execa('yt-dlp', argv, {
       timeout: timeoutMs > 0 ? timeoutMs : undefined,
       cancelSignal: signal,

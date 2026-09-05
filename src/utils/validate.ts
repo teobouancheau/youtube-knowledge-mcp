@@ -1,5 +1,6 @@
+import { existsSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { isAbsolute, normalize, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, normalize, resolve, sep } from 'node:path';
 import { YouTubeError } from './errors.js';
 
 /**
@@ -10,36 +11,58 @@ import { YouTubeError } from './errors.js';
  */
 
 /**
- * Resolve a caller-supplied output directory.
+ * Prove that a caller-supplied path lies inside the home directory.
  *
  * A tool argument is model-controlled, so it must not be able to write outside
- * the user's home directory or reach the filesystem root through `..`.
+ * the user's home directory or reach the filesystem root through `..`. The
+ * check is made on the real path: a symlink inside home that points outside it
+ * passed a purely lexical comparison, and yt-dlp and ffmpeg then wrote through
+ * it. The nearest existing ancestor is resolved and the missing tail re-joined,
+ * so a directory that does not exist yet is judged by where it would be created.
  */
-export function resolveOutputDir(outputDir: string | undefined, fallback: string): string {
-  if (outputDir === undefined || outputDir.trim() === '') return fallback;
-
-  const expanded = outputDir.startsWith('~')
-    ? resolve(homedir(), outputDir.slice(1).replace(/^[/\\]/, ''))
-    : resolve(normalize(outputDir));
-
-  if (expanded.includes('\0')) {
-    throw new YouTubeError('INVALID_INPUT', 'The output directory path is not valid.', {
-      nextStep: 'Provide a plain directory path, for example ~/Videos.',
+export function assertInsideHome(input: string, what: string): string {
+  if (input.includes('\0')) {
+    throw new YouTubeError('INVALID_INPUT', `The ${what} path is not valid.`, {
+      nextStep: 'Provide a plain path, for example ~/Videos.',
     });
   }
 
-  const home = resolve(homedir());
-  if (!isAbsolute(expanded) || !(expanded === home || expanded.startsWith(home + sep))) {
-    throw new YouTubeError(
-      'INVALID_INPUT',
-      'Downloads must be written inside your home directory.',
-      {
-        nextStep: `Choose a path under ${home}, or omit outputDir to use the default location.`,
-      }
-    );
+  const expanded = input.startsWith('~')
+    ? resolve(homedir(), input.slice(1).replace(/^[/\\]/, ''))
+    : resolve(normalize(input));
+
+  const home = realpathSync(homedir());
+  const real = realpathOfNearestAncestor(expanded);
+
+  if (!isAbsolute(real) || !(real === home || real.startsWith(home + sep))) {
+    throw new YouTubeError('INVALID_INPUT', `The ${what} must be inside your home directory.`, {
+      nextStep: `Choose a path under ${home}, or omit it to use the default location.`,
+    });
   }
 
-  return expanded;
+  return real;
+}
+
+/**
+ * The real path of `target`, resolving symlinks in whichever prefix of it
+ * exists. The walk stops at the filesystem root, which always exists.
+ */
+function realpathOfNearestAncestor(target: string): string {
+  const missing: string[] = [];
+  let probe = target;
+
+  while (dirname(probe) !== probe && !existsSync(probe)) {
+    missing.unshift(basename(probe));
+    probe = dirname(probe);
+  }
+
+  return join(realpathSync(probe), ...missing);
+}
+
+/** Resolve a caller-supplied output directory, or the fallback when none is given. */
+export function resolveOutputDir(outputDir: string | undefined, fallback: string): string {
+  if (outputDir === undefined || outputDir.trim() === '') return fallback;
+  return assertInsideHome(outputDir, 'output directory');
 }
 
 /** BCP-47-ish: `en`, `pt-BR`, `zh-Hans`, plus yt-dlp's `-orig` suffix. */

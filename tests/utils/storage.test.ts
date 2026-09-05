@@ -1,15 +1,28 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock fs/promises
-vi.mock('fs/promises', () => ({
-  mkdir: vi.fn().mockResolvedValue(undefined),
-  readFile: vi.fn(),
-  writeFile: vi.fn().mockResolvedValue(undefined),
-  // JSON documents are written to a temporary file and renamed into place, so
-  // an interrupted write cannot truncate the previous one.
-  rename: vi.fn().mockResolvedValue(undefined),
-  readdir: vi.fn().mockResolvedValue([]),
-}));
+// Documents are written through a temporary file handle, flushed and renamed
+// into place, so an interrupted write cannot truncate the previous one. The
+// handle's write is routed to the same `writeFile` mock so assertions can
+// still ask "was something written".
+vi.mock('fs/promises', () => {
+  const writeFile = vi.fn((_path: string, _data: unknown): Promise<void> => Promise.resolve());
+  return {
+    mkdir: vi.fn().mockResolvedValue(undefined),
+    readFile: vi.fn(),
+    writeFile,
+    rename: vi.fn().mockResolvedValue(undefined),
+    rm: vi.fn().mockResolvedValue(undefined),
+    readdir: vi.fn().mockResolvedValue([]),
+    open: vi.fn(() =>
+      Promise.resolve({
+        writeFile: (data: unknown) => writeFile('handle', data),
+        sync: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      })
+    ),
+  };
+});
 
 // Mock fs
 vi.mock('fs', () => ({

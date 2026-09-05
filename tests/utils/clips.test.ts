@@ -30,6 +30,12 @@ const VIDEO = {
   commentCount: 0,
 };
 
+function argvOf(call: number): string[] {
+  const args = vi.mocked(execa).mock.calls[call]?.[1];
+  expect(Array.isArray(args)).toBe(true);
+  return Array.isArray(args) ? args : [];
+}
+
 describe('safeStem', () => {
   it('keeps an ordinary title intact', () => {
     expect(safeStem('A Talk About Systems', 'fallback')).toBe('A Talk About Systems');
@@ -207,11 +213,6 @@ describe('extractClip', () => {
   }
 
   /** The argv of the nth yt-dlp invocation. */
-  function argvOf(call: number): string[] {
-    const args = vi.mocked(execa).mock.calls[call]?.[1];
-    expect(Array.isArray(args)).toBe(true);
-    return Array.isArray(args) ? args : [];
-  }
 
   const OPTIONS = {
     formatSelector: 'bestvideo+bestaudio',
@@ -374,6 +375,30 @@ describe('extractFrame', () => {
     // -ss before -i seeks without decoding everything up to that point.
     expect(Array.isArray(argv) && argv.indexOf('-ss') < argv.indexOf('-i')).toBe(true);
     expect(result).toMatchObject({ videoId: 'dQw4w9WgXcQ', timestamp: 42 });
+  });
+
+  it('restricts ffmpeg to https input, and refuses anything else yt-dlp resolved', async () => {
+    vi.mocked(execa)
+      .mockResolvedValueOnce({ stdout: 'https://media.example/stream.mp4' } as never)
+      .mockResolvedValueOnce({ stdout: '' } as never);
+
+    await extractFrame('dQw4w9WgXcQ', 5, { format: 'png' });
+
+    const ffmpeg = argvOf(1);
+    const whitelistAt = ffmpeg.indexOf('-protocol_whitelist');
+    expect(whitelistAt).toBeGreaterThanOrEqual(0);
+    expect(ffmpeg[whitelistAt + 1]).toBe('https,tls,tcp,crypto');
+    // A per-input option must precede the input it applies to.
+    expect(whitelistAt).toBeLessThan(ffmpeg.indexOf('-i'));
+  });
+
+  it('does not start ffmpeg when the resolved stream is not an https URL', async () => {
+    vi.mocked(execa).mockResolvedValueOnce({ stdout: 'file:///etc/passwd' } as never);
+
+    await expect(extractFrame('dQw4w9WgXcQ', 5, { format: 'png' })).rejects.toMatchObject({
+      code: 'YTDLP_FAILED',
+    });
+    expect(execa).toHaveBeenCalledTimes(1);
   });
 
   it('names the file after the video, the timestamp and the format', async () => {

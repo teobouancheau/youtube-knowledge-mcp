@@ -1,13 +1,13 @@
 import { join } from 'path';
 import { z } from 'zod';
-import { mkdir, readFile, rm, writeFile } from 'fs/promises';
+import { readFile, rm } from 'fs/promises';
 import { existsSync } from 'fs';
 import { YouTubeError } from './errors.js';
 import { hasCachedTranscript } from './youtube.js';
 import { SearchIndex, type SearchResults } from './search-index.js';
 import { libraryMetadataSchema, recordOfValid } from '../schemas.js';
-import { readJsonFile, writeJsonAtomic } from './json-file.js';
-import { dataDir } from './paths.js';
+import { readJsonFile, writeFileAtomic, writeJsonAtomic } from './json-file.js';
+import { dataDir, ensurePrivateDir } from './paths.js';
 import { assertVideoId } from './validate.js';
 
 const LIBRARY_DIR = dataDir('library');
@@ -29,8 +29,8 @@ export const libraryIndexSchema = z.object({
 export type LibraryIndex = z.infer<typeof libraryIndexSchema>;
 
 async function ensureDirectories(): Promise<void> {
-  await mkdir(dataDir(), { recursive: true });
-  await mkdir(LIBRARY_DIR, { recursive: true });
+  await ensurePrivateDir(dataDir());
+  await ensurePrivateDir(LIBRARY_DIR);
 }
 
 async function loadIndex(): Promise<LibraryIndex> {
@@ -61,12 +61,12 @@ export async function saveToLibrary(
   await ensureDirectories();
 
   const directory = itemDir(videoId);
-  await mkdir(directory, { recursive: true });
+  await ensurePrivateDir(directory);
 
   // Save content
   const filename = contentType === 'summary' ? 'summary.md' : 'skill.md';
   const filePath = join(directory, filename);
-  await writeFile(filePath, content, 'utf-8');
+  await writeFileAtomic(filePath, content);
 
   // Update metadata. Only the fields worth carrying forward need to survive
   // validation, so this is the metadata schema made optional field by field

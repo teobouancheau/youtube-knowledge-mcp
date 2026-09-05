@@ -41,6 +41,16 @@ const SAMPLES: [string, string][] = [
     'ERROR: ffmpeg not found. Please install or provide the path using --ffmpeg-location',
   ],
   [
+    // The one YouTube-authored line in this list, kept because it was captured
+    // verbatim (curly apostrophe included) from yt-dlp 2026.07.04 on
+    // 2026-09-05, not written from memory. See the rule's comment.
+    'BOT_CHECK',
+    'ERROR: [youtube] rPq7ITrWFvY: Sign in to confirm you’re not a bot. Use --cookies-from-browser or ' +
+      '--cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp  ' +
+      'for how to manually pass cookies. Also see  https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies  ' +
+      'for tips on effectively exporting YouTube cookies',
+  ],
+  [
     // yt_dlp/extractor/youtube/_base.py:664, appended by yt-dlp to whatever
     // refusal YouTube returned when that refusal mentions signing in.
     'LOGIN_REQUIRED',
@@ -62,6 +72,12 @@ describe('classifyYtDlpFailure', () => {
     const stderr = 'ERROR: [youtube] abc: Private video. Sign in if you have been granted access';
 
     expect(classifyYtDlpFailure(stderr).code).toBe('YTDLP_FAILED');
+  });
+
+  it('points a bot check at the cookie settings, never at the video', () => {
+    const error = classifyYtDlpFailure('Sign in to confirm you’re not a bot');
+    expect(error.code).toBe('BOT_CHECK');
+    expect(error.toToolMessage()).toContain('YOUTUBE_MCP_COOKIES_FROM_BROWSER');
   });
 
   it('marks only transient failures as retryable', () => {

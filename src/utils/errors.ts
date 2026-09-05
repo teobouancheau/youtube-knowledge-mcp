@@ -14,6 +14,7 @@ export type YouTubeErrorCode =
   | 'MEMBERS_ONLY'
   | 'PREMIUM_ONLY'
   | 'LOGIN_REQUIRED'
+  | 'BOT_CHECK'
   | 'NOT_FOUND'
   | 'NO_CAPTIONS'
   | 'LIVE_NOT_ENDED'
@@ -81,7 +82,27 @@ interface Rule {
   retryable?: boolean;
 }
 
+/** The two settings that let yt-dlp read what a signed-out client cannot. */
+const COOKIE_HINT =
+  'Set YOUTUBE_MCP_COOKIES_FROM_BROWSER (for example chrome) or YOUTUBE_MCP_COOKIES_FILE and restart the server; see the README section on signed-in content.';
+
 const RULES: Rule[] = [
+  {
+    // The one YouTube-authored sentence matched here, and the reason is that
+    // it was observed rather than remembered: on 2026-09-05 every per-video
+    // read from this project's own address printed it, verbatim, while flat
+    // channel listings kept working — so it is about the client, not the
+    // video, and the remedy is different. Matched on the words before the
+    // apostrophe, which YouTube writes as U+2019. Should YouTube reword it,
+    // the login hint yt-dlp appends still lands on LOGIN_REQUIRED below, whose
+    // next step names the same cookie settings. Listed first because both
+    // strings appear in the same output.
+    code: 'BOT_CHECK',
+    emits: 'Sign in to confirm you',
+    source: 'playabilityStatus.reason, re-raised by yt_dlp/extractor/youtube/_video.py',
+    message: 'YouTube is asking this client to prove it is not a bot.',
+    nextStep: `Per-video reads from this address need a signed-in session. ${COOKIE_HINT}`,
+  },
   {
     code: 'RATE_LIMITED',
     // exceptions.py formats `HTTP Error {status}: {reason}`; the reason for 429
@@ -123,8 +144,7 @@ const RULES: Rule[] = [
     emits: 'for tips on effectively exporting YouTube cookies',
     source: 'yt_dlp/extractor/youtube/_base.py:664',
     message: 'This video requires a signed-in YouTube account.',
-    nextStep:
-      'It may be private, age-restricted or members-only. Try a different video, or configure yt-dlp with browser cookies.',
+    nextStep: `It may be private, age-restricted or members-only. ${COOKIE_HINT}`,
   },
 ];
 
@@ -188,8 +208,7 @@ export function classifyPlayability(fields: {
         'AGE_GATED',
         'This video is age-restricted and requires a signed-in account.',
         {
-          nextStep:
-            'Age-gated videos cannot be read without authentication. Try a different video, or configure yt-dlp with browser cookies.',
+          nextStep: `Age-gated videos cannot be read without authentication. ${COOKIE_HINT}`,
         }
       );
   }
