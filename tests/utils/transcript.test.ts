@@ -13,6 +13,7 @@ import {
   windowText,
   type TranscriptSegment,
 } from '../../src/utils/transcript.js';
+import { compilePattern } from '../../src/utils/pattern.js';
 
 /** A manual caption track: one cue per line, no rolling window. */
 const MANUAL_VTT = `WEBVTT
@@ -178,25 +179,39 @@ describe('deepLink', () => {
 });
 
 describe('searchSegments', () => {
+  const find = (
+    segments: TranscriptSegment[],
+    query: string,
+    options: { regex?: boolean; caseSensitive?: boolean; limit?: number } = {}
+  ): ReturnType<typeof searchSegments> =>
+    searchSegments(
+      segments,
+      compilePattern(query, {
+        regex: options.regex ?? false,
+        caseSensitive: options.caseSensitive ?? false,
+      }),
+      options.limit
+    );
+
   it('finds a literal phrase and reports the segment holding it', () => {
-    const matches = searchSegments(SEGMENTS, 'main argument');
+    const matches = find(SEGMENTS, 'main argument');
 
     expect(matches).toHaveLength(1);
     expect(matches[0]?.segment.start).toBe(10);
   });
 
   it('is case-insensitive by default', () => {
-    expect(searchSegments(SEGMENTS, 'MAIN ARGUMENT')).toHaveLength(1);
+    expect(find(SEGMENTS, 'MAIN ARGUMENT')).toHaveLength(1);
   });
 
   it('honours caseSensitive', () => {
-    expect(searchSegments(SEGMENTS, 'MAIN ARGUMENT', { caseSensitive: true })).toHaveLength(0);
+    expect(find(SEGMENTS, 'MAIN ARGUMENT', { caseSensitive: true })).toHaveLength(0);
   });
 
   it('treats the query literally unless regex is set', () => {
     // Without escaping, "a." would match "a closing" as a regex.
-    expect(searchSegments(SEGMENTS, 'a.')).toHaveLength(0);
-    expect(searchSegments(SEGMENTS, 'a.', { regex: true }).length).toBeGreaterThan(0);
+    expect(find(SEGMENTS, 'a.')).toHaveLength(0);
+    expect(find(SEGMENTS, 'a.', { regex: true }).length).toBeGreaterThan(0);
   });
 
   it('finds a phrase split across a caption boundary', () => {
@@ -206,7 +221,7 @@ describe('searchSegments', () => {
       { start: 2, end: 4, text: 'rate limiting today' },
     ];
 
-    const matches = searchSegments(split, 'talk about rate limiting');
+    const matches = find(split, 'talk about rate limiting');
 
     expect(matches).toHaveLength(1);
     expect(matches[0]?.segment.start).toBe(0);
@@ -219,7 +234,7 @@ describe('searchSegments', () => {
       { start: 4, end: 6, text: 'gamma' },
     ];
 
-    expect(searchSegments(split, 'beta')).toHaveLength(1);
+    expect(find(split, 'beta')).toHaveLength(1);
   });
 
   it('respects the limit', () => {
@@ -229,11 +244,11 @@ describe('searchSegments', () => {
       text: 'repeated phrase',
     }));
 
-    expect(searchSegments(many, 'repeated', { limit: 5 })).toHaveLength(5);
+    expect(find(many, 'repeated', { limit: 5 })).toHaveLength(5);
   });
 
   it('returns nothing when there is no match', () => {
-    expect(searchSegments(SEGMENTS, 'nonexistent')).toEqual([]);
+    expect(find(SEGMENTS, 'nonexistent')).toEqual([]);
   });
 });
 
