@@ -40,6 +40,10 @@ USER node
 # in EXPOSE and in its health check. Setting it here gives the image one port,
 # and platforms that inject their own PORT still override it.
 ENV PORT=10000
+# The server binds loopback by default. A container has to listen on every
+# interface to be reachable at all, and render.yaml supplies the token that
+# makes doing so acceptable.
+ENV MCP_BIND_HOST=0.0.0.0
 
 EXPOSE 10000
 
