@@ -538,6 +538,34 @@ describe('HTTP shutdown', () => {
     }
   });
 
+  it('keeps the boot log to the listening lines when preflight is ok', async () => {
+    // Whether the real probe succeeds depends on the host having yt-dlp; the
+    // quiet path has to be exercised on a runner that does not.
+    vi.mocked(runPreflight).mockResolvedValueOnce({
+      ok: true,
+      ytDlp: { name: 'yt-dlp', installed: true, version: '2026.09.01' },
+      ffmpeg: { name: 'ffmpeg', installed: true, version: '7.0' },
+    });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const handle = startHttp(() => new McpServer({ name: 'test', version: '0.0.0' }), {
+        ...readHttpConfig(),
+        port: 0,
+        bindHost: '127.0.0.1',
+      });
+      await handle.ready;
+      await vi.mocked(runPreflight).mock.results.at(-1)?.value;
+      await new Promise((resolve) => setImmediate(resolve));
+
+      const printed = log.mock.calls.flat().join('\n');
+      expect(printed).toMatch(/listening on/);
+      expect(printed).not.toMatch(/not ready|not installed/i);
+      await handle.close();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it('does not accumulate signal handlers across server instances', async () => {
     const before = process.listenerCount('SIGTERM');
 
