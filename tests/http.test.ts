@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { Request } from 'express';
 import {
   RateLimiter,
+  assertSafeToStart,
   bearerToken,
   clientKey,
   readHttpConfig,
@@ -123,28 +124,57 @@ describe('sessionIdOf', () => {
 });
 
 describe('clientKey', () => {
-  const request = (headers: Record<string, unknown>, remoteAddress?: string): Request =>
-    ({ headers, socket: { remoteAddress } }) as unknown as Request;
+  const request = (ip: string | undefined, remoteAddress?: string, headers = {}): Request =>
+    ({ ip, headers, socket: { remoteAddress } }) as unknown as Request;
 
-  it('prefers the first hop of x-forwarded-for', () => {
-    expect(clientKey(request({ 'x-forwarded-for': '1.2.3.4, 5.6.7.8' }))).toBe('1.2.3.4');
+  it('uses the address Express derived, which honours trust proxy', () => {
+    expect(clientKey(request('1.2.3.4', '9.9.9.9'))).toBe('1.2.3.4');
   });
 
-  it('handles a repeated x-forwarded-for header', () => {
-    expect(clientKey(request({ 'x-forwarded-for': ['1.2.3.4', '5.6.7.8'] }))).toBe('1.2.3.4');
+  // The header used to be read directly, so any caller could mint a fresh
+  // quota per request by varying it.
+  it('never reads x-forwarded-for itself', () => {
+    expect(clientKey(request('9.9.9.9', '9.9.9.9', { 'x-forwarded-for': '1.2.3.4' }))).toBe(
+      '9.9.9.9'
+    );
   });
 
   it('falls back to the socket address', () => {
-    expect(clientKey(request({}, '9.9.9.9'))).toBe('9.9.9.9');
+    expect(clientKey(request(undefined, '9.9.9.9'))).toBe('9.9.9.9');
   });
 
   it('falls back to a constant when nothing identifies the client', () => {
-    expect(clientKey(request({}))).toBe('unknown');
+    expect(clientKey(request(undefined))).toBe('unknown');
+  });
+});
+
+describe('RateLimiter key cap', () => {
+  it('evicts the oldest client rather than growing past maxKeys', () => {
+    const limiter = new RateLimiter(10, 60_000, 2);
+    limiter.check('a', 0);
+    limiter.check('b', 0);
+    limiter.check('c', 0);
+
+    expect(limiter.size).toBe(2);
+    // 'a' was evicted, so it starts a fresh window rather than continuing one.
+    expect(limiter.check('a', 0).remaining).toBe(9);
+  });
+
+  it('prefers evicting expired entries', () => {
+    const limiter = new RateLimiter(10, 1_000, 2);
+    limiter.check('a', 0);
+    limiter.check('b', 5_000);
+    limiter.check('c', 5_000);
+
+    expect(limiter.check('b', 5_000).remaining).toBe(8);
   });
 });
 
 describe('readHttpConfig', () => {
   const saved = { ...process.env };
+  // Rejected values are reported on stderr; the assertions below are about
+  // the values, so the report is silenced rather than asserted here.
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
   beforeEach(() => {
     // Rebuild the environment without the keys under test, rather than deleting
@@ -161,6 +191,50 @@ describe('readHttpConfig', () => {
 
   it('defaults to no auth, so an existing deployment keeps working', () => {
     expect(readHttpConfig().authToken).toBeUndefined();
+  });
+
+  it('binds loopback by default', () => {
+    expect(readHttpConfig().bindHost).toBe('127.0.0.1');
+  });
+
+  it('does not trust proxies by default', () => {
+    expect(readHttpConfig().trustProxy).toBe(false);
+  });
+
+  it.each([
+    ['true', true],
+    ['false', false],
+    ['1', 1],
+    ['2', 2],
+  ])('reads MCP_TRUST_PROXY=%s as %j', (value, expected) => {
+    process.env.MCP_TRUST_PROXY = value;
+    expect(readHttpConfig().trustProxy).toBe(expected);
+  });
+
+  it('reads MCP_PUBLIC_URL without a trailing slash', () => {
+    process.env.MCP_PUBLIC_URL = 'https://mcp.example.com/';
+    expect(readHttpConfig().publicUrl).toBe('https://mcp.example.com');
+  });
+
+  it('ignores an MCP_PUBLIC_URL that is not an http(s) URL', () => {
+    process.env.MCP_PUBLIC_URL = 'ftp://mcp.example.com';
+    expect(readHttpConfig().publicUrl).toBeUndefined();
+    process.env.MCP_PUBLIC_URL = 'nonsense';
+    expect(readHttpConfig().publicUrl).toBeUndefined();
+  });
+
+  it('caps the request body at 1 MiB unless told otherwise, with a floor', () => {
+    expect(readHttpConfig().maxBodyBytes).toBe(1024 * 1024);
+    process.env.MCP_MAX_BODY_BYTES = '4096';
+    expect(readHttpConfig().maxBodyBytes).toBe(4096);
+    process.env.MCP_MAX_BODY_BYTES = '10';
+    expect(readHttpConfig().maxBodyBytes).toBe(1024 * 1024);
+  });
+
+  it('requires explicit consent to run open on a network', () => {
+    expect(readHttpConfig().allowUnauthenticated).toBe(false);
+    process.env.MCP_ALLOW_UNAUTHENTICATED = 'true';
+    expect(readHttpConfig().allowUnauthenticated).toBe(true);
   });
 
   it('treats an empty MCP_AUTH_TOKEN as no auth rather than the empty token', () => {
@@ -198,5 +272,33 @@ describe('readHttpConfig', () => {
     const config = readHttpConfig();
     expect(config.maxSessions).toBeGreaterThan(0);
     expect(config.sessionIdleMs).toBeGreaterThan(0);
+  });
+});
+
+describe('assertSafeToStart', () => {
+  const base = { ...readHttpConfig(), authToken: undefined, allowUnauthenticated: false };
+
+  it.each(['127.0.0.1', 'localhost', '::1'])('allows an open server on %s', (bindHost) => {
+    expect(() => {
+      assertSafeToStart({ ...base, bindHost });
+    }).not.toThrow();
+  });
+
+  it('refuses an open server on a network interface, naming both remedies', () => {
+    expect(() => {
+      assertSafeToStart({ ...base, bindHost: '0.0.0.0' });
+    }).toThrow(/MCP_AUTH_TOKEN.*MCP_ALLOW_UNAUTHENTICATED/);
+  });
+
+  it('allows a network interface with a token', () => {
+    expect(() => {
+      assertSafeToStart({ ...base, bindHost: '0.0.0.0', authToken: 's' });
+    }).not.toThrow();
+  });
+
+  it('allows a network interface when opened on purpose', () => {
+    expect(() => {
+      assertSafeToStart({ ...base, bindHost: '0.0.0.0', allowUnauthenticated: true });
+    }).not.toThrow();
   });
 });

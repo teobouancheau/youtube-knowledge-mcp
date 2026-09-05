@@ -34,3 +34,7 @@ services:
       # from here, since the hostname does not exist until the service does.
       - key: MCP_AUTH_TOKEN
         generateValue: true
+      # Render terminates TLS and forwards traffic through one proxy hop, so the
+      # rate limiter should key on the forwarded client rather than the proxy.
+      - key: MCP_TRUST_PROXY
+        value: '1'

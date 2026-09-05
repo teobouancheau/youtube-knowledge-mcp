@@ -28,14 +28,22 @@ are in scope:
 
 ## Deployment notes
 
-The HTTP transport is unauthenticated unless you set `MCP_AUTH_TOKEN`, and it
-binds `0.0.0.0` by default so it works inside a container. If you expose it
-beyond localhost:
+The HTTP transport binds `127.0.0.1` by default. It refuses to start on any
+other interface without `MCP_AUTH_TOKEN`, unless `MCP_ALLOW_UNAUTHENTICATED=true`
+says that is intended. When you expose it:
 
-- Set `MCP_AUTH_TOKEN` to a high-entropy secret.
+- Set `MCP_AUTH_TOKEN` to a high-entropy secret. Unauthenticated callers get a
+  liveness answer from `/health` and nothing else.
 - Set `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` to enable DNS-rebinding
   protection.
-- Set `MCP_BIND_HOST=127.0.0.1` if a reverse proxy is terminating traffic.
+- Behind a reverse proxy, set `MCP_TRUST_PROXY` to the number of hops so the
+  rate limiter keys on the real client, and `MCP_PUBLIC_URL` so the OAuth
+  metadata names the public address rather than echoing a request header.
+- `MCP_MAX_BODY_BYTES` caps request bodies (1 MiB by default).
+
+Every yt-dlp invocation places the target after a literal `--`, and every
+caller-supplied URL must resolve to a YouTube host before yt-dlp is spawned, so
+the server cannot be pointed at internal addresses.
 
 Local-only tools — the knowledge library, downloads and clip extraction — are
 never registered on the HTTP transport, so a remote deployment cannot reach the

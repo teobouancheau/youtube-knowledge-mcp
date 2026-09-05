@@ -1,7 +1,4 @@
-import { readFileSync } from 'fs';
-import { dirname, join } from 'path';
 import { z } from 'zod';
-import { fileURLToPath } from 'url';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
@@ -149,16 +146,9 @@ import { runWithRequestContext } from './utils/context.js';
 import { toToolError } from './utils/errors.js';
 import { formatPreflightReport, runPreflight } from './utils/preflight.js';
 import { startHttp } from './http.js';
+import { serverVersion } from './utils/version.js';
 import { registerPrompts } from './prompts.js';
 import { registerResources } from './resources.js';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-// The version is advertised in the MCP initialize response, so a package.json
-// that has lost it should fail loudly at startup rather than telling every
-// client the server is version `undefined`.
-const pkg = z
-  .object({ version: z.string() })
-  .parse(JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')));
 
 const SERVER_INSTRUCTIONS = `YouTube Knowledge MCP provides tools to search, analyze, and extract knowledge from YouTube videos.
 
@@ -254,7 +244,7 @@ function guarded<A extends unknown[]>(
  */
 export function createServer(mode: 'stdio' | 'http' = 'stdio'): McpServer {
   const server = new McpServer(
-    { name: 'youtube-knowledge-mcp', version: pkg.version },
+    { name: 'youtube-knowledge-mcp', version: serverVersion() },
     { instructions: SERVER_INSTRUCTIONS, capabilities: { logging: {} } }
   );
 

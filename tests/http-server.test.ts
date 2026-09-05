@@ -162,6 +162,36 @@ describe('HTTP transport rate limiting', () => {
     expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0);
   });
 
+  it('applies the limit to GET and DELETE, the metadata document and health', async () => {
+    const { base } = await boot({ rateLimit: 1, rateWindowMs: 60_000 });
+
+    // The first request spends the single allowance; everything after is 429,
+    // whichever route it hits.
+    await fetch(`${base}/health`);
+    expect((await fetch(`${base}/health`)).status).toBe(429);
+    expect((await fetch(`${base}/mcp`, { method: 'GET' })).status).toBe(429);
+    expect((await fetch(`${base}/mcp`, { method: 'DELETE' })).status).toBe(429);
+    expect((await fetch(`${base}/.well-known/oauth-protected-resource`)).status).toBe(429);
+  });
+
+  it('ignores a spoofed X-Forwarded-For unless a proxy is trusted', async () => {
+    const { base } = await boot({ rateLimit: 1, rateWindowMs: 60_000 });
+
+    await post(base, initialize, { 'X-Forwarded-For': '1.1.1.1' });
+    const second = await post(base, initialize, { 'X-Forwarded-For': '2.2.2.2' });
+
+    expect(second.status).toBe(429);
+  });
+
+  it('keys on the forwarded client when the proxy is trusted', async () => {
+    const { base } = await boot({ rateLimit: 1, rateWindowMs: 60_000, trustProxy: 1 });
+
+    await post(base, initialize, { 'X-Forwarded-For': '1.1.1.1' });
+    const second = await post(base, initialize, { 'X-Forwarded-For': '2.2.2.2' });
+
+    expect(second.status).not.toBe(429);
+  });
+
   it('advertises the remaining quota', async () => {
     const { base } = await boot({ rateLimit: 5, rateWindowMs: 60_000 });
 
@@ -194,6 +224,18 @@ describe('HTTP transport sessions', () => {
 
     expect(response.status).toBe(503);
   });
+
+  it('holds the cap under concurrent initializes', async () => {
+    const { base } = await boot({ maxSessions: 1 });
+
+    const responses = await Promise.all(Array.from({ length: 5 }, () => post(base, initialize)));
+
+    // Checking the size and then awaiting let every request pass together;
+    // reserving first means exactly one gets in.
+    expect(responses.filter((response) => response.status !== 503)).toHaveLength(1);
+    const health = (await (await fetch(`${base}/health`)).json()) as { sessions: number };
+    expect(health.sessions).toBe(1);
+  });
 });
 
 describe('HTTP endpoints', () => {
@@ -218,11 +260,90 @@ describe('HTTP endpoints', () => {
     const { base } = await boot({ authToken: 'secret' });
 
     const response = await fetch(`${base}/health`);
-    const body = (await response.json()) as { status: string; sessions: number };
+    const body: unknown = await response.json();
 
     expect([200, 503]).toContain(response.status);
-    expect(body.status).toMatch(/ok|degraded/);
-    expect(body.sessions).toBe(0);
+    // Liveness only: versions and counts are a fingerprint, so they need the token.
+    expect(body).toEqual({ status: expect.stringMatching(/ok|degraded/) as string });
+  });
+
+  it('reports versions, uptime and sessions to an authenticated probe', async () => {
+    const { base } = await boot({ authToken: 'secret' });
+
+    const response = await fetch(`${base}/health`, {
+      headers: { Authorization: 'Bearer secret' },
+    });
+    const body: unknown = await response.json();
+
+    expect(body).toMatchObject({
+      version: expect.stringMatching(/^\d+\.\d+\.\d+/) as string,
+      uptimeSeconds: expect.any(Number) as number,
+      sessions: 0,
+      ytDlp: expect.objectContaining({ name: 'yt-dlp' }) as object,
+    });
+  });
+
+  it('sets no-store, nosniff and referrer headers on every response', async () => {
+    const { base } = await boot({ authToken: 'secret' });
+
+    for (const response of [await fetch(`${base}/health`), await post(base, initialize)]) {
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+      expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+      expect(response.headers.get('x-powered-by')).toBeNull();
+    }
+  });
+
+  it('answers a body over the limit with 413 in the JSON-RPC shape', async () => {
+    const { base } = await boot({ maxBodyBytes: 1024 });
+
+    const response = await post(base, { ...initialize, params: { pad: 'x'.repeat(4096) } });
+    const body: unknown = await response.json();
+
+    expect(response.status).toBe(413);
+    expect(body).toMatchObject({
+      jsonrpc: '2.0',
+      error: { message: expect.any(String) as string },
+    });
+  });
+
+  it('answers an unparseable body with 400 rather than the parser message', async () => {
+    const { base } = await boot();
+
+    const response = await fetch(`${base}/mcp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{not json',
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.text()).not.toMatch(/Unexpected token|JSON.parse/);
+  });
+
+  it('publishes the configured public URL rather than the Host header', async () => {
+    const { base } = await boot({ authToken: 'secret', publicUrl: 'https://mcp.example.com' });
+
+    const unauthenticated = await post(base, initialize);
+    const metadata = await fetch(`${base}/.well-known/oauth-protected-resource`);
+    const body = (await metadata.json()) as { resource: string };
+
+    expect(unauthenticated.headers.get('www-authenticate')).toContain(
+      'https://mcp.example.com/.well-known/oauth-protected-resource'
+    );
+    expect(body.resource).toBe('https://mcp.example.com/mcp');
+  });
+
+  it('does not reflect forwarding headers into the metadata URL unless a proxy is trusted', async () => {
+    const { base } = await boot({ authToken: 'secret' });
+
+    const response = await post(base, initialize, {
+      'X-Forwarded-Proto': 'https',
+      'X-Forwarded-Host': 'evil.example',
+    });
+
+    const challenge = response.headers.get('www-authenticate') ?? '';
+    expect(challenge).toContain('http://127.0.0.1:');
+    expect(challenge).not.toContain('evil.example');
   });
 
   it('publishes OAuth protected-resource metadata', async () => {
@@ -308,6 +429,33 @@ describe('HTTP session lifecycle', () => {
     const response = await post(base, { jsonrpc: '2.0', id: 9, method: 'tools/list' });
 
     expect(response.status).toBe(400);
+  });
+});
+
+describe('HTTP startup safety', () => {
+  it('refuses to listen on a network interface without a token', () => {
+    expect(() =>
+      startHttp(() => new McpServer({ name: 'test', version: '0.0.0' }), {
+        ...readHttpConfig(),
+        port: 0,
+        bindHost: '0.0.0.0',
+        authToken: undefined,
+        allowUnauthenticated: false,
+      })
+    ).toThrow(/MCP_AUTH_TOKEN/);
+  });
+
+  it('listens on a network interface when opened on purpose', async () => {
+    const handle = startHttp(() => new McpServer({ name: 'test', version: '0.0.0' }), {
+      ...readHttpConfig(),
+      port: 0,
+      bindHost: '0.0.0.0',
+      authToken: undefined,
+      allowUnauthenticated: true,
+    });
+    started.push(handle);
+
+    await expect(handle.ready).resolves.toMatchObject({ port: expect.any(Number) as number });
   });
 });
 
