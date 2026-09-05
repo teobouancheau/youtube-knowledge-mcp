@@ -73,3 +73,6 @@ AGENTS.md
 
 # Debug
 *.local
+
+# Internal planning documents live outside the public tree
+docs/superpowers/
