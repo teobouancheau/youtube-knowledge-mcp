@@ -10,6 +10,31 @@ import { z } from 'zod';
  * object" guard did not.
  */
 
+/** `--print '%(.{...})j'` for one video: yt-dlp writes `null` for what it did not find. */
+export const videoInfoRowSchema = z.object({
+  id: z.string().nullish(),
+  title: z.string().nullish(),
+  channel: z.string().nullish(),
+  duration: z.number().nullish(),
+  upload_date: z.string().nullish(),
+  description: z.string().nullish(),
+  // Kept loose on purpose: a tag list is read for the strings it holds, and a
+  // video whose tags field is odd should still be readable.
+  tags: z.unknown(),
+  thumbnail: z.string().nullish(),
+  view_count: z.number().nullish(),
+  like_count: z.number().nullish(),
+  comment_count: z.number().nullish(),
+  availability: z.string().nullish(),
+  live_status: z.string().nullish(),
+});
+
+/** `--print 'after_move:%(.{title,filepath})j'`: where yt-dlp put the finished file. */
+export const afterMoveRowSchema = z.object({
+  title: z.string().nullish(),
+  filepath: z.string().nullish(),
+});
+
 export const chapterRowSchema = z.object({
   title: z.string(),
   start_time: z.number(),

@@ -3,6 +3,9 @@ import { fileResult, toolResult } from '../utils/format.js';
 import { clipResultSchema } from '../schemas.js';
 import { parseTimestamp } from '../utils/validate.js';
 import { extractClip } from '../utils/clips.js';
+import { QUALITY_FORMAT_SELECTORS, type VideoQuality } from '../utils/youtube.js';
+import { inBatches } from '../utils/batches.js';
+import { concurrencyState } from '../utils/ytdlp.js';
 import { formatTimestamp } from '../utils/transcript.js';
 import { asYouTubeError } from '../utils/errors.js';
 import { reportProgress, throwIfAborted } from '../utils/context.js';
@@ -39,15 +42,17 @@ const RANGE_FIELDS = {
     .describe('Where to write the file. Must be inside your home directory.'),
 };
 
-const QUALITY_SELECTORS: Record<string, string> = {
-  best: 'bestvideo*+bestaudio/best',
-  '2160p': 'bestvideo[height<=2160]+bestaudio/best[height<=2160]/best',
-  '1440p': 'bestvideo[height<=1440]+bestaudio/best[height<=1440]/best',
-  '1080p': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best',
-  '720p': 'bestvideo[height<=720]+bestaudio/best[height<=720]/best',
-  '480p': 'bestvideo[height<=480]+bestaudio/best[height<=480]/best',
-  '360p': 'bestvideo[height<=360]+bestaudio/best[height<=360]/best',
-};
+/**
+ * The one format-selector table, shared with download_video. A second copy
+ * lived here with shorter fallback chains, so a clip could fail on a video the
+ * same quality preset downloaded fine.
+ */
+function clipSelector(quality: string): string {
+  const known = (Object.keys(QUALITY_FORMAT_SELECTORS) as VideoQuality[]).find(
+    (key) => key === quality
+  );
+  return QUALITY_FORMAT_SELECTORS[known ?? '1080p'];
+}
 
 function parseRange(args: { start?: string; end?: string; chapter?: string }): {
   start?: number;
@@ -89,7 +94,7 @@ export interface ExtractClipArgs {
 
 export async function extractClipHandler(args: ExtractClipArgs): Promise<CallToolResult> {
   const result = await extractClip(args.video, parseRange(args), {
-    formatSelector: QUALITY_SELECTORS[args.quality] ?? QUALITY_SELECTORS['1080p'] ?? 'best',
+    formatSelector: clipSelector(args.quality),
     outputDir: args.outputDir,
     preciseCuts: args.preciseCuts,
     container: 'mp4',
@@ -209,51 +214,66 @@ export interface ExtractClipsArgs {
   outputDir?: string;
 }
 
+type ClipOutcome =
+  | { ok: true; line: string; clip: Record<string, unknown> }
+  | { ok: false; line: string; failure: { start: string; end: string; error: string } };
+
+/**
+ * Several ranges from one video, cut as many at a time as the yt-dlp limiter
+ * allows. Twenty clips used to run one after another while the limiter sat
+ * idle; the results still come back in the order the ranges were given.
+ */
 export async function extractClipsHandler(args: ExtractClipsArgs): Promise<CallToolResult> {
-  const lines: string[] = [];
-  const clips: Record<string, unknown>[] = [];
-  const failures: { start: string; end: string; error: string }[] = [];
-  let succeeded = 0;
+  let done = 0;
 
-  for (const [index, range] of args.ranges.entries()) {
-    throwIfAborted();
-    reportProgress(index, args.ranges.length, `Cutting clip ${index + 1} of ${args.ranges.length}`);
-
-    try {
-      const result = await extractClip(
-        args.video,
-        parseRange({ start: range.start, end: range.end }),
-        {
-          formatSelector: QUALITY_SELECTORS[args.quality] ?? QUALITY_SELECTORS['1080p'] ?? 'best',
+  const outcomes = await inBatches(
+    args.ranges,
+    concurrencyState().limit,
+    async (range): Promise<ClipOutcome> => {
+      throwIfAborted();
+      try {
+        const result = await extractClip(args.video, parseRange(range), {
+          formatSelector: clipSelector(args.quality),
           outputDir: args.outputDir,
           preciseCuts: args.preciseCuts,
           container: 'mp4',
-        }
-      );
-      lines.push(
-        `✓ ${formatTimestamp(result.start)}–${formatTimestamp(result.end)}  ${result.filePath}`
-      );
-      clips.push({
-        videoId: result.videoId,
-        title: result.title,
-        filePath: result.filePath,
-        startSeconds: result.start,
-        endSeconds: result.end,
-        durationSeconds: result.duration,
-      });
-      succeeded++;
-    } catch (error) {
-      // One bad range should not discard the clips that did cut.
-      const failure = asYouTubeError(error);
-      lines.push(`✗ ${range.start}–${range.end}  [${failure.code}] ${failure.message}`);
-      failures.push({ start: range.start, end: range.end, error: failure.code });
+        });
+        return {
+          ok: true,
+          line: `✓ ${formatTimestamp(result.start)}–${formatTimestamp(result.end)}  ${result.filePath}`,
+          clip: {
+            videoId: result.videoId,
+            title: result.title,
+            filePath: result.filePath,
+            startSeconds: result.start,
+            endSeconds: result.end,
+            durationSeconds: result.duration,
+          },
+        };
+      } catch (error) {
+        // One bad range should not discard the clips that did cut.
+        const failure = asYouTubeError(error);
+        return {
+          ok: false,
+          line: `✗ ${range.start}–${range.end}  [${failure.code}] ${failure.message}`,
+          failure: { start: range.start, end: range.end, error: failure.code },
+        };
+      } finally {
+        done++;
+        reportProgress(done, args.ranges.length, `Cut ${done} of ${args.ranges.length} clips`);
+      }
     }
-  }
+  );
 
-  reportProgress(args.ranges.length, args.ranges.length);
+  const clips = outcomes.flatMap((outcome) => (outcome.ok ? [outcome.clip] : []));
+  const failures = outcomes.flatMap((outcome) => (outcome.ok ? [] : [outcome.failure]));
 
   return toolResult(
-    [`${succeeded} of ${args.ranges.length} clips extracted`, '', ...lines].join('\n'),
-    { clips, failures, requested: args.ranges.length, succeeded }
+    [
+      `${clips.length} of ${args.ranges.length} clips extracted`,
+      '',
+      ...outcomes.map((outcome) => outcome.line),
+    ].join('\n'),
+    { clips, failures, requested: args.ranges.length, succeeded: clips.length }
   );
 }

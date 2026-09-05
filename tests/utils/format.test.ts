@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  formatCount,
-  formatFilesize,
-  formatYouTubeDate,
-  textContent,
-} from '../../src/utils/format.js';
-import { textOf } from '../helpers.js';
+import { formatCount, formatFilesize, formatYouTubeDate } from '../../src/utils/format.js';
 
 describe('formatCount', () => {
   it.each([
@@ -48,14 +42,5 @@ describe('formatFilesize', () => {
 
   it.each([undefined, 0])('says Unknown for %s, rather than 0.0 KB', (bytes) => {
     expect(formatFilesize(bytes)).toBe('Unknown');
-  });
-});
-
-describe('textContent', () => {
-  it('wraps a string as a single text block', () => {
-    const result = textContent('hello');
-
-    expect(result.content).toHaveLength(1);
-    expect(textOf(result)).toBe('hello');
   });
 });

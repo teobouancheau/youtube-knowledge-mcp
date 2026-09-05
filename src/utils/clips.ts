@@ -5,8 +5,10 @@ import { YouTubeError } from './errors.js';
 import { requireFfmpeg } from './preflight.js';
 import { resolveOutputDir } from './validate.js';
 import { TIMEOUTS, runYtDlp } from './ytdlp.js';
+import { AFTER_MOVE_TEMPLATE, readAfterMove } from './youtube-download.js';
 import { formatSrtTimestamp } from './transcript.js';
 import { getChapters, getVideoInfo } from './youtube.js';
+import { resolveChapter } from './chapters.js';
 import { dataDir } from './paths.js';
 
 /**
@@ -77,23 +79,11 @@ export async function resolveRange(
   let range: ClipRange;
 
   if (options.chapter !== undefined) {
-    const chapters = await getChapters(video);
-    if (chapters.length === 0) {
-      throw new YouTubeError('NOT_FOUND', 'This video has no chapters.', {
-        nextStep: 'Pass start and end instead.',
-      });
-    }
-
-    const wanted = options.chapter.toLowerCase();
-    const match =
-      chapters.find((chapter) => chapter.title.toLowerCase() === wanted) ??
-      chapters.find((chapter) => chapter.title.toLowerCase().includes(wanted));
-
-    if (!match) {
-      throw new YouTubeError('NOT_FOUND', `No chapter matches "${options.chapter}".`, {
-        nextStep: `Available chapters: ${chapters.map((chapter) => chapter.title).join(', ')}`,
-      });
-    }
+    const match = resolveChapter(
+      await getChapters(video),
+      options.chapter,
+      'Pass start and end instead.'
+    );
     range = { start: match.startTime, end: match.endTime };
   } else {
     if (options.start === undefined || options.end === undefined) {
@@ -178,24 +168,21 @@ export async function extractClip(
     args.push('--merge-output-format', options.container);
   }
 
-  await runYtDlp(args, {
+  // The after_move stage fires once post-processing has produced the final
+  // file, so the path it prints is the real one — extension included — and
+  // nothing has to be spawned a second time to learn it.
+  args.push('--print', AFTER_MOVE_TEMPLATE);
+
+  const stdout = await runYtDlp(args, {
     label: 'extract_clip',
     timeoutMs: TIMEOUTS.download,
     retry: false,
     target: url,
   });
 
-  const filenameOutput = await runYtDlp([...args, '--print', 'filename', '--skip-download'], {
-    label: 'extract_clip (filename)',
-    target: url,
-  });
-
   const extension = options.audioOnly ? (options.audioFormat ?? 'mp3') : options.container;
-  const reported = filenameOutput.trim();
   const filePath =
-    reported === ''
-      ? join(targetDir, `${stem}.${extension}`)
-      : replaceExtension(reported, extension);
+    stdout.trim() === '' ? join(targetDir, `${stem}.${extension}`) : readAfterMove(stdout).filepath;
 
   return {
     videoId,
@@ -205,10 +192,6 @@ export async function extractClip(
     end: range.end,
     duration: range.end - range.start,
   };
-}
-
-function replaceExtension(path: string, extension: string): string {
-  return path.replace(/\.[^./\\]+$/, `.${extension}`);
 }
 
 export interface FrameResult {

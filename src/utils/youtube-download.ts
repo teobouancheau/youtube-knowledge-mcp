@@ -1,7 +1,8 @@
 import { join } from 'path';
 import { mkdir } from 'fs/promises';
 import { TIMEOUTS, parseYtDlpJson, runYtDlp } from './ytdlp.js';
-import { formatsRowSchema } from './youtube-schemas.js';
+import { YouTubeError } from './errors.js';
+import { afterMoveRowSchema, formatsRowSchema } from './youtube-schemas.js';
 import { resolveOutputDir } from './validate.js';
 import { log } from './context.js';
 import { dataDir } from './paths.js';
@@ -90,13 +91,6 @@ export async function downloadVideo(
   // Ensure download directory exists
   await mkdir(targetDir, { recursive: true });
 
-  // Get video title first for the result
-  const titleOutput = await runYtDlp(['--skip-download', '--print', '%(title)s'], {
-    label: 'download_video (title)',
-    target: url,
-  });
-  const title = titleOutput.trim();
-
   // Download with specified format
   const outputTemplate = join(targetDir, '%(title)s.%(ext)s');
 
@@ -105,6 +99,8 @@ export async function downloadVideo(
   const formatSelector = quality ? QUALITY_FORMAT_SELECTORS[quality] : formatId;
 
   // -S vcodec:h264,acodec:m4a prefers H.264+AAC, which merge cleanly into MP4.
+  // The after_move print reports the title and the final path from the same
+  // run, once the merge has produced the file, so nothing is spawned twice.
   const commonArgs = (selector: string): string[] => [
     '-f',
     selector,
@@ -115,6 +111,8 @@ export async function downloadVideo(
     '--no-playlist',
     '--merge-output-format',
     'mp4',
+    '--print',
+    AFTER_MOVE_TEMPLATE,
   ];
 
   // Transfers are not retried automatically: a partial file on disk plus a
@@ -126,9 +124,9 @@ export async function downloadVideo(
     target: url,
   } as const;
 
-  let effectiveSelector = formatSelector;
+  let stdout: string;
   try {
-    await runYtDlp(commonArgs(formatSelector), downloadOptions);
+    stdout = await runYtDlp(commonArgs(formatSelector), downloadOptions);
   } catch (error) {
     // An explicitly requested format may simply not exist for this video, so
     // falling back to "best" is worth one attempt. A preset failing is not:
@@ -138,20 +136,36 @@ export async function downloadVideo(
     if (alreadyBroadest) throw error;
 
     log('warning', `format ${formatId} unavailable, falling back to best`);
-    effectiveSelector = QUALITY_FORMAT_SELECTORS.best;
-    await runYtDlp(commonArgs(effectiveSelector), downloadOptions);
+    stdout = await runYtDlp(commonArgs(QUALITY_FORMAT_SELECTORS.best), downloadOptions);
   }
 
-  // Ask yt-dlp what it actually named the file rather than guessing.
-  const filenameOutput = await runYtDlp(
-    [...commonArgs(effectiveSelector), '--print', 'filename', '--skip-download'],
-    { label: 'download_video (filename)', target: url }
-  );
-
+  const moved = readAfterMove(stdout);
   return {
     videoId,
-    title,
-    filePath: filenameOutput.trim(),
+    title: moved.title ?? '',
+    filePath: moved.filepath,
     format: quality ?? formatId,
   };
+}
+
+/** The after_move print: the last JSON line yt-dlp wrote, with the path it wrote to. */
+export const AFTER_MOVE_TEMPLATE = 'after_move:%(.{title,filepath})j';
+
+export function readAfterMove(stdout: string): { title: string | undefined; filepath: string } {
+  const line = stdout.trim().split('\n').filter(Boolean).at(-1) ?? '';
+  const row = line === '' ? { title: undefined, filepath: undefined } : parseAfterMove(line);
+  if (typeof row.filepath !== 'string' || row.filepath === '') {
+    throw new YouTubeError(
+      'YTDLP_FAILED',
+      'yt-dlp finished without reporting where it wrote the file.',
+      {
+        nextStep: 'Run `yt-dlp -U`; older versions do not print the after_move stage.',
+      }
+    );
+  }
+  return { title: row.title ?? undefined, filepath: row.filepath };
+}
+
+function parseAfterMove(line: string): { title?: string | null; filepath?: string | null } {
+  return parseYtDlpJson(line, afterMoveRowSchema, 'download result');
 }

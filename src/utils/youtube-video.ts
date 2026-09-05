@@ -1,7 +1,7 @@
 import { formatYouTubeDate } from './format.js';
 import { classifyPlayability } from './errors.js';
 import { TIMEOUTS, parseYtDlpJson, runYtDlp } from './ytdlp.js';
-import { commentsRowSchema, videoDetailsRowSchema } from './youtube-schemas.js';
+import { commentsRowSchema, videoDetailsRowSchema, videoInfoRowSchema } from './youtube-schemas.js';
 import { extractVideoId, formatDuration, watchUrl } from './youtube-url.js';
 
 /** Everything read about one video: metadata, chapters and comments. */
@@ -37,6 +37,9 @@ export interface VideoComment {
   isPinned: boolean;
 }
 
+const VIDEO_INFO_TEMPLATE =
+  '%(.{id,title,channel,duration,upload_date,description,tags,thumbnail,view_count,like_count,comment_count,availability,live_status})j';
+
 export async function getVideoInfo(urlOrId: string): Promise<VideoInfo> {
   const videoId = extractVideoId(urlOrId);
   const url = watchUrl(videoId);
@@ -50,58 +53,44 @@ export async function getVideoInfo(urlOrId: string): Promise<VideoInfo> {
       // structured fields, so the reason can be read from `availability` and
       // `live_status` instead of guessed at from prose.
       '--ignore-no-formats-error',
+      // One JSON object with exactly these fields, rather than a delimited row:
+      // yt-dlp writes `null` for what it does not know, the parser checks each
+      // field's type, and a description containing the delimiter cannot shift
+      // every field after it.
       '--print',
-      '%(id)s|||%(title)s|||%(channel)s|||%(duration)s|||%(upload_date)s|||%(description)s|||%(tags)j|||%(thumbnail)s|||%(view_count)s|||%(like_count)s|||%(comment_count)s|||%(availability)s|||%(live_status)s',
+      VIDEO_INFO_TEMPLATE,
     ],
     { label: 'get_video_info', target: url }
   );
 
-  // yt-dlp prints "NA" for absent fields and simply omits trailing ones, so
-  // index access has to tolerate a short row rather than trust its length.
-  const parts = stdout.split('|||');
-  const field = (index: number): string => parts[index] ?? '';
+  const row = parseYtDlpJson(stdout, videoInfoRowSchema, 'video metadata');
 
   // Refusals reach us as a populated row rather than a failure, so this is the
   // point at which one becomes a typed error.
-  const refusal = classifyPlayability({ availability: field(11), liveStatus: field(12) });
+  const refusal = classifyPlayability({
+    availability: row.availability ?? undefined,
+    liveStatus: row.live_status ?? undefined,
+  });
   if (refusal) throw refusal;
 
-  const [id, title, channel, durationStr, uploadDate, description, tagsJson, thumbnailUrl] = [
-    field(0),
-    field(1),
-    field(2),
-    field(3),
-    field(4),
-    field(5),
-    field(6),
-    field(7),
-  ];
-  const duration = parseInt(durationStr, 10) || 0;
-
-  let tags: string[] = [];
-  try {
-    const parsedTags: unknown = JSON.parse(tagsJson || '[]');
-    if (Array.isArray(parsedTags)) {
-      tags = parsedTags.filter((t): t is string => typeof t === 'string');
-    }
-  } catch {
-    tags = [];
-  }
+  const duration = row.duration ?? 0;
 
   return {
-    id,
-    title,
-    channel,
+    id: row.id ?? videoId,
+    title: row.title ?? '',
+    channel: row.channel ?? '',
     duration,
     durationFormatted: formatDuration(duration),
-    uploadDate: formatYouTubeDate(uploadDate),
-    description: description || '',
-    tags,
+    uploadDate: formatYouTubeDate(row.upload_date ?? ''),
+    description: row.description ?? '',
+    tags: Array.isArray(row.tags)
+      ? row.tags.filter((tag): tag is string => typeof tag === 'string')
+      : [],
     url,
-    thumbnailUrl: thumbnailUrl || '',
-    viewCount: parseInt(field(8), 10) || 0,
-    likeCount: parseInt(field(9), 10) || 0,
-    commentCount: parseInt(field(10), 10) || 0,
+    thumbnailUrl: row.thumbnail ?? '',
+    viewCount: row.view_count ?? 0,
+    likeCount: row.like_count ?? 0,
+    commentCount: row.comment_count ?? 0,
   };
 }
 

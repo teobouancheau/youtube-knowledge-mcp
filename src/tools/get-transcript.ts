@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { getChapters, getTranscript } from '../utils/youtube.js';
+import { resolveChapter } from '../utils/chapters.js';
 import { toolResult } from '../utils/format.js';
 import { transcriptSegmentSchema } from '../schemas.js';
 import { YouTubeError } from '../utils/errors.js';
@@ -93,24 +94,11 @@ async function resolveChapterRange(
   video: string,
   chapter: string
 ): Promise<{ startTime: number; endTime: number; title: string }> {
-  const chapters = await getChapters(video);
-
-  if (chapters.length === 0) {
-    throw new YouTubeError('NOT_FOUND', 'This video has no chapters.', {
-      nextStep: 'Use startTime and endTime instead, or omit both to read the whole transcript.',
-    });
-  }
-
-  const wanted = chapter.toLowerCase();
-  const match =
-    chapters.find((c) => c.title.toLowerCase() === wanted) ??
-    chapters.find((c) => c.title.toLowerCase().includes(wanted));
-
-  if (!match) {
-    throw new YouTubeError('NOT_FOUND', `No chapter matches "${chapter}".`, {
-      nextStep: `Available chapters: ${chapters.map((c) => c.title).join(', ')}`,
-    });
-  }
+  const match = resolveChapter(
+    await getChapters(video),
+    chapter,
+    'Use startTime and endTime instead, or omit both to read the whole transcript.'
+  );
 
   return { startTime: match.startTime, endTime: match.endTime, title: match.title };
 }
