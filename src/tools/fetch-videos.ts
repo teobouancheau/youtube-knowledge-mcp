@@ -52,6 +52,8 @@ export async function fetchVideosHandler({
       durationFormatted: v.durationFormatted,
       url: v.url,
       uploadDate: v.uploadDate,
+      ...(v.thumbnailUrl === undefined ? {} : { thumbnailUrl: v.thumbnailUrl }),
+      ...(v.viewCount === undefined ? {} : { viewCount: v.viewCount }),
     })),
     ...pageInfo(videos.length, videos.length),
   });

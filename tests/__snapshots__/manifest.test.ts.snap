@@ -78,6 +78,22 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
       "readOnlyHint": false,
     },
     "hasOutputSchema": true,
+    "name": "delete_channel_thumbnails",
+    "parameters": [
+      "channel",
+    ],
+    "required": [
+      "channel",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
     "name": "delete_library_item",
     "parameters": [
       "contentType",
@@ -233,6 +249,25 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
       "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "fetch_channel_thumbnails",
+    "parameters": [
+      "channel",
+      "maxVideos",
+      "quality",
+      "tabs",
+    ],
+    "required": [
+      "channel",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
       "readOnlyHint": true,
     },
     "hasOutputSchema": true,
@@ -352,6 +387,23 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
       "readOnlyHint": true,
     },
     "hasOutputSchema": true,
+    "name": "get_thumbnail",
+    "parameters": [
+      "channel",
+      "image",
+      "quality",
+      "video",
+    ],
+    "required": [],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
     "name": "get_transcript",
     "parameters": [
       "chapter",
@@ -413,6 +465,26 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     "name": "list_brains",
     "parameters": [],
     "required": [],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "list_channel_thumbnails",
+    "parameters": [
+      "channel",
+      "limit",
+      "offset",
+      "state",
+      "tab",
+    ],
+    "required": [
+      "channel",
+    ],
   },
   {
     "annotations": {
@@ -708,6 +780,23 @@ exports[`tool manifest snapshot > matches the recorded remote surface 1`] = `
     "required": [
       "url",
     ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "get_thumbnail",
+    "parameters": [
+      "channel",
+      "image",
+      "quality",
+      "video",
+    ],
+    "required": [],
   },
   {
     "annotations": {

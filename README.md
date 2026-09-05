@@ -214,7 +214,7 @@ a cold start. Any paid plan removes that.
 
 ## MCP Tools
 
-33 tools. The 14 read-only ones work over both transports; the 19 that touch
+37 tools. The 15 read-only ones work over both transports; the 22 that touch
 your filesystem are registered only in local (stdio) mode, so a remote
 deployment cannot reach the host's disk.
 
@@ -224,18 +224,19 @@ available for this video. Call get_transcript again with one of: fr, es, de.`
 
 ### Discovery — remote + local
 
-| Tool                | Key parameters   | Returns                                                          |
-| ------------------- | ---------------- | ---------------------------------------------------------------- |
-| `search_videos`     | `query`, `limit` | Matching videos with durations, channels and view counts         |
-| `search_channels`   | `query`, `limit` | Matching channels with subscriber counts                         |
-| `fetch_videos`      | `url`, `limit`   | Videos in a playlist or channel                                  |
-| `get_video_info`    | `video`          | Title, channel, duration, views, likes, description, tags        |
-| `get_channel_info`  | `channel`        | Name, handle, subscriber count, description                      |
-| `get_playlist_info` | `url`            | Title, channel, video count, last updated                        |
-| `get_chapters`      | `video`          | Chapter titles with start/end times and deep links               |
-| `get_comments`      | `video`, `limit` | Top-level comments by popularity                                 |
-| `list_formats`      | `video`          | Available formats grouped by video+audio, video-only, audio-only |
-| `check_health`      | —                | yt-dlp and ffmpeg status, versions, and staleness warnings       |
+| Tool                | Key parameters                         | Returns                                                                                   |
+| ------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `search_videos`     | `query`, `limit`                       | Matching videos with durations, channels and view counts                                  |
+| `search_channels`   | `query`, `limit`                       | Matching channels with subscriber counts                                                  |
+| `fetch_videos`      | `url`, `limit`                         | Videos in a playlist or channel, with thumbnail URLs                                      |
+| `get_video_info`    | `video`                                | Title, channel, duration, views, likes, description, tags                                 |
+| `get_channel_info`  | `channel`                              | Name, handle, subscriber count, description, avatar and banner                            |
+| `get_playlist_info` | `url`                                  | Title, channel, video count, last updated                                                 |
+| `get_chapters`      | `video`                                | Chapter titles with start/end times and deep links                                        |
+| `get_comments`      | `video`, `limit`                       | Top-level comments by popularity                                                          |
+| `list_formats`      | `video`                                | Available formats grouped by video+audio, video-only, audio-only                          |
+| `get_thumbnail`     | `video`, `channel`, `image`, `quality` | A video thumbnail, channel avatar or banner as an image, with its real size               |
+| `check_health`      | —                                      | yt-dlp and ffmpeg status, versions, staleness warnings, and which session options are set |
 
 ### Transcripts — remote + local
 
@@ -293,6 +294,24 @@ keyframe-aligned cut. All of these require ffmpeg.
 channel from what is already on disk, so they work offline and cost nothing to
 call.
 
+### Channel thumbnails — local only
+
+| Tool                        | Key parameters                               | Returns                                                   |
+| --------------------------- | -------------------------------------------- | --------------------------------------------------------- |
+| `fetch_channel_thumbnails`  | `channel`, `maxVideos`, `tabs`, `quality`    | Every thumbnail saved to disk, plus the avatar and banner |
+| `list_channel_thumbnails`   | `channel`, `tab`, `state`, `limit`, `offset` | Saved entries with paths and decoded sizes                |
+| `delete_channel_thumbnails` | `channel`                                    | What was removed                                          |
+
+One yt-dlp listing per tab, then the images from YouTube's image hosts
+directly, so a five-hundred-video channel costs a handful of listings and not
+five hundred extractions. For each video the fetch tries the largest image
+YouTube serves (`maxresdefault`, 1280 wide where it exists) and keeps it only if
+it decodes wider than the image the listing offered; otherwise it keeps the
+listed image, and failing that the small `hqdefault`. Every width and height in
+the manifest was decoded from the saved bytes, never read off a URL. Shorts are
+listed with portrait thumbnails and saved under `shorts/`. The run is resumable:
+interrupt it and call again, and only what is missing or truncated is fetched.
+
 A brain holds one caption language; pass `language` to read another, and build a
 separate brain per language.
 
@@ -313,16 +332,18 @@ skipped forever as already done.
 
 Reusable workflows your client can invoke directly: `summarize_video`,
 `extract_skill`, `compare_videos`, `research_topic`, `channel_deep_dive`,
-`clip_from_quote` (find a phrase, then cut the clip around it), and — local
-only — `review_library`, `create_brain` (build a channel's corpus, then write
-its profile from it) and `ask_creator` (answer a question strictly from a
-brain, with citations).
+`clip_from_quote` (find a phrase, then cut the clip around it),
+`study_thumbnails` (save a channel's thumbnails, look at a sample, describe
+what recurs), and — local only — `review_library`, `create_brain` (build a
+channel's corpus, then write its profile from it) and `ask_creator` (answer a
+question strictly from a brain, with citations).
 
 ## Resources
 
 - `youtube://transcript/{videoId}` — a timestamped transcript, fetched and cached on first read
 - `youtube://library/{videoId}/{summary|skill}` — a saved note (local only, and enumerable)
 - `youtube://brain/{channelId}/{manifest|profile}` — what a channel brain covers, or the profile written from it (local only, and enumerable)
+- `youtube://thumbnails/{channelId}/manifest` — what `fetch_channel_thumbnails` saved for a channel (local only, and enumerable)
 
 ## Error codes
 
@@ -338,6 +359,8 @@ them, each prefixed with a code and followed by a next step.
 | `RATE_LIMITED`, `TIMEOUT`                                           | Transient; retried automatically with backoff before surfacing               |
 | `YTDLP_MISSING`, `FFMPEG_MISSING`, `YTDLP_FAILED`                   | A tooling problem; the message says how to fix it                            |
 | `INVALID_INPUT`                                                     | A bad argument, caught before any network call                               |
+| `BOT_CHECK`                                                         | YouTube asked this address to sign in; set the cookie settings below         |
+| `FETCH_FAILED`                                                      | An image could not be downloaded from YouTube's image hosts                  |
 | `CANCELLED`                                                         | The client cancelled the request                                             |
 
 ## Environment variables
@@ -381,6 +404,13 @@ Content is stored in `~/.youtube-knowledge/`:
 │       ├── manifest.json # What the brain covers, and where a build stopped
 │       ├── chunks.json   # The timestamped passages
 │       └── profile.md    # The written account, if one was saved
+├── thumbnails/           # Saved channel thumbnails
+│   └── {channel_id}/
+│       ├── manifest.json # Every image, its decoded size, where it is
+│       ├── channel/      # avatar.* and banner.*
+│       ├── videos/       # {video_id}.jpg (or .png / .webp)
+│       ├── shorts/
+│       └── streams/
 ├── downloads/            # Full downloads
 ├── clips/                # Extracted clips
 ├── frames/               # Captured stills

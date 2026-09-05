@@ -16,6 +16,7 @@ Recommended workflows:
 - Use get_chapters to understand video structure before reading the full transcript
 - Use get_comments for audience sentiment and discussion highlights
 - Use get_channel_info to contextualize a creator's content
+- Use get_thumbnail to look at a video's thumbnail or a channel's avatar
 - Combine transcript + chapters for structured, timestamped summaries
 
 All tools accept YouTube video IDs (e.g., dQw4w9WgXcQ) or full URLs.`;

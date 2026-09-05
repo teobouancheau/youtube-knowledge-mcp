@@ -300,7 +300,31 @@ describe('YouTube Utils', () => {
     it('lists videos from a playlist', async () => {
       const { execa } = await import('execa');
       vi.mocked(execa).mockResolvedValue(
-        execaSuccess('vid1|||Title 1|||120|||20240101\nvid2|||Title 2|||180|||20240102')
+        execaSuccess(
+          [
+            JSON.stringify({
+              id: 'vid00000001',
+              title: 'Title 1',
+              duration: 120,
+              upload_date: '20240101',
+              view_count: 54000,
+              thumbnails: [
+                { url: 'https://i.ytimg.com/vi/vid00000001/hq720.jpg', width: 360, height: 202 },
+                {
+                  url: 'https://i.ytimg.com/vi/vid00000001/hq720.jpg?big',
+                  width: 720,
+                  height: 404,
+                },
+              ],
+            }),
+            JSON.stringify({
+              id: 'vid00000002',
+              title: 'Title 2',
+              duration: 180,
+              upload_date: '20240102',
+            }),
+          ].join('\n')
+        )
       );
 
       const { listVideos } = await import('../../src/utils/youtube.js');
@@ -308,12 +332,15 @@ describe('YouTube Utils', () => {
 
       expect(result).toHaveLength(2);
       expect(result[0]).toMatchObject({
-        id: 'vid1',
+        id: 'vid00000001',
         title: 'Title 1',
         duration: 120,
         durationFormatted: '2:00',
         uploadDate: '2024-01-01',
+        thumbnailUrl: 'https://i.ytimg.com/vi/vid00000001/hq720.jpg?big',
+        viewCount: 54000,
       });
+      expect(result[1]?.thumbnailUrl).toBeUndefined();
     });
 
     it('passes the listing target after a -- terminator', async () => {
@@ -936,8 +963,45 @@ describe('getChannelInfo', () => {
     vi.mocked(execa).mockResolvedValue(execaSuccess(JSON.stringify({})));
 
     const { getChannelInfo } = await import('../../src/utils/youtube.js');
+    const info = await getChannelInfo('@x');
 
-    expect((await getChannelInfo('@x')).name).toBe('Unknown');
+    expect(info.name).toBe('Unknown');
+    expect(info).not.toHaveProperty('avatarUrl');
+    expect(info).not.toHaveProperty('bannerUrl');
+  });
+
+  it('reads the avatar and banner from the channel listing', async () => {
+    const { execa } = await import('execa');
+    vi.mocked(execa).mockResolvedValue(
+      execaSuccess(
+        JSON.stringify({
+          channel: 'Creator',
+          thumbnails: [
+            {
+              id: '0',
+              url: 'https://yt3.googleusercontent.com/banner=w1060',
+              width: 1060,
+              height: 175,
+            },
+            { id: 'banner_uncropped', url: 'https://yt3.googleusercontent.com/banner=s0' },
+            {
+              id: '7',
+              url: 'https://yt3.googleusercontent.com/avatar=s900',
+              width: 900,
+              height: 900,
+            },
+            { id: 'avatar_uncropped', url: 'https://yt3.googleusercontent.com/avatar=s0' },
+          ],
+        })
+      )
+    );
+
+    const { getChannelInfo } = await import('../../src/utils/youtube.js');
+
+    expect(await getChannelInfo('@creator')).toMatchObject({
+      avatarUrl: 'https://yt3.googleusercontent.com/avatar=s0',
+      bannerUrl: 'https://yt3.googleusercontent.com/banner=s0',
+    });
   });
 });
 

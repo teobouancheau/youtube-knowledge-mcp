@@ -19,7 +19,7 @@ export type ToolMode = 'all' | 'stdio';
 export interface ToolDefinition {
   name: string;
   mode: ToolMode;
-  register: (server: McpServer) => void;
+  register: (server: McpServer, transport: 'stdio' | 'http') => void;
 }
 
 export interface ToolSpec<In extends ZodRawShape, Out extends ZodRawShape> {
@@ -34,6 +34,11 @@ export interface ToolSpec<In extends ZodRawShape, Out extends ZodRawShape> {
     Pick<ToolAnnotations, 'readOnlyHint' | 'destructiveHint' | 'idempotentHint' | 'openWorldHint'>
   >;
   handler: ToolCallback<In>;
+  /**
+   * A handler to use on stdio instead of `handler`, for the rare tool whose
+   * remote and local behaviour differ (a local one may read the user's disk).
+   */
+  stdioHandler?: ToolCallback<In>;
 }
 
 /**
@@ -43,11 +48,12 @@ export interface ToolSpec<In extends ZodRawShape, Out extends ZodRawShape> {
 export function defineTool<In extends ZodRawShape, Out extends ZodRawShape>(
   spec: ToolSpec<In, Out>
 ): ToolDefinition {
-  const { name, mode, title, description, inputSchema, outputSchema, annotations, handler } = spec;
+  const { name, mode, title, description, inputSchema, outputSchema, annotations } = spec;
   return {
     name,
     mode,
-    register: (server) => {
+    register: (server, transport) => {
+      const handler = transport === 'stdio' ? (spec.stdioHandler ?? spec.handler) : spec.handler;
       server.registerTool(
         name,
         { title, description, inputSchema, outputSchema, annotations },
