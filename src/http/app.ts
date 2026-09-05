@@ -144,12 +144,11 @@ export function buildApp(config: HttpConfig, deps: AppDependencies): Express {
 
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
-      ...(config.allowedHosts.length > 0 || config.allowedOrigins.length > 0
-        ? {
-            enableDnsRebindingProtection: true,
-            allowedHosts: config.allowedHosts,
-            allowedOrigins: config.allowedOrigins,
-          }
+      // Hosts are checked by the port-agnostic middleware above on every
+      // route; the transport's own check would compare the whole Host header,
+      // port included, and reject every deployment on a non-default port.
+      ...(config.allowedOrigins.length > 0
+        ? { enableDnsRebindingProtection: true, allowedOrigins: config.allowedOrigins }
         : {}),
       onsessioninitialized: (id: string) => {
         sessions.commit(id, transport);
