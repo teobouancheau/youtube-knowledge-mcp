@@ -112,8 +112,14 @@ interface Posting {
   frequencies: Map<string, number>;
 }
 
+/** A stored document, with the postings it contributed to so removal can find them. */
+interface StoredDocument extends IndexedDocument {
+  length: number;
+  postings: Map<string, Posting>;
+}
+
 export class SearchIndex {
-  private readonly documents = new Map<string, IndexedDocument & { length: number }>();
+  private readonly documents = new Map<string, StoredDocument>();
   private readonly postings = new Map<string, Posting>();
 
   add(document: IndexedDocument): void {
@@ -126,7 +132,8 @@ export class SearchIndex {
       ...tokenize(document.title),
       ...tokenize(document.text),
     ];
-    this.documents.set(document.id, { ...document, length: tokens.length });
+    const contributed = new Map<string, Posting>();
+    this.documents.set(document.id, { ...document, length: tokens.length, postings: contributed });
 
     for (const token of tokens) {
       let posting = this.postings.get(token);
@@ -135,14 +142,18 @@ export class SearchIndex {
         this.postings.set(token, posting);
       }
       posting.frequencies.set(document.id, (posting.frequencies.get(document.id) ?? 0) + 1);
+      contributed.set(token, posting);
     }
   }
 
   remove(id: string): void {
-    if (!this.documents.has(id)) return;
+    const stored = this.documents.get(id);
+    if (!stored) return;
     this.documents.delete(id);
 
-    for (const [term, posting] of this.postings) {
+    // Only this document's own postings: scanning every posting list made a
+    // rebuild quadratic in the size of the library.
+    for (const [term, posting] of stored.postings) {
       posting.frequencies.delete(id);
       if (posting.frequencies.size === 0) this.postings.delete(term);
     }
@@ -215,7 +226,9 @@ export class SearchIndex {
   toJSON(): { version: number; documents: IndexedDocument[] } {
     return {
       version: 1,
-      documents: [...this.documents.values()].map(({ length: _length, ...document }) => document),
+      documents: [...this.documents.values()].map(
+        ({ length: _length, postings: _postings, ...document }) => document
+      ),
     };
   }
 

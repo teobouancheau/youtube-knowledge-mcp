@@ -11,6 +11,7 @@ import { computeStats } from './brain-stats.js';
 import { BRAIN_MANIFEST_VERSION, writeManifest } from './brain-storage.js';
 import { reportProgress, throwIfAborted } from './context.js';
 import { concurrencyState } from './ytdlp.js';
+import { inBatches } from './batches.js';
 import type { ChannelInfo, VideoListItem } from './youtube.js';
 
 /**
@@ -262,21 +263,4 @@ function toManifest(
     videos: Object.fromEntries(states),
     stats: computeStats([...states.values()], passages, { phrases }),
   };
-}
-
-/**
- * Run `work` over the items, `size` at a time.
- *
- * Deliberately not a rolling window: a batch boundary is a natural place for
- * the checkpoint and the cancellation check, and the limiter inside yt-dlp is
- * what actually paces the network.
- */
-async function inBatches<T>(
-  items: T[],
-  size: number,
-  work: (item: T) => Promise<void>
-): Promise<void> {
-  for (let start = 0; start < items.length; start += size) {
-    await Promise.all(items.slice(start, start + size).map(work));
-  }
 }

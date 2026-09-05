@@ -44,47 +44,47 @@ vi.mock('fs', async (importOriginal) => {
 });
 
 /**
- * getVideoInfo prints 13 pipe-delimited fields. Building the mock from a record
- * rather than a hand-written string is what keeps this suite honest: the old
- * version supplied only 8 fields, so view/like/comment counts silently parsed
- * as 0 and `toMatchObject` never noticed.
+ * getVideoInfo asks for one JSON object with thirteen named fields. Building the
+ * mock from a record rather than a hand-written string is what keeps this suite
+ * honest: an older pipe-delimited version supplied only 8 fields, so view/like/
+ * comment counts silently parsed as 0 and `toMatchObject` never noticed.
+ *
+ * Overrides are written the way yt-dlp writes them: numbers as numbers, and
+ * `null` for a field it could not find.
  */
-const VIDEO_INFO_FIELDS = [
-  'id',
-  'title',
-  'channel',
-  'duration',
-  'uploadDate',
-  'description',
-  'tagsJson',
-  'thumbnail',
-  'viewCount',
-  'likeCount',
-  'commentCount',
-  'availability',
-  'liveStatus',
-] as const;
+interface VideoInfoRow {
+  id: string | null;
+  title: string | null;
+  channel: string | null;
+  duration: number | null;
+  upload_date: string | null;
+  description: string | null;
+  tags: unknown;
+  thumbnail: string | null;
+  view_count: number | null;
+  like_count: number | null;
+  comment_count: number | null;
+  availability: string | null;
+  live_status: string | null;
+}
 
-function videoInfoStdout(
-  overrides: Partial<Record<(typeof VIDEO_INFO_FIELDS)[number], string>>
-): string {
-  const defaults: Record<(typeof VIDEO_INFO_FIELDS)[number], string> = {
+function videoInfoStdout(overrides: Partial<VideoInfoRow>): string {
+  const defaults: VideoInfoRow = {
     id: 'dQw4w9WgXcQ',
     title: 'Never Gonna Give You Up',
     channel: 'Rick Astley',
-    duration: '213',
-    uploadDate: '20091025',
+    duration: 213,
+    upload_date: '20091025',
     description: 'Description',
-    tagsJson: '["tag1","tag2"]',
+    tags: ['tag1', 'tag2'],
     thumbnail: 'https://thumbnail.jpg',
-    viewCount: '1600000000',
-    likeCount: '17000000',
-    commentCount: '2300000',
+    view_count: 1600000000,
+    like_count: 17000000,
+    comment_count: 2300000,
     availability: 'public',
-    liveStatus: 'not_live',
+    live_status: 'not_live',
   };
-  const merged = { ...defaults, ...overrides };
-  return VIDEO_INFO_FIELDS.map((field) => merged[field]).join('|||');
+  return JSON.stringify({ ...defaults, ...overrides });
 }
 
 function execaSuccess(stdout: string): never {
@@ -152,7 +152,7 @@ describe('YouTube Utils', () => {
     it('reports an upcoming premiere rather than a video with no content', async () => {
       const { execa } = await import('execa');
       vi.mocked(execa).mockResolvedValue(
-        execaSuccess(videoInfoStdout({ liveStatus: 'is_upcoming', duration: 'NA' }))
+        execaSuccess(videoInfoStdout({ live_status: 'is_upcoming', duration: null }))
       );
 
       const { getVideoInfo } = await import('../../src/utils/youtube.js');
@@ -171,7 +171,7 @@ describe('YouTube Utils', () => {
         'yt-dlp',
         expect.arrayContaining([
           '--ignore-no-formats-error',
-          expect.stringContaining('%(availability)s|||%(live_status)s'),
+          expect.stringContaining('availability,live_status})j'),
         ]),
         expect.anything()
       );
@@ -181,7 +181,7 @@ describe('YouTube Utils', () => {
       const { execa } = await import('execa');
       vi.mocked(execa).mockResolvedValue(
         execaSuccess(
-          videoInfoStdout({ viewCount: 'NA', likeCount: 'NA', commentCount: 'NA', tagsJson: '[]' })
+          videoInfoStdout({ view_count: null, like_count: null, comment_count: null, tags: [] })
         )
       );
 
@@ -189,6 +189,37 @@ describe('YouTube Utils', () => {
       const result = await getVideoInfo('dQw4w9WgXcQ');
 
       expect(result).toMatchObject({ viewCount: 0, likeCount: 0, commentCount: 0, tags: [] });
+    });
+
+    it('falls back to empty text and zero when yt-dlp reports null fields', async () => {
+      const { execa } = await import('execa');
+      vi.mocked(execa).mockResolvedValue(
+        execaSuccess(
+          videoInfoStdout({
+            id: null,
+            title: null,
+            channel: null,
+            description: null,
+            thumbnail: null,
+            upload_date: null,
+            duration: null,
+            availability: null,
+            live_status: null,
+          })
+        )
+      );
+
+      const { getVideoInfo } = await import('../../src/utils/youtube.js');
+
+      expect(await getVideoInfo('dQw4w9WgXcQ')).toMatchObject({
+        id: 'dQw4w9WgXcQ',
+        title: '',
+        channel: '',
+        description: '',
+        thumbnailUrl: '',
+        uploadDate: '',
+        duration: 0,
+      });
     });
 
     it('accepts a full URL and applies a timeout to the yt-dlp call', async () => {
@@ -229,7 +260,7 @@ describe('YouTube Utils', () => {
       await withCacheFile(VALID);
 
       const { getTranscript } = await import('../../src/utils/youtube.js');
-      const result = await getTranscript('dQw4w9WgXcQ', 'en');
+      const result = await getTranscript('dQw4w9WgXcQ', { language: 'en' });
 
       expect(result).toMatchObject({ transcript: 'hello there', cached: true });
       const { execa } = await import('execa');
@@ -260,7 +291,7 @@ describe('YouTube Utils', () => {
 
       const { getTranscript } = await import('../../src/utils/youtube.js');
 
-      await expect(getTranscript('dQw4w9WgXcQ', 'en')).rejects.toThrow();
+      await expect(getTranscript('dQw4w9WgXcQ', { language: 'en' })).rejects.toThrow();
       expect(execa).toHaveBeenCalled();
     });
   });
@@ -333,7 +364,39 @@ describe('YouTube Utils', () => {
   });
 });
 
+describe('getVideoDetails', () => {
+  it('reports zero duration and no chapters when yt-dlp omits them', async () => {
+    const { execa } = await import('execa');
+    vi.mocked(execa).mockResolvedValue(execaSuccess(JSON.stringify({})));
+
+    const { getVideoDetails } = await import('../../src/utils/youtube.js');
+
+    expect(await getVideoDetails('dQw4w9WgXcQ')).toEqual({
+      uploadDate: '',
+      durationSeconds: 0,
+      chapters: [],
+    });
+  });
+});
+
 describe('extractVideoId', () => {
+  it('truncates a long unrecognised value rather than echoing it whole', async () => {
+    const { extractVideoId } = await import('../../src/utils/youtube.js');
+    const junk = 'x'.repeat(300);
+
+    const error = (() => {
+      try {
+        extractVideoId(junk);
+        return undefined;
+      } catch (e) {
+        return e as Error;
+      }
+    })();
+
+    expect(error?.message.length).toBeLessThan(150);
+    expect(error?.message).toContain('...');
+  });
+
   it.each([
     ['a bare ID', 'dQw4w9WgXcQ'],
     ['a watch URL', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'],
@@ -462,12 +525,9 @@ describe('listFormats', () => {
 });
 
 describe('downloadVideo', () => {
-  /** title call, download call, filename call. */
-  function threeCalls(filename: string): void {
-    vi.mocked(execa)
-      .mockResolvedValueOnce(execaSuccess('A Talk'))
-      .mockResolvedValueOnce(execaSuccess(''))
-      .mockResolvedValueOnce(execaSuccess(filename));
+  /** One download run, whose after_move print reports the title and the final path. */
+  function downloaded(filepath: string, title = 'A Talk'): string {
+    return JSON.stringify({ title, filepath });
   }
 
   function argvOf(call: number): string[] {
@@ -475,9 +535,11 @@ describe('downloadVideo', () => {
     return Array.isArray(argv) ? argv : [];
   }
 
-  it('reports what it downloaded and where yt-dlp put it', async () => {
+  it('reports what it downloaded and where yt-dlp put it, from a single run', async () => {
     const { execa } = await import('execa');
-    threeCalls('/home/u/.youtube-knowledge/downloads/A Talk.mp4');
+    vi.mocked(execa).mockResolvedValueOnce(
+      execaSuccess(downloaded('/home/u/.youtube-knowledge/downloads/A Talk.mp4'))
+    );
 
     const { downloadVideo } = await import('../../src/utils/youtube.js');
 
@@ -487,64 +549,102 @@ describe('downloadVideo', () => {
       filePath: '/home/u/.youtube-knowledge/downloads/A Talk.mp4',
       format: 'best',
     });
-    expect(execa).toBeDefined();
+    // The title and the path used to cost two extra spawns each.
+    expect(execa).toHaveBeenCalledTimes(1);
+    expect(argvOf(0)).toContain('after_move:%(.{title,filepath})j');
   });
 
   it('lets a quality preset win over an explicit formatId', async () => {
-    threeCalls('/downloads/A Talk.mp4');
+    vi.mocked(execa).mockResolvedValueOnce(execaSuccess(downloaded('/downloads/A Talk.mp4')));
 
     const { downloadVideo } = await import('../../src/utils/youtube.js');
     const result = await downloadVideo('dQw4w9WgXcQ', '137', undefined, '720p');
 
-    expect(argvOf(1).join(' ')).toContain('height<=720');
+    expect(argvOf(0).join(' ')).toContain('height<=720');
     expect(result.format).toBe('720p');
   });
 
   it('falls back to best when an explicitly requested format does not exist', async () => {
     vi.mocked(execa)
-      .mockResolvedValueOnce(execaSuccess('A Talk'))
       .mockRejectedValueOnce(new Error('requested format not available'))
-      .mockResolvedValueOnce(execaSuccess(''))
-      .mockResolvedValueOnce(execaSuccess('/downloads/A Talk.mp4'));
+      .mockResolvedValueOnce(execaSuccess(downloaded('/downloads/A Talk.mp4')));
 
     const { downloadVideo } = await import('../../src/utils/youtube.js');
     const result = await downloadVideo('dQw4w9WgXcQ', '999');
 
     expect(result.filePath).toBe('/downloads/A Talk.mp4');
-    expect(argvOf(2).join(' ')).toContain('bestvideo*+bestaudio');
+    expect(argvOf(1).join(' ')).toContain('bestvideo*+bestaudio');
   });
 
   it('does not fall back when a preset fails, since presets already chain', async () => {
-    vi.mocked(execa)
-      .mockResolvedValueOnce(execaSuccess('A Talk'))
-      .mockRejectedValueOnce(new Error('nothing works'));
+    vi.mocked(execa).mockRejectedValueOnce(new Error('nothing works'));
 
     const { downloadVideo } = await import('../../src/utils/youtube.js');
 
     await expect(downloadVideo('dQw4w9WgXcQ', 'best', undefined, '1080p')).rejects.toThrow();
-    // Title, then the one download attempt. No second attempt.
-    expect(vi.mocked(execa)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(execa)).toHaveBeenCalledTimes(1);
   });
 
   it('does not fall back when "best" itself fails, as there is nothing broader', async () => {
-    vi.mocked(execa)
-      .mockResolvedValueOnce(execaSuccess('A Talk'))
-      .mockRejectedValueOnce(new Error('nothing works'));
+    vi.mocked(execa).mockRejectedValueOnce(new Error('nothing works'));
 
     const { downloadVideo } = await import('../../src/utils/youtube.js');
 
     await expect(downloadVideo('dQw4w9WgXcQ', 'best')).rejects.toThrow();
-    expect(vi.mocked(execa)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(execa)).toHaveBeenCalledTimes(1);
   });
 
   it('prefers codecs that merge cleanly into MP4', async () => {
-    threeCalls('/downloads/A Talk.mp4');
+    vi.mocked(execa).mockResolvedValueOnce(execaSuccess(downloaded('/downloads/A Talk.mp4')));
 
     const { downloadVideo } = await import('../../src/utils/youtube.js');
     await downloadVideo('dQw4w9WgXcQ', 'best');
 
-    expect(argvOf(1)).toContain('vcodec:h264,acodec:m4a');
-    expect(argvOf(1)).toContain('--merge-output-format');
+    expect(argvOf(0)).toContain('vcodec:h264,acodec:m4a');
+    expect(argvOf(0)).toContain('--merge-output-format');
+  });
+
+  it('reads the last line of the after_move output, ignoring anything printed before it', async () => {
+    vi.mocked(execa).mockResolvedValueOnce(
+      execaSuccess(
+        `{"title":"A Talk","filepath":"/downloads/A Talk.webm"}\n${downloaded('/downloads/A Talk.mp4')}`
+      )
+    );
+
+    const { downloadVideo } = await import('../../src/utils/youtube.js');
+
+    expect((await downloadVideo('dQw4w9WgXcQ', 'best')).filePath).toBe('/downloads/A Talk.mp4');
+  });
+
+  it('reports an empty title when the after_move line carries none', async () => {
+    vi.mocked(execa).mockResolvedValueOnce(execaSuccess(JSON.stringify({ filepath: '/d/x.mp4' })));
+
+    const { downloadVideo } = await import('../../src/utils/youtube.js');
+
+    expect(await downloadVideo('dQw4w9WgXcQ', 'best')).toMatchObject({
+      title: '',
+      filePath: '/d/x.mp4',
+    });
+  });
+
+  it('fails clearly when yt-dlp printed no after_move line', async () => {
+    vi.mocked(execa).mockResolvedValueOnce(execaSuccess(''));
+
+    const { downloadVideo } = await import('../../src/utils/youtube.js');
+
+    await expect(downloadVideo('dQw4w9WgXcQ', 'best')).rejects.toMatchObject({
+      code: 'YTDLP_FAILED',
+    });
+  });
+
+  it('reports an unreadable after_move line as a malformed response', async () => {
+    vi.mocked(execa).mockResolvedValueOnce(execaSuccess('not json'));
+
+    const { downloadVideo } = await import('../../src/utils/youtube.js');
+
+    await expect(downloadVideo('dQw4w9WgXcQ', 'best')).rejects.toMatchObject({
+      code: 'MALFORMED_RESPONSE',
+    });
   });
 
   it('refuses an output directory outside the home directory', async () => {
@@ -870,7 +970,7 @@ and welcome
     await withSubtitleFile('.en.vtt');
 
     const { getTranscript } = await import('../../src/utils/youtube.js');
-    const result = await getTranscript('dQw4w9WgXcQ', 'en');
+    const result = await getTranscript('dQw4w9WgXcQ', { language: 'en' });
 
     expect(result).toMatchObject({
       transcript: 'hello there and welcome',
@@ -886,7 +986,7 @@ and welcome
     const { writeFile } = await import('fs/promises');
 
     const { getTranscript } = await import('../../src/utils/youtube.js');
-    await getTranscript('dQw4w9WgXcQ', 'en');
+    await getTranscript('dQw4w9WgXcQ', { language: 'en' });
 
     const written = vi.mocked(writeFile).mock.calls[0]?.[1];
     expect(typeof written).toBe('string');
@@ -902,7 +1002,9 @@ and welcome
 
     const { getTranscript } = await import('../../src/utils/youtube.js');
 
-    expect((await getTranscript('dQw4w9WgXcQ', 'en')).language).toBe('en (auto-generated)');
+    expect((await getTranscript('dQw4w9WgXcQ', { language: 'en' })).language).toBe(
+      'en (auto-generated)'
+    );
   });
 
   it('falls back to the English track when the requested language is absent', async () => {
@@ -910,7 +1012,7 @@ and welcome
 
     const { getTranscript } = await import('../../src/utils/youtube.js');
 
-    expect((await getTranscript('dQw4w9WgXcQ', 'fr')).language).toBe('en');
+    expect((await getTranscript('dQw4w9WgXcQ', { language: 'fr' })).language).toBe('en');
   });
 
   it('bypasses a usable cache when refresh is set', async () => {
@@ -947,7 +1049,7 @@ and welcome
       await withCachedEntry({ ...FRESH, version: 1, fetchedAt: new Date().toISOString() });
 
       const { getTranscript } = await import('../../src/utils/youtube.js');
-      const result = await getTranscript('dQw4w9WgXcQ', 'en');
+      const result = await getTranscript('dQw4w9WgXcQ', { language: 'en' });
 
       expect(result.cached).toBe(false);
       expect(execa).toHaveBeenCalled();
@@ -957,7 +1059,7 @@ and welcome
       await withCachedEntry({ ...FRESH, version: 2, fetchedAt: '2000-01-01T00:00:00.000Z' });
 
       const { getTranscript } = await import('../../src/utils/youtube.js');
-      const result = await getTranscript('dQw4w9WgXcQ', 'en');
+      const result = await getTranscript('dQw4w9WgXcQ', { language: 'en' });
 
       expect(result.cached).toBe(false);
       expect(execa).toHaveBeenCalled();
@@ -967,7 +1069,7 @@ and welcome
       await withCachedEntry({ ...FRESH, version: 2, fetchedAt: new Date().toISOString() });
 
       const { getTranscript } = await import('../../src/utils/youtube.js');
-      const result = await getTranscript('dQw4w9WgXcQ', 'en');
+      const result = await getTranscript('dQw4w9WgXcQ', { language: 'en' });
 
       expect(result).toMatchObject({ cached: true, transcript: 'cached' });
       expect(execa).not.toHaveBeenCalled();
@@ -981,7 +1083,7 @@ and welcome
 
     const { getTranscript } = await import('../../src/utils/youtube.js');
 
-    expect((await getTranscript('dQw4w9WgXcQ', 'en')).cached).toBe(false);
+    expect((await getTranscript('dQw4w9WgXcQ', { language: 'en' })).cached).toBe(false);
   });
 
   it('defaults to English when the options carry no language', async () => {
@@ -997,7 +1099,9 @@ and welcome
   it('rejects a language tag that is not one', async () => {
     const { getTranscript } = await import('../../src/utils/youtube.js');
 
-    await expect(getTranscript('dQw4w9WgXcQ', 'not a language')).rejects.toMatchObject({
+    await expect(
+      getTranscript('dQw4w9WgXcQ', { language: 'not a language' })
+    ).rejects.toMatchObject({
       code: 'INVALID_INPUT',
     });
   });
@@ -1018,7 +1122,7 @@ and welcome
       );
 
       const { getTranscript } = await import('../../src/utils/youtube.js');
-      const error = await getTranscript('dQw4w9WgXcQ', 'en').catch((e: unknown) => e);
+      const error = await getTranscript('dQw4w9WgXcQ', { language: 'en' }).catch((e: unknown) => e);
 
       expect(error).toMatchObject({ code: 'NO_CAPTIONS' });
       expect(String((error as Error & { nextStep?: string }).nextStep)).toContain('de, es, fr');
@@ -1028,7 +1132,9 @@ and welcome
       await withNoSubtitles(JSON.stringify({ subtitles: { fr: [], 'fr-orig': [] } }));
 
       const { getTranscript } = await import('../../src/utils/youtube.js');
-      const error = (await getTranscript('dQw4w9WgXcQ', 'en').catch((e: unknown) => e)) as Error & {
+      const error = (await getTranscript('dQw4w9WgXcQ', { language: 'en' }).catch(
+        (e: unknown) => e
+      )) as Error & {
         nextStep?: string;
       };
 
@@ -1043,7 +1149,9 @@ and welcome
       await withNoSubtitles(JSON.stringify({ subtitles: many }));
 
       const { getTranscript } = await import('../../src/utils/youtube.js');
-      const error = (await getTranscript('dQw4w9WgXcQ', 'en').catch((e: unknown) => e)) as Error & {
+      const error = (await getTranscript('dQw4w9WgXcQ', { language: 'en' }).catch(
+        (e: unknown) => e
+      )) as Error & {
         nextStep?: string;
       };
 
@@ -1054,7 +1162,9 @@ and welcome
       await withNoSubtitles(JSON.stringify({}));
 
       const { getTranscript } = await import('../../src/utils/youtube.js');
-      const error = (await getTranscript('dQw4w9WgXcQ', 'en').catch((e: unknown) => e)) as Error;
+      const error = (await getTranscript('dQw4w9WgXcQ', { language: 'en' }).catch(
+        (e: unknown) => e
+      )) as Error;
 
       expect(error.message).toContain('no captions in any language');
     });
@@ -1069,7 +1179,7 @@ and welcome
       const { getTranscript } = await import('../../src/utils/youtube.js');
 
       // The probe is a nicety; it must never mask the real problem.
-      await expect(getTranscript('dQw4w9WgXcQ', 'en')).rejects.toMatchObject({
+      await expect(getTranscript('dQw4w9WgXcQ', { language: 'en' })).rejects.toMatchObject({
         code: 'NO_CAPTIONS',
       });
     });
@@ -1082,7 +1192,7 @@ and welcome
 
       const { getTranscript } = await import('../../src/utils/youtube.js');
 
-      await expect(getTranscript('dQw4w9WgXcQ', 'en')).rejects.toMatchObject({
+      await expect(getTranscript('dQw4w9WgXcQ', { language: 'en' })).rejects.toMatchObject({
         code: 'NO_CAPTIONS',
       });
     });
@@ -1094,7 +1204,9 @@ and welcome
     vi.mocked(execa).mockRejectedValue(new Error('/home/alice/secrets exploded'));
 
     const { getTranscript } = await import('../../src/utils/youtube.js');
-    const error = (await getTranscript('dQw4w9WgXcQ', 'en').catch((e: unknown) => e)) as Error;
+    const error = (await getTranscript('dQw4w9WgXcQ', { language: 'en' }).catch(
+      (e: unknown) => e
+    )) as Error;
 
     // runYtDlp has already classified this; re-wrapping would discard the code
     // and the actionable next step it carries.
@@ -1110,7 +1222,9 @@ and welcome
     vi.mocked(readFile).mockRejectedValue(new Error('EACCES /home/alice/.cache'));
 
     const { getTranscript } = await import('../../src/utils/youtube.js');
-    const error = (await getTranscript('dQw4w9WgXcQ', 'en').catch((e: unknown) => e)) as Error;
+    const error = (await getTranscript('dQw4w9WgXcQ', { language: 'en' }).catch(
+      (e: unknown) => e
+    )) as Error;
 
     expect(error.message).toContain('dQw4w9WgXcQ');
     expect(error.message).not.toContain('alice');
@@ -1141,15 +1255,15 @@ describe('hasCachedTranscript', () => {
 
 describe('duration and tag rendering', () => {
   it('shows hours for a video longer than an hour', async () => {
-    vi.mocked(execa).mockResolvedValue(execaSuccess(videoInfoStdout({ duration: '3723' })));
+    vi.mocked(execa).mockResolvedValue(execaSuccess(videoInfoStdout({ duration: 3723 })));
 
     const { getVideoInfo } = await import('../../src/utils/youtube.js');
 
     expect((await getVideoInfo('dQw4w9WgXcQ')).durationFormatted).toBe('1:02:03');
   });
 
-  it('treats unreadable tags as none rather than failing the whole lookup', async () => {
-    vi.mocked(execa).mockResolvedValue(execaSuccess(videoInfoStdout({ tagsJson: '{not json' })));
+  it('treats a tags field that is not a list as none rather than failing the whole lookup', async () => {
+    vi.mocked(execa).mockResolvedValue(execaSuccess(videoInfoStdout({ tags: 'not a list' })));
 
     const { getVideoInfo } = await import('../../src/utils/youtube.js');
 
@@ -1157,17 +1271,15 @@ describe('duration and tag rendering', () => {
   });
 
   it('drops tag entries that are not strings', async () => {
-    vi.mocked(execa).mockResolvedValue(
-      execaSuccess(videoInfoStdout({ tagsJson: '["ok", 42, null]' }))
-    );
+    vi.mocked(execa).mockResolvedValue(execaSuccess(videoInfoStdout({ tags: ['ok', 42, null] })));
 
     const { getVideoInfo } = await import('../../src/utils/youtube.js');
 
     expect((await getVideoInfo('dQw4w9WgXcQ')).tags).toEqual(['ok']);
   });
 
-  it('ignores tags that are not a list at all', async () => {
-    vi.mocked(execa).mockResolvedValue(execaSuccess(videoInfoStdout({ tagsJson: '{"a":1}' })));
+  it('ignores tags that arrive as an object', async () => {
+    vi.mocked(execa).mockResolvedValue(execaSuccess(videoInfoStdout({ tags: { a: 1 } })));
 
     const { getVideoInfo } = await import('../../src/utils/youtube.js');
 
@@ -1184,7 +1296,7 @@ describe('duration and tag rendering', () => {
     const { getTranscript } = await import('../../src/utils/youtube.js');
 
     // An unreadable cache must behave as no cache, not as a failed request.
-    await expect(getTranscript('dQw4w9WgXcQ', 'en')).rejects.toMatchObject({
+    await expect(getTranscript('dQw4w9WgXcQ', { language: 'en' })).rejects.toMatchObject({
       code: 'NO_CAPTIONS',
     });
     expect(execa).toHaveBeenCalled();

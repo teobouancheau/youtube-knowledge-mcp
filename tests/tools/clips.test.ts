@@ -10,7 +10,10 @@ vi.mock('../../src/utils/clips.js', async (importOriginal) => {
     extractFrame: vi.fn(),
   };
 });
-vi.mock('../../src/utils/youtube.js', () => ({ getTranscript: vi.fn() }));
+vi.mock('../../src/utils/youtube.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/utils/youtube.js')>();
+  return { ...actual, getTranscript: vi.fn() };
+});
 vi.mock('node:fs/promises', () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
@@ -182,6 +185,47 @@ describe('extractClipsHandler', () => {
 
     expect(textOf(result)).toContain('0 of 2 clips extracted');
     expect(textOf(result)).toContain('✗ 0:10–0:20');
+  });
+
+  it('cuts several ranges at once rather than one after another', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    vi.mocked(extractClip).mockImplementation(async () => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      inFlight--;
+      return CLIP;
+    });
+
+    const result = await extractClipsHandler({
+      ...args,
+      ranges: [
+        { start: '0:10', end: '0:20' },
+        { start: '0:30', end: '0:40' },
+        { start: '0:50', end: '1:00' },
+      ],
+    });
+
+    expect(structuredOf(result)).toMatchObject({ requested: 3, succeeded: 3 });
+    expect(peak).toBeGreaterThan(1);
+  });
+
+  it('keeps the results in the order the ranges were given', async () => {
+    vi.mocked(extractClip).mockImplementation(async (_video, range) => {
+      // The first range finishes last.
+      await new Promise((resolve) => setTimeout(resolve, range.start === 10 ? 20 : 1));
+      return { ...CLIP, start: range.start ?? 0, end: range.end ?? 0 };
+    });
+
+    const result = await extractClipsHandler(args);
+
+    expect(structuredOf(result)).toMatchObject({
+      clips: [
+        expect.objectContaining({ startSeconds: 10 }),
+        expect.objectContaining({ startSeconds: 30 }),
+      ],
+    });
   });
 
   it('handles an empty range list without failing', async () => {
