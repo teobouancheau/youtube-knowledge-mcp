@@ -45,7 +45,7 @@ interface YtDlpFormat {
 export async function listFormats(urlOrId: string): Promise<VideoFormat[]> {
   const videoId = extractVideoId(urlOrId);
   const url = watchUrl(videoId);
-  const stdout = await runYtDlp(['-j', '--skip-download', url], { label: 'list_formats' });
+  const stdout = await runYtDlp(['-j', '--skip-download'], { label: 'list_formats', target: url });
 
   const data = parseYtDlpJson<{ formats?: YtDlpFormat[] }>(stdout, isRecord, 'video formats');
   const formats = data.formats ?? [];
@@ -104,8 +104,9 @@ export async function downloadVideo(
   await mkdir(targetDir, { recursive: true });
 
   // Get video title first for the result
-  const titleOutput = await runYtDlp(['--skip-download', '--print', '%(title)s', url], {
+  const titleOutput = await runYtDlp(['--skip-download', '--print', '%(title)s'], {
     label: 'download_video (title)',
+    target: url,
   });
   const title = titleOutput.trim();
 
@@ -135,11 +136,12 @@ export async function downloadVideo(
     label: 'download_video',
     timeoutMs: TIMEOUTS.download,
     retry: false,
+    target: url,
   } as const;
 
   let effectiveSelector = formatSelector;
   try {
-    await runYtDlp([...commonArgs(formatSelector), url], downloadOptions);
+    await runYtDlp(commonArgs(formatSelector), downloadOptions);
   } catch (error) {
     // An explicitly requested format may simply not exist for this video, so
     // falling back to "best" is worth one attempt. A preset failing is not:
@@ -150,13 +152,13 @@ export async function downloadVideo(
 
     log('warning', `format ${formatId} unavailable, falling back to best`);
     effectiveSelector = QUALITY_FORMAT_SELECTORS.best;
-    await runYtDlp([...commonArgs(effectiveSelector), url], downloadOptions);
+    await runYtDlp(commonArgs(effectiveSelector), downloadOptions);
   }
 
   // Ask yt-dlp what it actually named the file rather than guessing.
   const filenameOutput = await runYtDlp(
-    [...commonArgs(effectiveSelector), '--print', 'filename', '--skip-download', url],
-    { label: 'download_video (filename)' }
+    [...commonArgs(effectiveSelector), '--print', 'filename', '--skip-download'],
+    { label: 'download_video (filename)', target: url }
   );
 
   return {

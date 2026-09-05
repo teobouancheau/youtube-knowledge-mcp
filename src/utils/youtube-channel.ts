@@ -1,6 +1,6 @@
 import { formatYouTubeDate } from './format.js';
 import { TIMEOUTS, isRecord, parseYtDlpJson, runYtDlp } from './ytdlp.js';
-import { formatDuration, watchUrl } from './youtube-url.js';
+import { channelUrlFor, formatDuration, resolveListTarget, watchUrl } from './youtube-url.js';
 
 /** Listings and metadata for channels and playlists. */
 
@@ -64,9 +64,12 @@ export async function listVideos(urlOrChannel: string, limit = 20): Promise<Vide
       '%(id)s|||%(title)s|||%(duration)s|||%(upload_date)s',
       '--playlist-end',
       limit.toString(),
-      urlOrChannel,
     ],
-    { label: 'fetch_videos', timeoutMs: TIMEOUTS.transcript }
+    {
+      label: 'fetch_videos',
+      timeoutMs: TIMEOUTS.transcript,
+      target: resolveListTarget(urlOrChannel),
+    }
   );
 
   const lines = stdout.trim().split('\n').filter(Boolean);
@@ -90,9 +93,13 @@ export async function listVideos(urlOrChannel: string, limit = 20): Promise<Vide
 }
 
 export async function getPlaylistInfo(playlistUrl: string): Promise<PlaylistInfo> {
+  const target = resolveListTarget(playlistUrl);
   const stdout = await runYtDlp(
-    ['--dump-single-json', '--flat-playlist', '--playlist-items', '0', playlistUrl],
-    { label: 'get_playlist_info' }
+    ['--dump-single-json', '--flat-playlist', '--playlist-items', '0'],
+    {
+      label: 'get_playlist_info',
+      target,
+    }
   );
 
   const data = parseYtDlpJson<YtDlpPlaylistMeta>(stdout, isRecord, 'playlist metadata');
@@ -112,13 +119,14 @@ export async function getPlaylistInfo(playlistUrl: string): Promise<PlaylistInfo
 }
 
 export async function getChannelInfo(channel: string): Promise<ChannelInfo> {
-  const channelUrl = channel.startsWith('http')
-    ? channel
-    : `https://www.youtube.com/${channel.startsWith('@') ? channel : `@${channel}`}`;
+  const channelUrl = channelUrlFor(channel);
 
   const stdout = await runYtDlp(
-    ['--dump-single-json', '--flat-playlist', '--playlist-items', '0', channelUrl],
-    { label: 'get_channel_info' }
+    ['--dump-single-json', '--flat-playlist', '--playlist-items', '0'],
+    {
+      label: 'get_channel_info',
+      target: channelUrl,
+    }
   );
 
   const data = parseYtDlpJson<YtDlpChannelMeta>(stdout, isRecord, 'channel metadata');

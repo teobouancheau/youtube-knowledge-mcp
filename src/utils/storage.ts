@@ -8,6 +8,7 @@ import { SearchIndex, type SearchResults } from './search-index.js';
 import { libraryMetadataSchema, recordOfValid } from '../schemas.js';
 import { readJsonFile, writeJsonAtomic } from './json-file.js';
 import { dataDir } from './paths.js';
+import { assertVideoId } from './validate.js';
 
 const LIBRARY_DIR = dataDir('library');
 const INDEX_FILE = dataDir('index.json');
@@ -115,8 +116,13 @@ function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T
   return Object.fromEntries(Object.entries(record).filter(([existing]) => existing !== key));
 }
 
+/**
+ * The only place a video id becomes a path. Validated here, exactly as
+ * `brainDir` validates a channel id, because a value like `../../x` would
+ * otherwise write — and, on delete, recursively remove — outside the library.
+ */
 function itemDir(videoId: string): string {
-  return join(LIBRARY_DIR, videoId);
+  return join(LIBRARY_DIR, assertVideoId(videoId));
 }
 
 function metadataPath(videoId: string): string {

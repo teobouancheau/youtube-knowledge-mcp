@@ -268,6 +268,52 @@ describe('YouTube Utils', () => {
         uploadDate: '2024-01-01',
       });
     });
+
+    it('passes the listing target after a -- terminator', async () => {
+      const { execa } = await import('execa');
+      vi.mocked(execa).mockResolvedValue(execaSuccess(''));
+
+      const { listVideos } = await import('../../src/utils/youtube.js');
+      await listVideos('https://youtube.com/playlist?list=PLtest', 10);
+
+      const argv = vi.mocked(execa).mock.calls[0]?.[1];
+      expect(Array.isArray(argv) ? argv.slice(-2) : []).toEqual([
+        '--',
+        'https://youtube.com/playlist?list=PLtest',
+      ]);
+    });
+
+    it.each([
+      ['a handle', '@creator', 'https://www.youtube.com/@creator'],
+      [
+        'a channel id',
+        'UCXuqSBlHAE6Xw-yeJA0Tunw',
+        'https://www.youtube.com/channel/UCXuqSBlHAE6Xw-yeJA0Tunw',
+      ],
+      ['a scheme-less URL', 'youtube.com/@creator/videos', 'https://youtube.com/@creator/videos'],
+    ])('resolves %s to a YouTube URL', async (_label, input, expected) => {
+      const { execa } = await import('execa');
+      vi.mocked(execa).mockResolvedValue(execaSuccess(''));
+
+      const { listVideos } = await import('../../src/utils/youtube.js');
+      await listVideos(input, 5);
+
+      const argv = vi.mocked(execa).mock.calls[0]?.[1];
+      expect(Array.isArray(argv) ? argv.at(-1) : undefined).toBe(expected);
+    });
+
+    // A value that starts with a dash used to land in yt-dlp's option parser.
+    it.each([
+      ['a flag disguised as a URL', '--config-locations=/tmp/evil'],
+      ['another host', 'https://example.com/playlist'],
+      ['a bare word', 'cats'],
+    ])('refuses %s before spawning yt-dlp', async (_label, input) => {
+      const { execa } = await import('execa');
+      const { listVideos } = await import('../../src/utils/youtube.js');
+
+      await expect(listVideos(input, 5)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+      expect(execa).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -722,11 +768,22 @@ describe('getPlaylistInfo', () => {
 
     const { getPlaylistInfo } = await import('../../src/utils/youtube.js');
 
-    expect(await getPlaylistInfo('https://example.com/list')).toMatchObject({
+    expect(await getPlaylistInfo('https://youtube.com/playlist?list=PL999')).toMatchObject({
       title: 'Unknown',
-      url: 'https://example.com/list',
+      url: 'https://youtube.com/playlist?list=PL999',
       lastModified: '',
     });
+  });
+
+  // yt-dlp's generic extractor would fetch this host on the caller's behalf.
+  it('rejects a URL on another host before spawning anything', async () => {
+    const { execa } = await import('execa');
+    const { getPlaylistInfo } = await import('../../src/utils/youtube.js');
+
+    await expect(getPlaylistInfo('https://example.com/list')).rejects.toMatchObject({
+      code: 'INVALID_INPUT',
+    });
+    expect(execa).not.toHaveBeenCalled();
   });
 });
 
@@ -744,6 +801,18 @@ describe('getChannelInfo', () => {
 
     const argv = vi.mocked(execa).mock.calls[0]?.[1];
     expect(Array.isArray(argv) && argv).toContain(expected);
+  });
+
+  it.each([
+    ['an internal address', 'http://10.0.0.1/admin'],
+    ['the cloud metadata address', 'http://169.254.169.254/latest/'],
+    ['another site', 'https://example.com/@creator'],
+  ])('refuses %s without spawning yt-dlp', async (_label, input) => {
+    const { execa } = await import('execa');
+    const { getChannelInfo } = await import('../../src/utils/youtube.js');
+
+    await expect(getChannelInfo(input)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    expect(execa).not.toHaveBeenCalled();
   });
 
   it('reports Unknown rather than an empty name', async () => {

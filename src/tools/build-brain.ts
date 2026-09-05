@@ -9,7 +9,7 @@ import { assertChannelId, assertLanguageTag } from '../utils/validate.js';
 import { getChannelInfo, listVideos, type VideoListItem } from '../utils/youtube.js';
 
 export const buildBrainSchema = {
-  channel: z.string().describe('Channel URL, @handle, or name'),
+  channel: z.string().max(256).describe('Channel URL, @handle, or name'),
   maxVideos: z
     .number()
     .int()

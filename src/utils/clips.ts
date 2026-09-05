@@ -178,18 +178,17 @@ export async function extractClip(
     args.push('--merge-output-format', options.container);
   }
 
-  args.push(url);
-
   await runYtDlp(args, {
     label: 'extract_clip',
     timeoutMs: TIMEOUTS.download,
     retry: false,
+    target: url,
   });
 
-  const filenameOutput = await runYtDlp(
-    [...args.slice(0, -1), '--print', 'filename', '--skip-download', url],
-    { label: 'extract_clip (filename)' }
-  );
+  const filenameOutput = await runYtDlp([...args, '--print', 'filename', '--skip-download'], {
+    label: 'extract_clip (filename)',
+    target: url,
+  });
 
   const extension = options.audioOnly ? (options.audioFormat ?? 'mp3') : options.container;
   const reported = filenameOutput.trim();
@@ -247,8 +246,9 @@ export async function extractFrame(
 
   const url = `https://www.youtube.com/watch?v=${info.id}`;
   const mediaUrl = (
-    await runYtDlp(['-f', 'bestvideo[height<=1080]/best', '--get-url', '--no-playlist', url], {
+    await runYtDlp(['-f', 'bestvideo[height<=1080]/best', '--get-url', '--no-playlist'], {
       label: 'extract_frame (resolve)',
+      target: url,
     })
   )
     .trim()

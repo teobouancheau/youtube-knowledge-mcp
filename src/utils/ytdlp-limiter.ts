@@ -1,3 +1,4 @@
+import { envInt } from './env.js';
 import { YouTubeError } from './errors.js';
 
 /**
@@ -7,7 +8,8 @@ import { YouTubeError } from './errors.js';
  * that honours cancellation so an abandoned request never holds a place in it.
  */
 
-const MAX_CONCURRENT = Number(process.env.YOUTUBE_MCP_MAX_CONCURRENCY ?? '3');
+/** A limit of 0 (or NaN) would queue every call forever, so the floor is 1. */
+const MAX_CONCURRENT = envInt('YOUTUBE_MCP_MAX_CONCURRENCY', 3, { min: 1, max: 32 });
 
 interface Waiter {
   grant: () => void;

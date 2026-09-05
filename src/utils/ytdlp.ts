@@ -50,6 +50,14 @@ export interface RunOptions {
   retry?: boolean;
   /** Human-readable operation name, used in log lines. */
   label?: string;
+  /**
+   * The URL, search expression or id yt-dlp operates on.
+   *
+   * Always the last argument and always preceded by a literal `--`, so a value
+   * that begins with a dash is a target yt-dlp fails to fetch, never an option
+   * it obeys. Required rather than defaulted: a call site cannot forget it.
+   */
+  target: string;
 }
 
 function backoffDelay(attempt: number): number {
@@ -76,10 +84,11 @@ async function sleep(ms: number, signal?: AbortSignal): Promise<void> {
  * Run yt-dlp and return its stdout.
  *
  * Arguments are always passed as an array — never a shell string — so video
- * titles and user-supplied queries cannot become shell metacharacters.
+ * titles and user-supplied queries cannot become shell metacharacters. The
+ * target follows a `--` terminator, so it cannot become a yt-dlp option either.
  */
-export async function runYtDlp(args: string[], options: RunOptions = {}): Promise<string> {
-  const { timeoutMs = TIMEOUTS.metadata, retry = true, label = 'yt-dlp' } = options;
+export async function runYtDlp(args: string[], options: RunOptions): Promise<string> {
+  const { timeoutMs = TIMEOUTS.metadata, retry = true, label = 'yt-dlp', target } = options;
   const { signal } = currentContext();
   const maxAttempts = retry ? MAX_ATTEMPTS : 1;
 
@@ -92,7 +101,7 @@ export async function runYtDlp(args: string[], options: RunOptions = {}): Promis
     }
 
     try {
-      return await spawnOnce(args, timeoutMs, signal);
+      return await spawnOnce(args, target, timeoutMs, signal);
     } catch (error) {
       const failure = translateExecaFailure(error, timeoutMs);
       if (!failure.retryable || attempt >= maxAttempts) throw failure;
@@ -108,12 +117,14 @@ export async function runYtDlp(args: string[], options: RunOptions = {}): Promis
 /** One attempt, holding a concurrency slot for exactly its duration. */
 async function spawnOnce(
   args: string[],
+  target: string,
   timeoutMs: number,
   signal: AbortSignal | undefined
 ): Promise<string> {
   await acquireSlot(signal);
   try {
-    const { stdout } = await execa('yt-dlp', ['--socket-timeout', SOCKET_TIMEOUT_S, ...args], {
+    const argv = ['--socket-timeout', SOCKET_TIMEOUT_S, ...args, '--', target];
+    const { stdout } = await execa('yt-dlp', argv, {
       timeout: timeoutMs > 0 ? timeoutMs : undefined,
       cancelSignal: signal,
       maxBuffer: MAX_OUTPUT_BYTES,
