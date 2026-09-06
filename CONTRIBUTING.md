@@ -69,6 +69,11 @@ src/
     ├── store-migrations.ts # Ordered schema migrations, one transaction each
     ├── store-rows.ts     # Zod-validated reads out of the store
     ├── store-health.ts   # What can be said about the store without harvesting
+    ├── harvest-receipts.ts # Completeness receipts, persisted with their rows
+    ├── harvest-catalog.ts # Walking every tab of a channel into the store
+    ├── harvest-lock.ts   # Exclusive access to one harvest target
+    ├── coverage.ts       # The only constructor for a completeness receipt
+    ├── coverage-text.ts  # The receipt as the sentence a model reads
     ├── paths.ts          # The one directory everything is written under
     ├── brain-paths.ts    # Every file a brain is made of
     ├── brain-storage.ts  # Manifest and profile persistence

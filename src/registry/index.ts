@@ -1,4 +1,5 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { harvestTools } from './harvest-tools.js';
 import { brainTools } from './brain-tools.js';
 import { channelTools } from './channel-tools.js';
 import { healthTools } from './health-tools.js';
@@ -20,6 +21,7 @@ export const TOOLS: ToolDefinition[] = [
   ...libraryTools,
   ...mediaTools,
   ...brainTools,
+  ...harvestTools,
   ...thumbnailTools,
 ];
 

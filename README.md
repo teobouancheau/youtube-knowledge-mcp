@@ -221,7 +221,7 @@ a cold start. Any paid plan removes that.
 
 ## MCP Tools
 
-38 tools. The 15 read-only ones work over both transports; the 23 that touch
+40 tools. The 15 read-only ones work over both transports; the 25 that touch
 your filesystem are registered only in local (stdio) mode, so a remote
 deployment cannot reach the host's disk.
 

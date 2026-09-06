@@ -64,6 +64,10 @@ export default defineConfig({
         'src/harvest-schemas.ts': { lines: 100, functions: 100, branches: 100, statements: 100 },
         'src/utils/coverage.ts': { lines: 100, functions: 100, branches: 98, statements: 100 },
         'src/utils/coverage-text.ts': { lines: 100, functions: 100, branches: 95, statements: 100 },
+        // Branches sit below the others because one arm of the lock's error
+        // message — the record being unreadable at the instant it is written —
+        // is a race no test can stage deterministically.
+        'src/utils/harvest-*.ts': { lines: 100, functions: 100, branches: 85, statements: 97 },
         'src/utils/youtube*.ts': { lines: 100, functions: 97, branches: 93, statements: 98 },
         'src/utils/transcript-cache.ts': {
           lines: 100,
