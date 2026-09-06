@@ -138,6 +138,6 @@ export async function getCoverageHandler({
     summary: { complete: receipts.length - incomplete, incomplete, stale },
     store: counts,
     mismatches,
-    ...pageInfo(countReceipts(store, scope), shown.length, offset),
+    ...pageInfo({ total: countReceipts(store, scope), count: shown.length, offset }),
   });
 }

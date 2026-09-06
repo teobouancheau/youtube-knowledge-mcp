@@ -100,7 +100,7 @@ export async function searchLibraryHandler({
   const structured = {
     query,
     hits: hits.map(({ id: _id, ...hit }) => hit),
-    ...pageInfo(total, hits.length, offset),
+    ...pageInfo({ total, count: hits.length, offset }),
   };
 
   if (hits.length === 0) {

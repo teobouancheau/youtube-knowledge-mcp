@@ -39,7 +39,7 @@ export async function listBrainsHandler(): Promise<CallToolResult> {
 
   return toolResult(lines.join('\n'), {
     brains,
-    ...pageInfo(brains.length, brains.length),
+    ...pageInfo({ total: brains.length, count: brains.length }),
   });
 }
 

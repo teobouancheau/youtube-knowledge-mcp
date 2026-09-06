@@ -273,6 +273,7 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     "hasOutputSchema": true,
     "name": "fetch_videos",
     "parameters": [
+      "cursor",
       "limit",
       "url",
     ],
@@ -760,6 +761,7 @@ exports[`tool manifest snapshot > matches the recorded remote surface 1`] = `
     "hasOutputSchema": true,
     "name": "fetch_videos",
     "parameters": [
+      "cursor",
       "limit",
       "url",
     ],

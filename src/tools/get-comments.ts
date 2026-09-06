@@ -27,7 +27,7 @@ export async function getCommentsHandler({
   limit: number;
 }): Promise<CallToolResult> {
   const comments = await getComments(video, limit);
-  const structured = { comments, ...pageInfo(comments.length, comments.length) };
+  const structured = { comments, ...pageInfo({ total: comments.length, count: comments.length }) };
 
   if (comments.length === 0) {
     return toolResult('No comments found for this video.', structured);
