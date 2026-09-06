@@ -769,14 +769,21 @@ describe('getChapters', () => {
 });
 
 describe('getComments', () => {
-  it('keeps only top-level comments', async () => {
+  it('returns replies attached to their parent instead of discarding them', async () => {
     const { execa } = await import('execa');
     vi.mocked(execa).mockResolvedValue(
       execaSuccess(
         JSON.stringify({
           comments: [
-            { author: 'A', text: 'top level', like_count: 5, is_pinned: true, parent: 'root' },
-            { author: 'B', text: 'a reply', parent: 'abc123' },
+            {
+              id: 'c1',
+              author: 'A',
+              text: 'top level',
+              like_count: 5,
+              is_pinned: true,
+              parent: 'root',
+            },
+            { id: 'c1.1', author: 'B', text: 'a reply', parent: 'c1' },
           ],
         })
       )
@@ -784,9 +791,36 @@ describe('getComments', () => {
 
     const { getComments } = await import('../../src/utils/youtube.js');
 
-    expect(await getComments('dQw4w9WgXcQ')).toEqual([
-      { author: 'A', text: 'top level', likeCount: 5, isPinned: true },
-    ]);
+    const result = await getComments('dQw4w9WgXcQ');
+
+    expect(result.threads).toHaveLength(1);
+    expect(result.threads[0]?.comment).toMatchObject({
+      author: 'A',
+      text: 'top level',
+      likeCount: 5,
+      isPinned: true,
+      parentId: null,
+    });
+    // Previously filtered out after being paid for.
+    expect(result.threads[0]?.replies.map((reply) => reply.text)).toEqual(['a reply']);
+    expect(result.replyCount).toBe(1);
+    expect(result.orphanCount).toBe(0);
+  });
+
+  it('keeps a reply whose parent the cap cut away, and counts it', async () => {
+    const { execa } = await import('execa');
+    vi.mocked(execa).mockResolvedValue(
+      execaSuccess(
+        JSON.stringify({ comments: [{ id: 'r1', author: 'B', text: 'a reply', parent: 'gone' }] })
+      )
+    );
+
+    const { getComments } = await import('../../src/utils/youtube.js');
+
+    const result = await getComments('dQw4w9WgXcQ');
+
+    expect(result.orphanCount).toBe(1);
+    expect(result.threads[0]?.comment.parentId).toBe('gone');
   });
 
   it('honours the limit', async () => {
@@ -805,7 +839,12 @@ describe('getComments', () => {
 
     const { getComments } = await import('../../src/utils/youtube.js');
 
-    expect(await getComments('dQw4w9WgXcQ', 3)).toHaveLength(3);
+    // The cap is yt-dlp's to apply, so everything it returned is kept: the
+    // old slice here hid the fact that a cap had bound.
+    const result = await getComments('dQw4w9WgXcQ', { limit: 3 });
+
+    expect(result.extractedTotal).toBe(10);
+    expect(result.threads).toHaveLength(10);
   });
 
   it('fills in defaults for a sparse comment', async () => {
@@ -816,9 +855,12 @@ describe('getComments', () => {
 
     const { getComments } = await import('../../src/utils/youtube.js');
 
-    expect(await getComments('dQw4w9WgXcQ')).toEqual([
-      { author: 'Unknown', text: '', likeCount: 0, isPinned: false },
-    ]);
+    expect((await getComments('dQw4w9WgXcQ')).threads[0]?.comment).toMatchObject({
+      author: 'Unknown',
+      text: '',
+      likeCount: 0,
+      isPinned: false,
+    });
   });
 
   it('returns nothing when comments are disabled', async () => {
@@ -827,7 +869,12 @@ describe('getComments', () => {
 
     const { getComments } = await import('../../src/utils/youtube.js');
 
-    expect(await getComments('dQw4w9WgXcQ')).toEqual([]);
+    const result = await getComments('dQw4w9WgXcQ');
+
+    expect(result.threads).toEqual([]);
+    // comments null AND comment_count null is yt-dlp saying comments are off,
+    // which makes zero the real total rather than an empty read.
+    expect(result.commentsDisabled).toBe(true);
   });
 });
 

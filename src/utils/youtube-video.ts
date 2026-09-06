@@ -3,6 +3,7 @@ import { classifyPlayability } from './errors.js';
 import { TIMEOUTS, parseYtDlpJson, runYtDlp } from './ytdlp.js';
 import { commentsRowSchema, videoDetailsRowSchema, videoInfoRowSchema } from './youtube-schemas.js';
 import { extractVideoId, formatDuration, watchUrl } from './youtube-url.js';
+import { toThreads, type ThreadedComments } from './comment-threads.js';
 
 /** Everything read about one video: metadata, chapters and comments. */
 
@@ -110,6 +111,8 @@ export interface VideoDetails {
   uploadDate: string;
   durationSeconds: number;
   chapters: Chapter[];
+  /** YouTube's own count, from a read without --write-comments. Approximate and lagging. */
+  commentCount?: number;
 }
 
 export async function getVideoDetails(urlOrId: string): Promise<VideoDetails> {
@@ -123,6 +126,9 @@ export async function getVideoDetails(urlOrId: string): Promise<VideoDetails> {
   const data = parseYtDlpJson(stdout, videoDetailsRowSchema, 'video details');
 
   return {
+    ...(data.comment_count === null || data.comment_count === undefined
+      ? {}
+      : { commentCount: data.comment_count }),
     uploadDate: formatYouTubeDate(data.upload_date ?? ''),
     durationSeconds: typeof data.duration === 'number' ? data.duration : 0,
     chapters: (data.chapters ?? []).map((ch) => ({
@@ -135,7 +141,27 @@ export async function getVideoDetails(urlOrId: string): Promise<VideoDetails> {
   };
 }
 
-export async function getComments(urlOrId: string, limit = 20): Promise<VideoComment[]> {
+export interface CommentsResult extends ThreadedComments {
+  /**
+   * Whether yt-dlp's own iteration finished rather than being cut off.
+   *
+   * From common.py:3882-3908: `comment_count` is overwritten with the number
+   * extracted, and set to null when the walk was interrupted. Necessary for
+   * completeness but NOT sufficient — `itertools.islice` also ends iteration
+   * at a cap, so a capped run reports that it finished too.
+   */
+  ranToExhaustion: boolean;
+  /** True when the video has comments turned off, where zero is the real total. */
+  commentsDisabled: boolean;
+  extractedTotal: number;
+}
+
+export async function getComments(
+  urlOrId: string,
+  options: { limit?: number; sort?: 'top' | 'new'; maxRepliesPerThread?: number } = {}
+): Promise<CommentsResult> {
+  const limit = options.limit ?? 20;
+  const sort = options.sort ?? 'top';
   const videoId = extractVideoId(urlOrId);
   const url = watchUrl(videoId);
 
@@ -145,21 +171,37 @@ export async function getComments(urlOrId: string, limit = 20): Promise<VideoCom
       '--skip-download',
       '--write-comments',
       '--extractor-args',
-      `youtube:comment_sort=top;max_comments=${limit}`,
+      // Five positions, per _video.py:2578: total, parents, replies, per
+      // thread, depth. An omitted position means unbounded, not a default, so
+      // every one is stated. Depth is 2 because YouTube's tree is two levels
+      // and a deeper cap would spend requests on nothing.
+      youtubeCommentArgs({ limit, sort, maxRepliesPerThread: options.maxRepliesPerThread ?? 100 }),
     ],
     { label: 'get_comments', timeoutMs: TIMEOUTS.comments, target: url }
   );
 
   const data = parseYtDlpJson(stdout, commentsRowSchema, 'video comments');
-  const comments = data.comments ?? [];
+  const rows = data.comments ?? [];
 
-  return comments
-    .filter((c) => c.parent === 'root')
-    .slice(0, limit)
-    .map((c) => ({
-      author: c.author ?? 'Unknown',
-      text: c.text ?? '',
-      likeCount: c.like_count ?? 0,
-      isPinned: c.is_pinned ?? false,
-    }));
+  return {
+    ...toThreads(rows),
+    ranToExhaustion: data.comment_count !== null && data.comment_count !== undefined,
+    commentsDisabled:
+      (data.comments === null || data.comments === undefined) &&
+      (data.comment_count === null || data.comment_count === undefined),
+    extractedTotal: rows.length,
+  };
+}
+
+function youtubeCommentArgs(options: {
+  limit: number;
+  sort: 'top' | 'new';
+  maxRepliesPerThread: number;
+}): string {
+  const parents = Math.max(1, Math.ceil(options.limit / 2));
+  const replies = Math.max(0, options.limit - parents);
+  return [
+    `youtube:comment_sort=${options.sort}`,
+    `max_comments=${String(options.limit)},${String(parents)},${String(replies)},${String(options.maxRepliesPerThread)},2`,
+  ].join(';');
 }

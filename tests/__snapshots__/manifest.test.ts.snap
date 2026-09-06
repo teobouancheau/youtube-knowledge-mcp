@@ -340,7 +340,9 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     "hasOutputSchema": true,
     "name": "get_comments",
     "parameters": [
+      "includeReplies",
       "limit",
+      "sort",
       "video",
     ],
     "required": [
@@ -811,7 +813,9 @@ exports[`tool manifest snapshot > matches the recorded remote surface 1`] = `
     "hasOutputSchema": true,
     "name": "get_comments",
     "parameters": [
+      "includeReplies",
       "limit",
+      "sort",
       "video",
     ],
     "required": [

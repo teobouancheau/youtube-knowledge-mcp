@@ -118,6 +118,34 @@ export const commentSchema = z.object({
   isPinned: z.boolean(),
 });
 
+/** A comment with everything yt-dlp actually returns, including its place in a thread. */
+export const commentDetailSchema = z.object({
+  id: z.string(),
+  parentId: z.string().nullable().describe('null for a top-level comment'),
+  author: z.string(),
+  authorId: z.string().optional(),
+  authorUrl: z.string().optional(),
+  authorThumbnailUrl: z.string().optional(),
+  authorIsUploader: z.boolean(),
+  authorIsVerified: z.boolean(),
+  text: z.string(),
+  likeCount: z.number(),
+  isPinned: z.boolean(),
+  isFavorited: z.boolean(),
+  timestamp: z.number().optional(),
+  publishedAt: z.string().optional(),
+  timeText: z.string().optional().describe("yt-dlp's relative wording, e.g. '3 months ago'"),
+});
+
+export const commentThreadSchema = z.object({
+  comment: commentDetailSchema,
+  replies: z.array(commentDetailSchema),
+  replyCount: z
+    .number()
+    .int()
+    .describe('Replies present in THIS extraction, not the number the thread has'),
+});
+
 export const channelInfoSchema = z.object({
   name: z.string(),
   channelId: z.string(),
