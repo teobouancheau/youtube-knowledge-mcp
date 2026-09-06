@@ -575,6 +575,27 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
   },
   {
     "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "prune_harvest",
+    "parameters": [
+      "author",
+      "channel",
+      "confirm",
+      "scope",
+      "vacuum",
+      "video",
+    ],
+    "required": [
+      "confirm",
+    ],
+  },
+  {
+    "annotations": {
       "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": false,
@@ -593,6 +614,29 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
       "threadOf",
       "topLevelOnly",
       "video",
+    ],
+    "required": [],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "query_videos",
+    "parameters": [
+      "channel",
+      "detailedOnly",
+      "limit",
+      "match",
+      "minDurationSeconds",
+      "offset",
+      "order",
+      "since",
+      "until",
+      "withComments",
     ],
     "required": [],
   },

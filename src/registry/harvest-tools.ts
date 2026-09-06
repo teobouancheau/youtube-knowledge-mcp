@@ -19,6 +19,16 @@ import {
   queryCommentsOutputSchema,
   queryCommentsHandler,
 } from '../tools/query-comments.js';
+import {
+  queryVideosSchema,
+  queryVideosOutputSchema,
+  queryVideosHandler,
+} from '../tools/query-videos.js';
+import {
+  pruneHarvestSchema,
+  pruneHarvestOutputSchema,
+  pruneHarvestHandler,
+} from '../tools/prune-harvest.js';
 
 /**
  * Exhaustive extraction and the receipts that keep it honest.
@@ -93,5 +103,37 @@ export const harvestTools: ToolDefinition[] = [
       openWorldHint: false,
     },
     handler: queryCommentsHandler,
+  }),
+  defineTool({
+    name: 'query_videos',
+    mode: 'stdio',
+    title: 'Query Catalogued Videos',
+    description:
+      'Search the videos already catalogued in the local store, by channel, title, date, duration or how many comments are held. Never contacts YouTube. The coverage receipts alongside the results say which channels are only partly catalogued.',
+    inputSchema: queryVideosSchema,
+    outputSchema: queryVideosOutputSchema,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    handler: queryVideosHandler,
+  }),
+  defineTool({
+    name: 'prune_harvest',
+    mode: 'stdio',
+    title: 'Prune Harvested Data',
+    description:
+      "Remove harvested comments, catalogues, or one author's comments everywhere, from the local store. Requires confirm: true — harvested comments cost hours of network that no local cache can replay. Use the author filter to honour an individual's erasure request.",
+    inputSchema: pruneHarvestSchema,
+    outputSchema: pruneHarvestOutputSchema,
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    handler: pruneHarvestHandler,
   }),
 ];
