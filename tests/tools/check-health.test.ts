@@ -45,7 +45,7 @@ const EMPTY_STORE = {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(runPreflight).mockResolvedValue(REPORT);
-  vi.mocked(concurrencyState).mockReturnValue({ active: 1, queued: 2, limit: 4 });
+  vi.mocked(concurrencyState).mockReturnValue({ active: 1, queued: 2, limit: 4, ceiling: 4 });
   vi.mocked(runSessionPreflight).mockResolvedValue({
     potAvailable: false,
     potProviders: [],

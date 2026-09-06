@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { CIRCUIT_STRIKES, onFailure, resetPacer } from '../../src/utils/ytdlp-pacer.js';
 
 // vi.mock is hoisted above imports, so the stand-in class has to be hoisted too.
 const { FakeExecaError } = vi.hoisted(() => ({
@@ -47,6 +48,9 @@ function failWith(overrides: Partial<FakeExecaError>): FakeExecaError {
 describe('runYtDlp', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // The pacer keeps cooldowns and strike counts across calls on purpose, so
+    // a test that throttles it would otherwise slow every test after it.
+    resetPacer();
   });
 
   it('applies a timeout to every call', async () => {
@@ -125,6 +129,35 @@ describe('runYtDlp', () => {
       code: 'RATE_LIMITED',
     });
     expect(mockedExeca).toHaveBeenCalledTimes(3);
+  });
+
+  it('refuses to spawn while the circuit is open, and names the likely cause', async () => {
+    // Five consecutive refusals mean something structural. Without this a hard
+    // block produces an hour of identical failures instead of one message.
+    for (let strike = 0; strike < CIRCUIT_STRIKES; strike += 1) onFailure('RATE_LIMITED', 1);
+    mockedExeca.mockResolvedValue(ok('should not run'));
+
+    await expect(runYtDlp(['--version'], { target: TARGET })).rejects.toMatchObject({
+      code: 'RATE_LIMITED',
+    });
+    expect(mockedExeca).not.toHaveBeenCalled();
+  });
+
+  it('waits out a cooldown before spawning new work', async () => {
+    onFailure('RATE_LIMITED', 1);
+    onFailure('RATE_LIMITED', 2);
+    mockedExeca.mockResolvedValue(ok('after the wait'));
+
+    const started = Date.now();
+    const pending = runYtDlp(['--version'], { target: TARGET });
+    // Cancelling proves the wait is interruptible rather than a wedge.
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(Promise.race([pending, Promise.resolve('still waiting')])).resolves.toBe(
+      'still waiting'
+    );
+    expect(Date.now() - started).toBeLessThan(1_000);
   });
 
   it('never retries a deterministic failure', async () => {
@@ -237,6 +270,7 @@ describe('parseYtDlpJsonLines', () => {
 describe('concurrency limit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetPacer();
   });
 
   it('starts idle', () => {
@@ -354,6 +388,7 @@ describe('concurrency limit', () => {
 describe('cancellation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetPacer();
   });
 
   it('reports a cancelled child as CANCELLED rather than a generic failure', async () => {
@@ -390,6 +425,7 @@ describe('cancellation', () => {
 describe('stderr shapes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetPacer();
   });
 
   it('reads stderr delivered as an array of lines', async () => {
@@ -425,6 +461,7 @@ describe('stderr shapes', () => {
 describe('backoff interruption', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetPacer();
   });
 
   it('cuts the backoff short the moment the request is cancelled', async () => {
@@ -457,6 +494,7 @@ describe('backoff interruption', () => {
 describe('runYtDlp target handling', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetPacer();
   });
 
   it('places session flags before the caller arguments and never after the terminator', async () => {
