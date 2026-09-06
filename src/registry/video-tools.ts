@@ -101,7 +101,7 @@ export const videoTools: ToolDefinition[] = [
     mode: 'all',
     title: 'Get YouTube Video Comments',
     description:
-      'Get top comments from a YouTube video sorted by popularity. Returns author, text, like count, and pinned status. Only top-level comments, no replies.',
+      "Read a sample of a video's comments, with replies when includeReplies is set. Returns a completeness receipt saying how many of the video's comments this is — the real total comes from a separate metadata read, because a comment fetch reports only what it extracted. This is a sample, not a page: YouTube exposes no cursor for a live comment read.",
     inputSchema: getCommentsSchema,
     outputSchema: getCommentsOutputSchema,
     annotations: {
