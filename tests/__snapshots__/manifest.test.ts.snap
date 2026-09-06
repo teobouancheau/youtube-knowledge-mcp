@@ -531,6 +531,22 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
   {
     "annotations": {
       "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "repair_store",
+    "parameters": [
+      "confirm",
+    ],
+    "required": [
+      "confirm",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": false,

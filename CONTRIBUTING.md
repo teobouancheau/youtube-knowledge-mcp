@@ -52,6 +52,7 @@ src/
     ├── ytdlp-parse.ts    # Guarded parsing of yt-dlp JSON
     ├── errors.ts         # Typed failure codes and stderr classification
     ├── preflight.ts      # yt-dlp / ffmpeg presence and staleness checks
+    ├── pot-preflight.ts  # PO token providers, JS runtimes and impersonate targets
     ├── context.ts        # Per-request abort signal, progress and logging
     ├── transcript.ts     # WebVTT parsing, slicing and windowing
     ├── transcript-search.ts # Finding a phrase in a transcript
@@ -62,6 +63,12 @@ src/
     ├── search-index.ts   # BM25 index, shared by the library and the brains
     ├── storage.ts        # Library persistence
     ├── json-file.ts      # Atomic JSON writes and validated reads
+    ├── store-paths.ts    # Every file the harvested store is made of
+    ├── store.ts          # The one node:sqlite connection: WAL, versioning, repair
+    ├── store-schema.ts   # The store's DDL, as one reviewable unit
+    ├── store-migrations.ts # Ordered schema migrations, one transaction each
+    ├── store-rows.ts     # Zod-validated reads out of the store
+    ├── store-health.ts   # What can be said about the store without harvesting
     ├── paths.ts          # The one directory everything is written under
     ├── brain-paths.ts    # Every file a brain is made of
     ├── brain-storage.ts  # Manifest and profile persistence

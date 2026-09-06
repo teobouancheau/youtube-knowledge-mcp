@@ -26,7 +26,9 @@ export type YouTubeErrorCode =
   | 'YTDLP_FAILED'
   | 'FETCH_FAILED'
   | 'MALFORMED_RESPONSE'
-  | 'INVALID_INPUT';
+  | 'INVALID_INPUT'
+  | 'STORE_UNAVAILABLE'
+  | 'STORE_CORRUPT';
 
 export interface YouTubeErrorOptions {
   /** What the caller should try next. Shown to the model verbatim. */

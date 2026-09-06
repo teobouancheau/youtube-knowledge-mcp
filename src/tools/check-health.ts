@@ -1,6 +1,7 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { formatPreflightReport, runPreflight } from '../utils/preflight.js';
 import { runSessionPreflight } from '../utils/pot-preflight.js';
+import { readStoreHealth, storeFailsHealth } from '../utils/store-health.js';
 import { concurrencyState } from '../utils/ytdlp.js';
 import { describeYtDlpEnv, readYtDlpEnv } from '../utils/ytdlp-env.js';
 import { toolResult } from '../utils/format.js';
@@ -34,6 +35,26 @@ export const checkHealthOutputSchema = {
         'fail `ok`: a missing PO token provider does not predict a blocked player plane, ' +
         'and a health check that cries wolf gets ignored.'
     ),
+  store: z
+    .object({
+      enabled: z.boolean(),
+      exists: z.boolean(),
+      storeVersion: z.number().int().optional(),
+      sizeBytes: z.number().int(),
+      walBytes: z
+        .number()
+        .int()
+        .describe('A -wal file that never shrinks means a reader is pinning it'),
+      integrity: z.enum(['ok', 'failed', 'unchecked']),
+      channels: z.number().int(),
+      videos: z.number().int(),
+      comments: z.number().int(),
+      error: z.string().optional(),
+    })
+    .describe(
+      'The harvested store. A missing store does not fail `ok` — a fresh install has none. ' +
+        'A failed integrity check, or a version this build does not understand, does.'
+    ),
 };
 
 /**
@@ -43,9 +64,10 @@ export const checkHealthOutputSchema = {
  * like "YouTube is broken"; this turns that into one readable answer.
  */
 export async function checkHealthHandler(): Promise<CallToolResult> {
-  const [report, capabilities] = await Promise.all([
+  const [report, capabilities, store] = await Promise.all([
     runPreflight({ force: true }),
     runSessionPreflight(),
+    readStoreHealth(),
   ]);
   const { active, queued, limit } = concurrencyState();
   const session = readYtDlpEnv();
@@ -66,10 +88,13 @@ export async function checkHealthHandler(): Promise<CallToolResult> {
         ? `${String(capabilities.impersonateTargets.length)} available`
         : 'none (install curl_cffi into yt-dlp to enable --impersonate)'
     }`,
+    store.exists
+      ? `Store: ${String(store.videos)} videos, ${String(store.comments)} comments, integrity ${store.integrity}`
+      : 'Store: empty (nothing harvested yet)',
   ];
 
   return toolResult(lines.join('\n'), {
-    ok: report.ok,
+    ok: report.ok && !storeFailsHealth(store),
     ytDlp: report.ytDlp,
     ffmpeg: report.ffmpeg,
     concurrency: { active, queued, limit },
@@ -80,6 +105,18 @@ export async function checkHealthHandler(): Promise<CallToolResult> {
       jsRuntimes,
       impersonateTargets: capabilities.impersonateTargets,
       ...(capabilities.probeFailed === undefined ? {} : { probeFailed: capabilities.probeFailed }),
+    },
+    store: {
+      enabled: store.enabled,
+      exists: store.exists,
+      ...(store.storeVersion === undefined ? {} : { storeVersion: store.storeVersion }),
+      sizeBytes: store.sizeBytes,
+      walBytes: store.walBytes,
+      integrity: store.integrity,
+      channels: store.channels,
+      videos: store.videos,
+      comments: store.comments,
+      ...(store.error === undefined ? {} : { error: store.error }),
     },
   });
 }
