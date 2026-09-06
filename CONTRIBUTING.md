@@ -78,6 +78,8 @@ src/
     ├── comment-threads.ts # Flat comment rows rebuilt into threads
     ├── comment-store.ts  # Comments on disk, upserted and searchable
     ├── video-store.ts    # Reading the catalogued videos back
+    ├── ytdlp-pacer.ts    # Cooldowns, adaptive concurrency and the circuit breaker
+    ├── sleep.ts          # A cancellable pause, shared by the retry loop and pacer
     ├── paths.ts          # The one directory everything is written under
     ├── brain-paths.ts    # Every file a brain is made of
     ├── brain-storage.ts  # Manifest and profile persistence

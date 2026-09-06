@@ -68,6 +68,7 @@ export default defineConfig({
         // message — the record being unreadable at the instant it is written —
         // is a race no test can stage deterministically.
         'src/utils/harvest-*.ts': { lines: 100, functions: 100, branches: 85, statements: 97 },
+        'src/utils/ytdlp-pacer.ts': { lines: 100, functions: 100, branches: 94, statements: 98 },
         'src/utils/youtube*.ts': { lines: 100, functions: 97, branches: 93, statements: 98 },
         'src/utils/transcript-cache.ts': {
           lines: 100,

@@ -1,5 +1,6 @@
 import { envInt } from './env.js';
 import { YouTubeError } from './errors.js';
+import { effectiveConcurrency } from './ytdlp-pacer.js';
 
 /**
  * The concurrency limiter every yt-dlp spawn passes through.
@@ -8,8 +9,19 @@ import { YouTubeError } from './errors.js';
  * that honours cancellation so an abandoned request never holds a place in it.
  */
 
-/** A limit of 0 (or NaN) would queue every call forever, so the floor is 1. */
+/**
+ * The ceiling this server will never exceed.
+ *
+ * A limit of 0 (or NaN) would queue every call forever, so the floor is 1.
+ * Under throttling the pacer lowers the level below this; the setting is the
+ * maximum, not the level.
+ */
 const MAX_CONCURRENT = envInt('YOUTUBE_MCP_MAX_CONCURRENCY', 3, { min: 1, max: 32 });
+
+/** The level in force right now: the configured ceiling, or less if throttled. */
+function currentLimit(): number {
+  return Math.max(1, Math.min(MAX_CONCURRENT, effectiveConcurrency()));
+}
 
 interface Waiter {
   grant: () => void;
@@ -32,7 +44,7 @@ export async function acquireSlot(signal: AbortSignal | undefined): Promise<void
   // No already-aborted check here: `runYtDlp` makes it before every attempt and
   // nothing awaits in between, so a second one could never fire — an
   // unreachable guard that reads like a reachable one.
-  if (active < MAX_CONCURRENT) {
+  if (active < currentLimit()) {
     active++;
     return;
   }
@@ -76,6 +88,18 @@ export function releaseSlot(): void {
 }
 
 /** Test seam: lets the suite assert the limiter without spawning processes. */
-export function concurrencyState(): { active: number; queued: number; limit: number } {
-  return { active, queued: waiting.length, limit: MAX_CONCURRENT };
+export function concurrencyState(): {
+  active: number;
+  queued: number;
+  /** The level in force now, which throttling can lower. */
+  limit: number;
+  /** The configured maximum the level never exceeds. */
+  ceiling: number;
+} {
+  return {
+    active,
+    queued: waiting.length,
+    limit: currentLimit(),
+    ceiling: MAX_CONCURRENT,
+  };
 }

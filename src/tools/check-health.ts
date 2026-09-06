@@ -2,6 +2,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { formatPreflightReport, runPreflight } from '../utils/preflight.js';
 import { runSessionPreflight } from '../utils/pot-preflight.js';
 import { readStoreHealth, storeFailsHealth } from '../utils/store-health.js';
+import { pacerState } from '../utils/ytdlp-pacer.js';
 import { concurrencyState } from '../utils/ytdlp.js';
 import { describeYtDlpEnv, readYtDlpEnv } from '../utils/ytdlp-env.js';
 import { toolResult } from '../utils/format.js';
@@ -17,7 +18,10 @@ export const checkHealthOutputSchema = {
   concurrency: z.object({
     active: z.number().int(),
     queued: z.number().int(),
-    limit: z.number().int(),
+    limit: z.number().int().describe('The level in force now, which throttling can lower'),
+    ceiling: z.number().int().describe('The configured maximum the level never exceeds'),
+    cooldownMs: z.number().int().describe('How long new spawns are being held back'),
+    circuitOpen: z.boolean().describe('True when repeated refusals have paused requests entirely'),
   }),
   cookies: z
     .enum(['file', 'browser', 'none'])
@@ -69,7 +73,8 @@ export async function checkHealthHandler(): Promise<CallToolResult> {
     runSessionPreflight(),
     readStoreHealth(),
   ]);
-  const { active, queued, limit } = concurrencyState();
+  const { active, queued, limit, ceiling } = concurrencyState();
+  const pacer = pacerState();
   const session = readYtDlpEnv();
 
   const available = (entries: { name: string; available: boolean }[]): string[] =>
@@ -80,7 +85,12 @@ export async function checkHealthHandler(): Promise<CallToolResult> {
   const lines = [
     formatPreflightReport(report),
     '',
-    `yt-dlp concurrency: ${active}/${limit} active, ${queued} queued`,
+    `yt-dlp concurrency: ${String(active)}/${String(limit)} active, ${String(queued)} queued` +
+      (pacer.circuitOpen
+        ? ' — requests paused after repeated refusals'
+        : pacer.cooldownMs > 0
+          ? ` — cooling down for ${String(Math.ceil(pacer.cooldownMs / 1000))}s`
+          : ''),
     describeYtDlpEnv(session),
     `PO token providers: ${potProviders.length > 0 ? potProviders.join(', ') : 'none'}`,
     `Impersonate targets: ${
@@ -97,7 +107,14 @@ export async function checkHealthHandler(): Promise<CallToolResult> {
     ok: report.ok && !storeFailsHealth(store),
     ytDlp: report.ytDlp,
     ffmpeg: report.ffmpeg,
-    concurrency: { active, queued, limit },
+    concurrency: {
+      active,
+      queued,
+      limit,
+      ceiling,
+      cooldownMs: pacer.cooldownMs,
+      circuitOpen: pacer.circuitOpen,
+    },
     cookies: session.cookies,
     proxy: session.proxy,
     session: {
