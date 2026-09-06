@@ -394,7 +394,9 @@ describe('YouTube Utils', () => {
 describe('getVideoDetails', () => {
   it('reports zero duration and no chapters when yt-dlp omits them', async () => {
     const { execa } = await import('execa');
-    vi.mocked(execa).mockResolvedValue(execaSuccess(JSON.stringify({})));
+    // `id` is always present in a real -j payload and the stats cache is keyed
+    // on it, so a row without one is not a shape worth accepting.
+    vi.mocked(execa).mockResolvedValue(execaSuccess(JSON.stringify({ id: 'dQw4w9WgXcQ' })));
 
     const { getVideoDetails } = await import('../../src/utils/youtube.js');
 
@@ -740,6 +742,7 @@ describe('getChapters', () => {
     vi.mocked(execa).mockResolvedValue(
       execaSuccess(
         JSON.stringify({
+          id: 'dQw4w9WgXcQ',
           chapters: [{ title: 'Intro', start_time: 0, end_time: 62.5 }],
         })
       )
@@ -760,7 +763,7 @@ describe('getChapters', () => {
 
   it('returns nothing for a video without chapters', async () => {
     const { execa } = await import('execa');
-    vi.mocked(execa).mockResolvedValue(execaSuccess(JSON.stringify({})));
+    vi.mocked(execa).mockResolvedValue(execaSuccess(JSON.stringify({ id: 'dQw4w9WgXcQ' })));
 
     const { getChapters } = await import('../../src/utils/youtube.js');
 
