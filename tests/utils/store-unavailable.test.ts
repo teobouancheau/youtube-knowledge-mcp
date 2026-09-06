@@ -41,9 +41,18 @@ describe('a Node without node:sqlite', () => {
   it('leaves check_health working, because the binaries it diagnoses are unaffected', async () => {
     // The whole point of the dynamic import: the other 37 tools must not care
     // that this Node cannot open a store.
-    const structured = structuredOf(await checkHealthHandler());
+    //
+    // Deliberately does NOT assert on `ok`, which depends on whether yt-dlp is
+    // installed on the machine running the tests — an earlier version of this
+    // spec passed locally and failed in CI for exactly that reason. What
+    // matters here is that the handler still answers, and reports the store as
+    // unavailable rather than pretending it is empty.
+    const result = await checkHealthHandler();
+    const structured = structuredOf(result);
 
     expect(structured).toMatchObject({ store: { enabled: false } });
-    expect(structured.ok).not.toBe(false);
+    expect(structured).toHaveProperty('ytDlp');
+    expect(structured.store).toHaveProperty('error');
+    expect(result.isError).toBeUndefined();
   });
 });
