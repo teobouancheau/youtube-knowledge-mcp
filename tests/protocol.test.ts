@@ -66,6 +66,7 @@ describe('tool manifest', () => {
       'repair',
       'harvest',
       'query',
+      'prune',
     ]);
 
     for (const tool of stdioTools) {
@@ -127,6 +128,7 @@ describe('tool manifest', () => {
       'delete_brain',
       'delete_channel_thumbnails',
       'delete_library_item',
+      'prune_harvest',
       'repair_store',
       'save_brain_profile',
       'save_to_library',
