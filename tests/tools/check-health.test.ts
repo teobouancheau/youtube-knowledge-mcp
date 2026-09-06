@@ -7,6 +7,10 @@ vi.mock('../../src/utils/preflight.js', () => ({
 }));
 vi.mock('../../src/utils/ytdlp.js', () => ({ concurrencyState: vi.fn() }));
 vi.mock('../../src/utils/pot-preflight.js', () => ({ runSessionPreflight: vi.fn() }));
+vi.mock('../../src/utils/store-health.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/utils/store-health.js')>();
+  return { ...actual, readStoreHealth: vi.fn() };
+});
 vi.mock('../../src/utils/ytdlp-env.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/utils/ytdlp-env.js')>();
   return { ...actual, readYtDlpEnv: vi.fn(() => ({ args: [], cookies: 'none', proxy: false })) };
@@ -15,6 +19,7 @@ vi.mock('../../src/utils/ytdlp-env.js', async (importOriginal) => {
 import { runPreflight } from '../../src/utils/preflight.js';
 import { concurrencyState } from '../../src/utils/ytdlp.js';
 import { runSessionPreflight } from '../../src/utils/pot-preflight.js';
+import { readStoreHealth } from '../../src/utils/store-health.js';
 import { readYtDlpEnv } from '../../src/utils/ytdlp-env.js';
 import { checkHealthHandler } from '../../src/tools/check-health.js';
 
@@ -22,6 +27,19 @@ const REPORT = {
   ok: true,
   ytDlp: { name: 'yt-dlp', installed: true, version: '2026.07.04' },
   ffmpeg: { name: 'ffmpeg', installed: false },
+};
+
+const EMPTY_STORE = {
+  enabled: true,
+  path: '/tmp/knowledge.db',
+  exists: false,
+  sizeBytes: 0,
+  walBytes: 0,
+  integrity: 'ok' as const,
+  channels: 0,
+  videos: 0,
+  comments: 0,
+  receipts: { complete: 0, partial: 0, running: 0, failed: 0 },
 };
 
 beforeEach(() => {
@@ -33,6 +51,54 @@ beforeEach(() => {
     potProviders: [],
     jsRuntimes: [],
     impersonateTargets: [],
+  });
+  vi.mocked(readStoreHealth).mockResolvedValue(EMPTY_STORE);
+});
+
+describe('checkHealthHandler store', () => {
+  it('does not fail ok for a store that does not exist yet', async () => {
+    const result = await checkHealthHandler();
+
+    expect(textOf(result)).toContain('Store: empty');
+    expect(structuredOf(result)).toMatchObject({ ok: true, store: { exists: false } });
+  });
+
+  it('reports what the store holds', async () => {
+    vi.mocked(readStoreHealth).mockResolvedValue({
+      ...EMPTY_STORE,
+      exists: true,
+      sizeBytes: 4096,
+      storeVersion: 1,
+      videos: 12,
+      comments: 3400,
+    });
+
+    const result = await checkHealthHandler();
+    expect(textOf(result)).toContain('Store: 12 videos, 3400 comments, integrity ok');
+    expect(structuredOf(result)).toMatchObject({ ok: true, store: { videos: 12, comments: 3400 } });
+  });
+
+  it('fails ok when the store fails its integrity check', async () => {
+    vi.mocked(readStoreHealth).mockResolvedValue({
+      ...EMPTY_STORE,
+      exists: true,
+      integrity: 'failed',
+    });
+
+    expect(structuredOf(await checkHealthHandler())).toMatchObject({ ok: false });
+  });
+
+  it('surfaces a store that could not be opened without failing the binaries report', async () => {
+    vi.mocked(readStoreHealth).mockResolvedValue({
+      ...EMPTY_STORE,
+      enabled: false,
+      error: 'This Node build has no node:sqlite',
+    });
+
+    expect(structuredOf(await checkHealthHandler())).toMatchObject({
+      ok: true,
+      store: { enabled: false, error: 'This Node build has no node:sqlite' },
+    });
   });
 });
 
