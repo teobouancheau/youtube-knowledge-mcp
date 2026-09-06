@@ -43,7 +43,7 @@ const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
  * forever. This bounds the silence, not the work: a transfer still making
  * progress is never interrupted.
  */
-const SOCKET_TIMEOUT_S = '30';
+export const SOCKET_TIMEOUT_S = '30';
 
 export interface RunOptions {
   /** Milliseconds before the child is killed. 0 disables the timeout. */

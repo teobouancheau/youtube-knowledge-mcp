@@ -1,9 +1,10 @@
 import { formatYouTubeDate } from './format.js';
 import { classifyPlayability } from './errors.js';
 import { TIMEOUTS, parseYtDlpJson, runYtDlp } from './ytdlp.js';
-import { commentsRowSchema, videoDetailsRowSchema, videoInfoRowSchema } from './youtube-schemas.js';
+import { commentsRowSchema, videoInfoRowSchema } from './youtube-schemas.js';
 import { extractVideoId, formatDuration, watchUrl } from './youtube-url.js';
 import { toThreads, type ThreadedComments } from './comment-threads.js';
+import { readVideoStats } from './video-stats-cache.js';
 
 /** Everything read about one video: metadata, chapters and comments. */
 
@@ -116,28 +117,22 @@ export interface VideoDetails {
 }
 
 export async function getVideoDetails(urlOrId: string): Promise<VideoDetails> {
-  const videoId = extractVideoId(urlOrId);
-  const url = watchUrl(videoId);
-
-  const stdout = await runYtDlp(['-j', '--skip-download'], {
-    label: 'get_video_details',
-    target: url,
-  });
-  const data = parseYtDlpJson(stdout, videoDetailsRowSchema, 'video details');
+  // A projection of the one full read, not a second spawn. This used to run
+  // its own `-j` and discard everything but three fields, so a caller wanting
+  // a title and a chapter list paid for two extractions of the same video.
+  const { stats } = await readVideoStats(urlOrId);
 
   return {
-    ...(data.comment_count === null || data.comment_count === undefined
-      ? {}
-      : { commentCount: data.comment_count }),
-    uploadDate: formatYouTubeDate(data.upload_date ?? ''),
-    durationSeconds: typeof data.duration === 'number' ? data.duration : 0,
-    chapters: (data.chapters ?? []).map((ch) => ({
-      title: ch.title,
-      startTime: ch.start_time,
-      startTimeFormatted: formatDuration(Math.floor(ch.start_time)),
-      endTime: ch.end_time,
-      endTimeFormatted: formatDuration(Math.floor(ch.end_time)),
+    uploadDate: stats.uploadDate,
+    durationSeconds: stats.durationSeconds,
+    chapters: stats.chapters.map((chapter) => ({
+      title: chapter.title,
+      startTime: chapter.startTime,
+      startTimeFormatted: formatDuration(Math.floor(chapter.startTime)),
+      endTime: chapter.endTime,
+      endTimeFormatted: formatDuration(Math.floor(chapter.endTime)),
     })),
+    ...(stats.commentCount === undefined ? {} : { commentCount: stats.commentCount }),
   };
 }
 

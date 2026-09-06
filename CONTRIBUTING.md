@@ -80,6 +80,9 @@ src/
     ├── video-store.ts    # Reading the catalogued videos back
     ├── ytdlp-pacer.ts    # Cooldowns, adaptive concurrency and the circuit breaker
     ├── sleep.ts          # A cancellable pause, shared by the retry loop and pacer
+    ├── ytdlp-stream.ts   # Reading yt-dlp output a line at a time
+    ├── video-stats.ts    # One -j read, serving every caller that needs part of it
+    ├── video-stats-cache.ts # Keeping one video's stats on disk
     ├── paths.ts          # The one directory everything is written under
     ├── brain-paths.ts    # Every file a brain is made of
     ├── brain-storage.ts  # Manifest and profile persistence

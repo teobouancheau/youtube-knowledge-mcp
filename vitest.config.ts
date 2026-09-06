@@ -69,6 +69,10 @@ export default defineConfig({
         // is a race no test can stage deterministically.
         'src/utils/harvest-*.ts': { lines: 100, functions: 100, branches: 85, statements: 97 },
         'src/utils/ytdlp-pacer.ts': { lines: 100, functions: 100, branches: 94, statements: 98 },
+        // Short of 100 for one reason: the cache's write-failure fallback,
+        // where a full disk costs speed rather than correctness, cannot be
+        // staged deterministically.
+        'src/utils/video-stats*.ts': { lines: 97, functions: 92, branches: 95, statements: 97 },
         'src/utils/youtube*.ts': { lines: 100, functions: 97, branches: 93, statements: 98 },
         'src/utils/transcript-cache.ts': {
           lines: 100,

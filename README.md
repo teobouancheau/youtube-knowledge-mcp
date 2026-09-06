@@ -392,6 +392,7 @@ All optional.
 | `MCP_MAX_SESSIONS`                 | `1000`      | Reject new sessions past this many                                                                                                                           |
 | `YOUTUBE_MCP_MAX_CONCURRENCY`      | `3`         | Concurrent yt-dlp processes                                                                                                                                  |
 | `YOUTUBE_MCP_TRANSCRIPT_TTL_MS`    | 30 days     | Transcript cache lifetime                                                                                                                                    |
+| `YOUTUBE_MCP_STATS_TTL_MS`         | 1 day       | Per-video stats cache lifetime                                                                                                                               |
 | `YOUTUBE_MCP_COOKIES_FROM_BROWSER` | unset       | Browser whose cookies yt-dlp should read: `brave`, `chrome`, `chromium`, `edge`, `firefox`, `opera`, `safari`, `vivaldi` or `whale`. See Signed-in content   |
 | `YOUTUBE_MCP_COOKIES_FILE`         | unset       | A Netscape-format cookies file inside your home directory, as an alternative to a browser                                                                    |
 | `YOUTUBE_MCP_PROXY`                | unset       | An `http`, `https`, `socks4` or `socks5` proxy URL for yt-dlp                                                                                                |
