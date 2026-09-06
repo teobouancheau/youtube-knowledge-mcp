@@ -39,6 +39,41 @@ export const paginationShape = {
   nextOffset: z.number().int().optional().describe('Offset to pass to retrieve the next page'),
 };
 
+/**
+ * Pagination for a source that may not know its own size.
+ *
+ * `paginationShape` requires a total, which is right for a local collection
+ * and a lie for a live YouTube listing: `playlist_count` is populated for
+ * playlists and routinely absent for channel tabs. An absent `total` here
+ * means "unknown", never zero and never "this is all of them".
+ */
+export const cursorPageShape = {
+  count: z.number().int().describe('Items in this response'),
+  hasMore: z.boolean().describe('Whether more items exist beyond this page'),
+  nextCursor: z
+    .string()
+    .optional()
+    .describe('Opaque; pass back as `cursor`. Absent if and only if hasMore is false.'),
+  total: z
+    .number()
+    .int()
+    .optional()
+    .describe(
+      'Total available — ONLY when the source states one. ABSENT MEANS UNKNOWN. Never treat ' +
+        'count as the total, and never read an absent total as zero or as "this is everything".'
+    ),
+  totalSource: z
+    .enum(['youtube:playlist_count', 'local-store', 'source-exhausted'])
+    .optional()
+    .describe('Where total came from. Absent if and only if total is absent.'),
+  driftDetected: z
+    .boolean()
+    .describe(
+      'True when the listing changed between pages — a new upload shifts every index. The page ' +
+        'is still returned; the duplicate at the seam has been dropped.'
+    ),
+};
+
 export const videoSummarySchema = z.object({
   id: z.string(),
   title: z.string(),

@@ -231,19 +231,19 @@ available for this video. Call get_transcript again with one of: fr, es, de.`
 
 ### Discovery — remote + local
 
-| Tool                | Key parameters                         | Returns                                                                                   |
-| ------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `search_videos`     | `query`, `limit`                       | Matching videos with durations, channels and view counts                                  |
-| `search_channels`   | `query`, `limit`                       | Matching channels with subscriber counts                                                  |
-| `fetch_videos`      | `url`, `limit`                         | Videos in a playlist or channel, with thumbnail URLs                                      |
-| `get_video_info`    | `video`                                | Title, channel, duration, views, likes, description, tags                                 |
-| `get_channel_info`  | `channel`                              | Name, handle, subscriber count, description, avatar and banner                            |
-| `get_playlist_info` | `url`                                  | Title, channel, video count, last updated                                                 |
-| `get_chapters`      | `video`                                | Chapter titles with start/end times and deep links                                        |
-| `get_comments`      | `video`, `limit`                       | Top-level comments by popularity                                                          |
-| `list_formats`      | `video`                                | Available formats grouped by video+audio, video-only, audio-only                          |
-| `get_thumbnail`     | `video`, `channel`, `image`, `quality` | A video thumbnail, channel avatar or banner as an image, with its real size               |
-| `check_health`      | —                                      | yt-dlp and ffmpeg status, versions, staleness warnings, and which session options are set |
+| Tool                | Key parameters                         | Returns                                                                                           |
+| ------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `search_videos`     | `query`, `limit`                       | Matching videos with durations, channels and view counts                                          |
+| `search_channels`   | `query`, `limit`                       | Matching channels with subscriber counts                                                          |
+| `fetch_videos`      | `url`, `limit`, `cursor`               | One page of a playlist or channel, with a cursor. `total` is present only when YouTube states one |
+| `get_video_info`    | `video`                                | Title, channel, duration, views, likes, description, tags                                         |
+| `get_channel_info`  | `channel`                              | Name, handle, subscriber count, description, avatar and banner                                    |
+| `get_playlist_info` | `url`                                  | Title, channel, video count, last updated                                                         |
+| `get_chapters`      | `video`                                | Chapter titles with start/end times and deep links                                                |
+| `get_comments`      | `video`, `limit`                       | Top-level comments by popularity                                                                  |
+| `list_formats`      | `video`                                | Available formats grouped by video+audio, video-only, audio-only                                  |
+| `get_thumbnail`     | `video`, `channel`, `image`, `quality` | A video thumbnail, channel avatar or banner as an image, with its real size                       |
+| `check_health`      | —                                      | yt-dlp and ffmpeg status, versions, staleness warnings, and which session options are set         |
 
 ### Transcripts — remote + local
 

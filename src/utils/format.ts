@@ -49,7 +49,24 @@ export interface PageInfo {
   nextOffset?: number;
 }
 
-export function pageInfo(total: number, count: number, offset = 0): PageInfo {
+/**
+ * Takes an object, not three adjacent numbers.
+ *
+ * The bug this replaces was not in the arithmetic: it was five call sites that
+ * passed `count` where `total` belonged, so `hasMore` computed `n < n` and a
+ * caller with 20 of a channel's 5,000 videos was told it had all of them.
+ * Positional arguments of the same type made that invisible; an object makes
+ * it impossible, and changing the signature forced every call site to be
+ * revisited, which was the point.
+ */
+export interface PageInput {
+  /** Items available in total. Never `count` — that is the bug this shape prevents. */
+  total: number;
+  count: number;
+  offset?: number;
+}
+
+export function pageInfo({ total, count, offset = 0 }: PageInput): PageInfo {
   const hasMore = offset + count < total;
   return {
     total,

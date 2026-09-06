@@ -74,6 +74,7 @@ src/
     ├── harvest-lock.ts   # Exclusive access to one harvest target
     ├── coverage.ts       # The only constructor for a completeness receipt
     ├── coverage-text.ts  # The receipt as the sentence a model reads
+    ├── listing-cursor.ts # The opaque cursor fetch_videos hands back
     ├── paths.ts          # The one directory everything is written under
     ├── brain-paths.ts    # Every file a brain is made of
     ├── brain-storage.ts  # Manifest and profile persistence

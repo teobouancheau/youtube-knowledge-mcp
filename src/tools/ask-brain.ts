@@ -64,7 +64,7 @@ export async function askBrainHandler({
     name,
     query,
     passages,
-    ...pageInfo(total, passages.length, offset),
+    ...pageInfo({ total, count: passages.length, offset }),
   });
 }
 

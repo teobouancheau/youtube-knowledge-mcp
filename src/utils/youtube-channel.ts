@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { formatYouTubeDate } from './format.js';
 import { TIMEOUTS, parseYtDlpJson, parseYtDlpJsonLines, runYtDlp } from './ytdlp.js';
 import {
@@ -11,6 +12,8 @@ import { channelMetaSchema, playlistMetaSchema } from './youtube-schemas.js';
 import { channelUrlFor, resolveListTarget } from './youtube-url.js';
 
 /** Listings and metadata for channels and playlists. */
+
+const playlistCountSchema = z.object({ playlist_count: z.number().nullish() });
 
 export interface VideoListItem {
   id: string;
@@ -53,15 +56,23 @@ export interface PlaylistInfo {
   description: string;
 }
 
-export async function listVideos(urlOrChannel: string, limit = 20): Promise<VideoListItem[]> {
+export async function listVideos(
+  urlOrChannel: string,
+  limit = 20,
+  start = 1
+): Promise<VideoListItem[]> {
   const stdout = await runYtDlp(
     [
       '--skip-download',
       '--flat-playlist',
+      '--lazy-playlist',
       '--print',
       FLAT_PRINT_TEMPLATE,
-      '--playlist-end',
-      limit.toString(),
+      // `-I start:end` rather than --playlist-end so a later page can begin
+      // where the previous one stopped. YouTube still walks from the top to
+      // reach `start`, which is why the caller caches instead of paging deep.
+      '--playlist-items',
+      `${String(start)}:${String(start + limit - 1)}`,
     ],
     {
       label: 'fetch_videos',
@@ -71,6 +82,32 @@ export async function listVideos(urlOrChannel: string, limit = 20): Promise<Vide
   );
 
   return parseYtDlpJsonLines(stdout, flatEntrySchema).map(toVideoListItem);
+}
+
+/**
+ * How many videos a listing says it has, when it says anything.
+ *
+ * `playlist_count` is populated for playlists and routinely null for channel
+ * tabs, so this returns undefined rather than a guess. One extra cheap call —
+ * the same `--playlist-items 0` metadata read getPlaylistInfo already does.
+ */
+export async function playlistTotal(urlOrChannel: string): Promise<number | undefined> {
+  try {
+    const stdout = await runYtDlp(
+      ['--dump-single-json', '--flat-playlist', '--playlist-items', '0'],
+      {
+        label: 'fetch_videos:count',
+        timeoutMs: TIMEOUTS.metadata,
+        target: resolveListTarget(urlOrChannel),
+      }
+    );
+    const parsed = parseYtDlpJson(stdout, playlistCountSchema, 'a playlist count');
+    return parsed.playlist_count ?? undefined;
+  } catch {
+    // A total is a nicety; failing to get one must not fail the page. Its
+    // absence is already meaningful — "unknown", which is the truth here.
+    return undefined;
+  }
 }
 
 export async function getPlaylistInfo(playlistUrl: string): Promise<PlaylistInfo> {

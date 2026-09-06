@@ -55,6 +55,6 @@ export async function searchVideosHandler({
       channel: v.channel,
       viewCount: v.viewCount,
     })),
-    ...pageInfo(results.length, results.length),
+    ...pageInfo({ total: results.length, count: results.length }),
   });
 }

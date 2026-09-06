@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { textOf } from '../helpers.js';
+import { textOf, structuredOf } from '../helpers.js';
 
 /**
  * The handler layer: rendering and structured output over mocked data access.
@@ -8,6 +8,11 @@ import { textOf } from '../helpers.js';
  * structuredContent on every path — including the empty and partial-failure
  * paths that are easy to miss.
  */
+
+vi.mock('../../src/utils/youtube-channel.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/utils/youtube-channel.js')>();
+  return { ...actual, playlistTotal: vi.fn() };
+});
 
 vi.mock('../../src/utils/youtube.js', () => ({
   listVideos: vi.fn(),
@@ -25,6 +30,7 @@ vi.mock('../../src/utils/storage.js', () => ({
 }));
 
 import { getChapters, getTranscript, getVideoInfo, listVideos } from '../../src/utils/youtube.js';
+import { playlistTotal } from '../../src/utils/youtube-channel.js';
 import {
   deleteLibraryItem,
   getLibraryItem,
@@ -66,26 +72,105 @@ beforeEach(() => {
 });
 
 describe('fetch_videos', () => {
-  it('renders the listing and reports pagination', async () => {
+  it('reports the real total when YouTube states one', async () => {
     vi.mocked(listVideos).mockResolvedValue(VIDEO_LIST);
+    vi.mocked(playlistTotal).mockResolvedValue(5_000);
 
     const result = await fetchVideosHandler({ url: 'https://youtube.com/@x', limit: 20 });
 
-    expect(textOf(result)).toContain('First video');
+    // The bug this replaces: a page of 1 from a 5,000-video channel used to
+    // report total 1 and hasMore false, telling the caller it had everything.
     expect(result.structuredContent).toMatchObject({
       source: 'https://youtube.com/@x',
-      total: 1,
+      total: 5_000,
+      totalSource: 'youtube:playlist_count',
       count: 1,
-      hasMore: false,
+      hasMore: true,
     });
+    expect(textOf(result)).toContain('First video');
+  });
+
+  it('omits total rather than inventing one when YouTube states none', async () => {
+    vi.mocked(listVideos).mockResolvedValue(VIDEO_LIST);
+    vi.mocked(playlistTotal).mockResolvedValue(undefined);
+
+    const structured = structuredOf(
+      await fetchVideosHandler({ url: 'https://youtube.com/@x', limit: 20 })
+    );
+
+    expect(structured.total).toBeUndefined();
+    expect(structured.totalSource).toBeUndefined();
+    // A short page means the end; a full page means unknown, not "all of them".
+    expect(structured.hasMore).toBe(false);
+  });
+
+  it('says outright that the remaining count is unknown on a full page', async () => {
+    vi.mocked(listVideos).mockResolvedValue(VIDEO_LIST);
+    vi.mocked(playlistTotal).mockResolvedValue(undefined);
+
+    const result = await fetchVideosHandler({ url: 'https://youtube.com/@x', limit: 1 });
+
+    expect(structuredOf(result)).toMatchObject({ hasMore: true });
+    expect(textOf(result)).toContain('states no total');
+  });
+
+  it('issues a cursor exactly when more pages exist', async () => {
+    vi.mocked(listVideos).mockResolvedValue(VIDEO_LIST);
+    vi.mocked(playlistTotal).mockResolvedValue(5_000);
+
+    const first = structuredOf(
+      await fetchVideosHandler({ url: 'https://youtube.com/@x', limit: 1 })
+    );
+    expect(typeof first.nextCursor).toBe('string');
+
+    vi.mocked(playlistTotal).mockResolvedValue(1);
+    const last = structuredOf(
+      await fetchVideosHandler({ url: 'https://youtube.com/@x', limit: 1 })
+    );
+    expect(last.hasMore).toBe(false);
+    expect(last.nextCursor).toBeUndefined();
+  });
+
+  it('continues from a cursor and drops the duplicate when the listing shifts', async () => {
+    vi.mocked(listVideos).mockResolvedValue(VIDEO_LIST);
+    vi.mocked(playlistTotal).mockResolvedValue(5_000);
+
+    const first = structuredOf(
+      await fetchVideosHandler({ url: 'https://youtube.com/@x', limit: 1 })
+    );
+    const cursor = first.nextCursor;
+    expect(typeof cursor).toBe('string');
+
+    // The same video comes back at the top of page two: an upload landed
+    // between the two calls and shifted every index by one.
+    const second = structuredOf(
+      await fetchVideosHandler({
+        url: 'https://youtube.com/@x',
+        limit: 1,
+        ...(typeof cursor === 'string' ? { cursor } : {}),
+      })
+    );
+
+    expect(second.driftDetected).toBe(true);
+    expect(second.videos).toEqual([]);
+  });
+
+  it('rejects a cursor it did not issue', async () => {
+    await expect(
+      fetchVideosHandler({ url: 'https://youtube.com/@x', limit: 20, cursor: 'not-a-cursor' })
+    ).rejects.toThrow(/cursor/);
   });
 
   it('still returns structured output when nothing is found', async () => {
     vi.mocked(listVideos).mockResolvedValue([]);
+    vi.mocked(playlistTotal).mockResolvedValue(undefined);
 
-    const result = await fetchVideosHandler({ url: 'https://youtube.com/@x', limit: 20 });
+    const structured = structuredOf(
+      await fetchVideosHandler({ url: 'https://youtube.com/@x', limit: 20 })
+    );
 
-    expect(result.structuredContent).toMatchObject({ videos: [], total: 0 });
+    expect(structured).toMatchObject({ videos: [], count: 0, hasMore: false });
+    expect(structured.total).toBeUndefined();
   });
 });
 
