@@ -9,6 +9,16 @@ import {
   getCoverageOutputSchema,
   getCoverageHandler,
 } from '../tools/get-coverage.js';
+import {
+  harvestCommentsSchema,
+  harvestCommentsOutputSchema,
+  harvestCommentsHandler,
+} from '../tools/harvest-comments.js';
+import {
+  queryCommentsSchema,
+  queryCommentsOutputSchema,
+  queryCommentsHandler,
+} from '../tools/query-comments.js';
 
 /**
  * Exhaustive extraction and the receipts that keep it honest.
@@ -51,5 +61,37 @@ export const harvestTools: ToolDefinition[] = [
       openWorldHint: false,
     },
     handler: getCoverageHandler,
+  }),
+  defineTool({
+    name: 'harvest_comments',
+    mode: 'stdio',
+    title: 'Harvest Video Comments',
+    description:
+      "Extract a video's comments and replies into the local store, with a completeness receipt. There is no comment cursor — an interrupted run keeps nothing for that video, so to get more, run it again with a larger maxComments. Re-running upserts on the comment id, so it costs requests and never data.",
+    inputSchema: harvestCommentsSchema,
+    outputSchema: harvestCommentsOutputSchema,
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    handler: harvestCommentsHandler,
+  }),
+  defineTool({
+    name: 'query_comments',
+    mode: 'stdio',
+    title: 'Query Harvested Comments',
+    description:
+      'Search comments already in the local store, with full-text matching, real pagination and thread lookup. Never contacts YouTube. The total counts rows in the store, not the number of comments the videos have — the coverage receipts alongside it say which videos are only partly harvested.',
+    inputSchema: queryCommentsSchema,
+    outputSchema: queryCommentsOutputSchema,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    handler: queryCommentsHandler,
   }),
 ];

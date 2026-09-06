@@ -496,6 +496,25 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "harvest_comments",
+    "parameters": [
+      "maxComments",
+      "maxRepliesPerThread",
+      "sort",
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
     },
@@ -551,6 +570,29 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     "name": "list_library",
     "parameters": [
       "tag",
+    ],
+    "required": [],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "query_comments",
+    "parameters": [
+      "author",
+      "channel",
+      "limit",
+      "match",
+      "minLikes",
+      "offset",
+      "order",
+      "threadOf",
+      "topLevelOnly",
+      "video",
     ],
     "required": [],
   },
