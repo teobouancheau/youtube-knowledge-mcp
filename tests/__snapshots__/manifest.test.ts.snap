@@ -354,6 +354,24 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
       "readOnlyHint": true,
     },
     "hasOutputSchema": true,
+    "name": "get_coverage",
+    "parameters": [
+      "incompleteOnly",
+      "limit",
+      "offset",
+      "scope",
+      "verify",
+    ],
+    "required": [],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
     "name": "get_library_item",
     "parameters": [
       "contentType",
@@ -452,6 +470,23 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     ],
     "required": [
       "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "harvest_channel",
+    "parameters": [
+      "channel",
+      "maxVideos",
+    ],
+    "required": [
+      "channel",
     ],
   },
   {
