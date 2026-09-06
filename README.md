@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/youtube-knowledge-mcp.svg)](https://www.npmjs.com/package/youtube-knowledge-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js](https://img.shields.io/badge/Node.js-22%2B-green.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-22.13%2B-green.svg)](https://nodejs.org/)
 [![GitHub stars](https://img.shields.io/github/stars/teobouancheau/youtube-knowledge-mcp?style=social)](https://github.com/teobouancheau/youtube-knowledge-mcp)
 
 A Model Context Protocol (MCP) server that gives AI assistants the ability to search, analyze, and extract knowledge from YouTube videos. Works with Claude Desktop, Claude Code, Claude.ai, Cursor and any MCP-compatible client.
@@ -40,6 +40,19 @@ Supports both **local** (stdio) and **remote** (Streamable HTTP) transports.
 - **Read them back**, and **search across all of them** with full-text ranking
 - **Tag, retag and delete**
 
+**Extract exhaustively, and prove it** (local mode)
+
+- **Catalogue a whole channel** across every tab — videos, shorts, streams,
+  releases, podcasts — into a local SQLite store, resumably
+- **Harvest comments with their replies**, every field YouTube returns, and
+  search them locally with full-text ranking and real pagination
+- **A completeness receipt on every extraction**: `complete` is true only when
+  the server can _prove_ it holds everything in scope, so a partial harvest can
+  never be mistaken for a full history
+- **Ask what you actually have** with `get_coverage`, which never touches the
+  network — cheap enough to call before every claim
+- **Remove what you hold**, including one author's comments everywhere
+
 **Build a brain for a channel** (local mode)
 
 - **Read a whole channel** into a searchable corpus of timestamped passages, in
@@ -60,7 +73,8 @@ Supports both **local** (stdio) and **remote** (Streamable HTTP) transports.
 - WebVTT parsed by the W3C reference implementation, not a hand-written matcher
 - Typed, actionable errors — "no captions in en, try: fr, es, de" rather than a
   wall of yt-dlp stderr
-- Timeouts, retry with backoff, and a concurrency limit on every yt-dlp call
+- Timeouts, adaptive backoff and a concurrency limit on every yt-dlp call, with
+  cooldowns and a circuit breaker so a long harvest survives being throttled
 - `check_health` diagnoses missing or outdated yt-dlp and ffmpeg
 - Bearer auth, a loopback default bind, an allowlist on every URL and image host, and typed error codes on every failure
 - Structured output on every tool, plus MCP resources, prompts and completions
@@ -68,7 +82,7 @@ Supports both **local** (stdio) and **remote** (Streamable HTTP) transports.
 
 ## Prerequisites
 
-- Node.js 22+
+- Node.js 22.13+ — the version where `node:sqlite`, which the harvest store uses, is available without a flag
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp#installation) — required by every tool.
   `brew install yt-dlp` (macOS) or `pip install -U yt-dlp`
 - [ffmpeg](https://ffmpeg.org/) — required for downloads, clip extraction and frame
@@ -231,19 +245,19 @@ available for this video. Call get_transcript again with one of: fr, es, de.`
 
 ### Discovery — remote + local
 
-| Tool                | Key parameters                         | Returns                                                                                           |
-| ------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `search_videos`     | `query`, `limit`                       | Matching videos with durations, channels and view counts                                          |
-| `search_channels`   | `query`, `limit`                       | Matching channels with subscriber counts                                                          |
-| `fetch_videos`      | `url`, `limit`, `cursor`               | One page of a playlist or channel, with a cursor. `total` is present only when YouTube states one |
-| `get_video_info`    | `video`                                | Title, channel, duration, views, likes, description, tags                                         |
-| `get_channel_info`  | `channel`                              | Name, handle, subscriber count, description, avatar and banner                                    |
-| `get_playlist_info` | `url`                                  | Title, channel, video count, last updated                                                         |
-| `get_chapters`      | `video`                                | Chapter titles with start/end times and deep links                                                |
-| `get_comments`      | `video`, `limit`                       | Top-level comments by popularity                                                                  |
-| `list_formats`      | `video`                                | Available formats grouped by video+audio, video-only, audio-only                                  |
-| `get_thumbnail`     | `video`, `channel`, `image`, `quality` | A video thumbnail, channel avatar or banner as an image, with its real size                       |
-| `check_health`      | —                                      | yt-dlp and ffmpeg status, versions, staleness warnings, and which session options are set         |
+| Tool                | Key parameters                             | Returns                                                                                           |
+| ------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `search_videos`     | `query`, `limit`                           | Matching videos with durations, channels and view counts                                          |
+| `search_channels`   | `query`, `limit`                           | Matching channels with subscriber counts                                                          |
+| `fetch_videos`      | `url`, `limit`, `cursor`                   | One page of a playlist or channel, with a cursor. `total` is present only when YouTube states one |
+| `get_video_info`    | `video`                                    | Title, channel, duration, views, likes, description, tags                                         |
+| `get_channel_info`  | `channel`                                  | Name, handle, subscriber count, description, avatar and banner                                    |
+| `get_playlist_info` | `url`                                      | Title, channel, video count, last updated                                                         |
+| `get_chapters`      | `video`                                    | Chapter titles with start/end times and deep links                                                |
+| `get_comments`      | `video`, `limit`, `includeReplies`, `sort` | Comments with replies and a completeness receipt saying how many of the video's comments this is  |
+| `list_formats`      | `video`                                    | Available formats grouped by video+audio, video-only, audio-only                                  |
+| `get_thumbnail`     | `video`, `channel`, `image`, `quality`     | A video thumbnail, channel avatar or banner as an image, with its real size                       |
+| `check_health`      | —                                          | yt-dlp and ffmpeg status, versions, staleness warnings, and which session options are set         |
 
 ### Transcripts — remote + local
 
@@ -285,6 +299,35 @@ keyframe-aligned cut. All of these require ffmpeg.
 | `update_library_tags`   | `videoId`, `add`, `remove`, `replace`                           | The updated tags                    |
 | `delete_library_item`   | `videoId`, `contentType`                                        | What was deleted                    |
 | `rebuild_library_index` | —                                                               | Number of notes reindexed           |
+
+### Exhaustive harvest — local only
+
+Extraction that stores what it reads, and proves what it holds. Every tool here
+returns a **completeness receipt**: `complete` is true only when the server can
+prove it has everything in scope, and a consumer must not describe the data as a
+full history while it is false.
+
+| Tool               | Key parameters                                                         | Returns                                                     |
+| ------------------ | ---------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `harvest_channel`  | `channel`, `maxVideos`                                                 | Every video across all tabs, catalogued, with a receipt     |
+| `harvest_comments` | `video`, `maxComments`, `sort`, `maxRepliesPerThread`                  | Comments and replies stored locally, with a receipt         |
+| `get_coverage`     | `scope`, `incompleteOnly`, `verify`, `limit`, `offset`                 | What the server can prove it holds, and what it cannot      |
+| `query_comments`   | `video`, `channel`, `match`, `author`, `threadOf`, `order`, `limit`    | Full-text search over stored comments, with real pagination |
+| `query_videos`     | `channel`, `match`, `since`, `until`, `withComments`, `order`, `limit` | The catalogued videos, filtered and sorted                  |
+| `prune_harvest`    | `channel`, `video`, `author`, `scope`, `confirm`, `vacuum`             | What was removed from the store                             |
+| `repair_store`     | `confirm`                                                              | Moves a damaged store aside and starts a fresh one          |
+
+`get_coverage` never contacts YouTube, so it is cheap enough to call before
+making any claim about the data. Check `anyIncomplete` first.
+
+There is no cursor for comments: YouTube exposes none for a live read, so
+`harvest_comments` cannot page. To get more, run it again with a larger
+`maxComments` — rows are upserted on the comment id, so a re-run costs requests
+and never data.
+
+`prune_harvest` exists because the store holds personal data at scale: display
+names, channel ids and free-text opinions from people who never used this tool.
+The `author` filter is the per-person erasure path.
 
 ### Channel brains — local only
 
@@ -550,7 +593,7 @@ npm run start:http # Run server (HTTP)
 npm run validate   # Typecheck + lint + format check + test
 ```
 
-CI runs the same gate on Node 22 and 24 for every push and pull request,
+CI runs the same gate on Node 22.22, 22 and 24 for every push and pull request,
 then boots the built server as a real MCP client to verify the manifest.
 
 ## Contributing

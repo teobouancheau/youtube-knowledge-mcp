@@ -5,6 +5,83 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-09-07
+
+### Breaking
+
+`fetch_videos` replaces `offset`/`nextOffset` with `cursor`/`nextCursor`, and
+`total` is now optional.
+
+The old output was an overclaim, not a rough edge. `pageInfo` was called as
+`pageInfo(videos.length, videos.length)`, so `total` equalled `count`, `hasMore`
+computed `n < n` and was structurally always false, and `nextOffset` was never
+emitted. A caller asking for 20 videos of a 5,000-video channel was told it had
+all 5,000 and there was no more — and had no way to ask for the rest.
+
+`total` is now present only when YouTube states one, read from `playlist_count`.
+It is populated for playlists and routinely absent for channel tabs, so its
+absence means **unknown** — never zero, and never "this is everything".
+
+Migration: pass the `nextCursor` from the previous response as `cursor`; treat an
+absent `total` as unknown rather than as a count.
+
+`pageInfo` also takes an object now. The bug was never the arithmetic, it was
+five call sites passing `count` where `total` belonged, which two adjacent
+same-typed numbers made invisible.
+
+### Added
+
+**Completeness receipts.** Every extraction carries one. `complete` is derived,
+never set by a caller, and guarded by invariants asserted in code. `expected` is
+what the _source_ said and is never derived from `have` — there is no code path
+that accepts a bare number.
+
+Completeness needs proof, and exhaustion alone is not proof: measured against
+yt-dlp 2026.08.19, a run capped at 40 parent comments returned a non-null
+`comment_count` of 58, because `itertools.islice` ends iteration at a cap
+exactly as a natural end does. A binding cap therefore disqualifies completeness
+even when the source reports it finished.
+
+**Seven tools** (37 → 44): `harvest_channel`, `harvest_comments`,
+`get_coverage`, `query_comments`, `query_videos`, `prune_harvest`,
+`repair_store`.
+
+**A local store** on `node:sqlite` with WAL and FTS5, adding no dependencies.
+Rows and the receipt describing them commit together, so a receipt can never
+claim data the store does not hold.
+
+**Adaptive throttle handling**: a shared cooldown, an AIMD concurrency ceiling
+and a circuit breaker. `YOUTUBE_MCP_MAX_CONCURRENCY` becomes the ceiling rather
+than the level. `BOT_CHECK` no longer retries — measured from a gated address,
+eight player clients, a 15-minute cooldown, a PO token provider and curl_cffi
+TLS impersonation all returned the same answer.
+
+**Session diagnostics** in `check_health`: PO token providers, JS runtimes,
+usable `--impersonate` targets, and the pacer's state.
+
+### Fixed
+
+`get_comments` returned only top-level comments while yt-dlp had already
+fetched the replies in the same response — the handler filtered them out
+afterwards. It also kept 5 of the 14 fields available. Replies, threads and
+every field are now returned, and orphaned replies whose parent a cap cut away
+are counted rather than dropped.
+
+The comment total now comes from a separate metadata read. With
+`--write-comments`, yt-dlp reports `comment_count` as the number it extracted —
+300 against a video with 2.4 million — so it cannot be the denominator.
+
+`getVideoInfo` and `getVideoDetails` each ran their own extraction of the same
+video. There is now one read, cached for a day and shared by every caller.
+
+`toVideoStats` discarded the result of `classifyPlayability`, which returns its
+error rather than throwing, so a private video came back as ordinary stats.
+
+### Changed
+
+Node floor is 22.13.0, where `node:sqlite` is unflagged. The CI matrix tests
+22.22 as its lowest version, because `lint-staged` requires it to install.
+
 ## [2.2.0] - 2026-09-05
 
 ### Security

@@ -119,6 +119,7 @@ src/
     ├── youtube.ts        # Barrel over the modules below
     ├── youtube-url.ts    # Video ids and watch URLs
     ├── youtube-video.ts  # Video metadata, chapters and comments
+    ├── youtube-schemas.ts # The shapes yt-dlp's own JSON is parsed through
     ├── youtube-channel.ts # Channel and playlist listings and metadata
     ├── youtube-search.ts # Keyword search for videos and channels
     └── youtube-download.ts # Format listing and whole-video downloads
@@ -226,7 +227,7 @@ Explain **why** in the body, not just what — the diff already says what.
 
 1. Fork and branch from `main`.
 2. Make the change, with tests.
-3. Run `npm run validate` — CI runs the same gate on Node 22 and 24.
+3. Run `npm run validate` — CI runs the same gate on Node 22.22, 22 and 24.
 4. Open a PR describing the problem and how you addressed it.
 
 ## Reporting bugs
