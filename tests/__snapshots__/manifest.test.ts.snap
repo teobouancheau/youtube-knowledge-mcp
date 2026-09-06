@@ -273,6 +273,7 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     "hasOutputSchema": true,
     "name": "fetch_videos",
     "parameters": [
+      "cursor",
       "limit",
       "url",
     ],
@@ -339,12 +340,32 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     "hasOutputSchema": true,
     "name": "get_comments",
     "parameters": [
+      "includeReplies",
       "limit",
+      "sort",
       "video",
     ],
     "required": [
       "video",
     ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "get_coverage",
+    "parameters": [
+      "incompleteOnly",
+      "limit",
+      "offset",
+      "scope",
+      "verify",
+    ],
+    "required": [],
   },
   {
     "annotations": {
@@ -458,6 +479,42 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "harvest_channel",
+    "parameters": [
+      "channel",
+      "maxVideos",
+    ],
+    "required": [
+      "channel",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "harvest_comments",
+    "parameters": [
+      "maxComments",
+      "maxRepliesPerThread",
+      "sort",
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
     },
@@ -518,6 +575,73 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
   },
   {
     "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "prune_harvest",
+    "parameters": [
+      "author",
+      "channel",
+      "confirm",
+      "scope",
+      "vacuum",
+      "video",
+    ],
+    "required": [
+      "confirm",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "query_comments",
+    "parameters": [
+      "author",
+      "channel",
+      "limit",
+      "match",
+      "minLikes",
+      "offset",
+      "order",
+      "threadOf",
+      "topLevelOnly",
+      "video",
+    ],
+    "required": [],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "query_videos",
+    "parameters": [
+      "channel",
+      "detailedOnly",
+      "limit",
+      "match",
+      "minDurationSeconds",
+      "offset",
+      "order",
+      "since",
+      "until",
+      "withComments",
+    ],
+    "required": [],
+  },
+  {
+    "annotations": {
       "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": false,
@@ -527,6 +651,22 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     "name": "rebuild_library_index",
     "parameters": [],
     "required": [],
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "repair_store",
+    "parameters": [
+      "confirm",
+    ],
+    "required": [
+      "confirm",
+    ],
   },
   {
     "annotations": {
@@ -709,6 +849,7 @@ exports[`tool manifest snapshot > matches the recorded remote surface 1`] = `
     "hasOutputSchema": true,
     "name": "fetch_videos",
     "parameters": [
+      "cursor",
       "limit",
       "url",
     ],
@@ -758,7 +899,9 @@ exports[`tool manifest snapshot > matches the recorded remote surface 1`] = `
     "hasOutputSchema": true,
     "name": "get_comments",
     "parameters": [
+      "includeReplies",
       "limit",
+      "sort",
       "video",
     ],
     "required": [

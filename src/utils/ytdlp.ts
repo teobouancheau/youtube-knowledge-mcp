@@ -1,5 +1,7 @@
 import { execa, ExecaError } from 'execa';
 import { currentContext, log } from './context.js';
+import { sleep } from './sleep.js';
+import { circuitOpen, onFailure, onSuccess, waitMs } from './ytdlp-pacer.js';
 import { YouTubeError, classifyYtDlpFailure } from './errors.js';
 import { acquireSlot, releaseSlot } from './ytdlp-limiter.js';
 import { readYtDlpEnv } from './ytdlp-env.js';
@@ -29,7 +31,6 @@ export const TIMEOUTS = {
 } as const;
 
 const MAX_ATTEMPTS = 3;
-const BASE_BACKOFF_MS = 750;
 /** Guards against a pathological video description blowing up memory. */
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
@@ -42,7 +43,7 @@ const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
  * forever. This bounds the silence, not the work: a transfer still making
  * progress is never interrupted.
  */
-const SOCKET_TIMEOUT_S = '30';
+export const SOCKET_TIMEOUT_S = '30';
 
 export interface RunOptions {
   /** Milliseconds before the child is killed. 0 disables the timeout. */
@@ -59,26 +60,6 @@ export interface RunOptions {
    * it obeys. Required rather than defaulted: a call site cannot forget it.
    */
   target: string;
-}
-
-function backoffDelay(attempt: number): number {
-  // Exponential with full jitter, so parallel callers do not retry in lockstep.
-  const ceiling = BASE_BACKOFF_MS * 2 ** (attempt - 1);
-  return Math.round(Math.random() * ceiling);
-}
-
-async function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
-      resolve();
-    }, ms);
-    const onAbort = (): void => {
-      clearTimeout(timer);
-      reject(new YouTubeError('CANCELLED', 'The request was cancelled.'));
-    };
-    signal?.addEventListener('abort', onAbort, { once: true });
-  });
 }
 
 /**
@@ -101,16 +82,47 @@ export async function runYtDlp(args: string[], options: RunOptions): Promise<str
       throw new YouTubeError('CANCELLED', 'The request was cancelled.');
     }
 
+    // The cooldown gates NEW work, not this call's own retries: it applies on
+    // the first attempt only. Mixing the two would make a single call's latency
+    // unbounded — its retry would wait out a global cooldown that exists to
+    // slow the *next* caller down. Retries use the backoff.
+    //
+    // Deliberately outside the try: an open circuit is this server's own
+    // decision, not a spawn failure, and letting the catch below translate and
+    // retry it would spawn the very request the circuit exists to prevent.
+    // Waiting also happens before a slot is taken, so a cooling-down server
+    // does not sit on the concurrency queue while it waits.
+    const wait = attempt === 1 ? waitMs() : 0;
+    if (wait > 0) {
+      if (circuitOpen()) {
+        throw new YouTubeError(
+          'RATE_LIMITED',
+          'YouTube has refused this client repeatedly, so requests are paused.',
+          {
+            nextStep: `Wait about ${String(Math.ceil(wait / 60_000))} minutes. If it persists this address is likely being gated: check check_health for the cookie and PO token provider settings.`,
+            retryable: true,
+          }
+        );
+      }
+      log('info', `${label} waiting ${String(wait)}ms before spawning`);
+      await sleep(wait, signal);
+    }
+
     try {
-      return await spawnOnce(args, target, timeoutMs, signal);
+      const stdout = await spawnOnce(args, target, timeoutMs, signal);
+      onSuccess();
+      return stdout;
     } catch (error) {
       const failure = translateExecaFailure(error, timeoutMs);
-      if (!failure.retryable || attempt >= maxAttempts) throw failure;
+      const decision = onFailure(failure.code, attempt);
+      if (decision.giveUp || attempt >= maxAttempts) throw failure;
 
-      const delay = backoffDelay(attempt);
-      log('warning', `${label} failed (${failure.code}), retrying in ${delay}ms`);
+      log(
+        'warning',
+        `${label} failed (${failure.code}), retrying in ${String(decision.delayMs)}ms`
+      );
       // The slot is already released, so the backoff does not hold the queue.
-      await sleep(delay, signal);
+      await sleep(decision.delayMs, signal);
     }
   }
 }

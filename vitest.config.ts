@@ -58,6 +58,21 @@ export default defineConfig({
         },
         'src/utils/preflight.ts': { lines: 100, functions: 100, branches: 93, statements: 100 },
         'src/utils/errors.ts': { lines: 100, functions: 100, branches: 95, statements: 100 },
+        // The receipt layer decides whether this server may claim it has
+        // everything. A wrong `complete: true` is the worst thing it can
+        // emit, so these carry the strictest floors in the repo.
+        'src/harvest-schemas.ts': { lines: 100, functions: 100, branches: 100, statements: 100 },
+        'src/utils/coverage.ts': { lines: 100, functions: 100, branches: 98, statements: 100 },
+        'src/utils/coverage-text.ts': { lines: 100, functions: 100, branches: 95, statements: 100 },
+        // Branches sit below the others because one arm of the lock's error
+        // message — the record being unreadable at the instant it is written —
+        // is a race no test can stage deterministically.
+        'src/utils/harvest-*.ts': { lines: 100, functions: 100, branches: 85, statements: 97 },
+        'src/utils/ytdlp-pacer.ts': { lines: 100, functions: 100, branches: 94, statements: 98 },
+        // Short of 100 for one reason: the cache's write-failure fallback,
+        // where a full disk costs speed rather than correctness, cannot be
+        // staged deterministically.
+        'src/utils/video-stats*.ts': { lines: 97, functions: 92, branches: 95, statements: 97 },
         'src/utils/youtube*.ts': { lines: 100, functions: 97, branches: 93, statements: 98 },
         'src/utils/transcript-cache.ts': {
           lines: 100,

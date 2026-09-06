@@ -20,7 +20,7 @@ export const listLibraryOutputSchema = {
 
 export async function listLibraryHandler({ tag }: { tag?: string }): Promise<CallToolResult> {
   const items = await listLibrary(tag ? { tag } : undefined);
-  const structured = { items, ...pageInfo(items.length, items.length) };
+  const structured = { items, ...pageInfo({ total: items.length, count: items.length }) };
 
   const lines: string[] = [];
 

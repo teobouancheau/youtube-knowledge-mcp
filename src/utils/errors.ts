@@ -26,7 +26,9 @@ export type YouTubeErrorCode =
   | 'YTDLP_FAILED'
   | 'FETCH_FAILED'
   | 'MALFORMED_RESPONSE'
-  | 'INVALID_INPUT';
+  | 'INVALID_INPUT'
+  | 'STORE_UNAVAILABLE'
+  | 'STORE_CORRUPT';
 
 export interface YouTubeErrorOptions {
   /** What the caller should try next. Shown to the model verbatim. */
@@ -102,7 +104,15 @@ const RULES: Rule[] = [
     emits: 'Sign in to confirm you',
     source: 'playabilityStatus.reason, re-raised by yt_dlp/extractor/youtube/_video.py',
     message: 'YouTube is asking this client to prove it is not a bot.',
-    nextStep: `Per-video reads from this address need a signed-in session. ${COOKIE_HINT}`,
+    // Ordered by what was measured on 2026-09-06, not by what sounds most
+    // technical. From a datacenter address every account-free lever was
+    // installed and tested — a PO token provider (yt-dlp never even reaches
+    // the point of requesting one; it fails at the player response first),
+    // eight player clients, a 15-minute cooldown, and curl_cffi TLS
+    // impersonation — and none of them changed the answer. So the address
+    // comes first and the PO token provider comes last: leading with a remedy
+    // that was measured not to work sends the reader down a dead end.
+    nextStep: `Per-video reads are refused from this address. Datacenter and VPN/exit-node addresses are gated regardless of client settings, so check whether this host egresses through one. Otherwise: ${COOKIE_HINT} On a residential address a missing PO token provider can be the cause instead — check \`check_health\`.`,
   },
   {
     code: 'RATE_LIMITED',

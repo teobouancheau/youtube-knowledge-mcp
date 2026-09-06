@@ -1,6 +1,6 @@
 {
   "name": "youtube-knowledge-mcp",
-  "version": "2.2.0",
+  "version": "3.0.0",
   "description": "MCP Server for extracting and managing YouTube video knowledge",
   "author": "teobouancheau",
   "repository": {
@@ -83,6 +83,6 @@
     "vitest": "^4.1.10"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.13.0"
   }
 }

@@ -64,6 +64,7 @@ temp/
 CLAUDE.md
 AGENTS.md
 .codex/
+.claude/
 
 # Local MCP config (use .mcp.json.example instead)
 .mcp.json

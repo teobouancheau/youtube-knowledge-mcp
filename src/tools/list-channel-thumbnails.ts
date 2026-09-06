@@ -101,7 +101,7 @@ export async function listChannelThumbnailsHandler({
     ...(image('banner') === undefined ? {} : { banner: image('banner') }),
     stats: manifest.stats,
     thumbnails: page.map((entry) => withPath(entry, entryPath(channelId, entry))),
-    ...pageInfo(all.length, page.length, offset),
+    ...pageInfo({ total: all.length, count: page.length, offset }),
   });
 }
 

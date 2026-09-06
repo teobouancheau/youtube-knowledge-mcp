@@ -20,7 +20,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [22, 24]
+        # 22.22 rather than the engines floor of 22.13: lint-staged needs
+        # >=22.22.1, so 22.13 cannot install the dev toolchain at all. The
+        # runtime floor stays 22.13 (where node:sqlite is unflagged) — this
+        # is the lowest Node the test suite can actually be run on.
+        node: ['22.22', 22, 24]
     steps:
       - uses: actions/checkout@v7
 

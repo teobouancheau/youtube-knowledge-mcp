@@ -30,7 +30,11 @@ export async function searchChannelsHandler({
   limit: number;
 }): Promise<CallToolResult> {
   const channels = await searchChannels(query, limit);
-  const structured = { query, channels, ...pageInfo(channels.length, channels.length) };
+  const structured = {
+    query,
+    channels,
+    ...pageInfo({ total: channels.length, count: channels.length }),
+  };
 
   if (channels.length === 0) {
     return toolResult(`No channels found for "${query}".`, structured);

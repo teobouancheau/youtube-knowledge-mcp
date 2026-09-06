@@ -45,18 +45,48 @@ export const videoDetailsRowSchema = z.object({
   chapters: z.array(chapterRowSchema).nullish(),
   upload_date: z.string().nullish(),
   duration: z.number().nullish(),
+  /**
+   * The video's real comment count — trustworthy ONLY here, because this read
+   * does not pass --write-comments. With that flag yt-dlp replaces the value
+   * with the number it extracted (measured: 300 against a video with 2.4M).
+   */
+  comment_count: z.number().nullish(),
 });
 
+/**
+ * Every field yt-dlp returns for a comment, verified against 2026.08.19.
+ *
+ * Nine of these were previously dropped on the floor after being paid for:
+ * the extraction fetches them either way, so discarding `id` and `parent`
+ * meant a thread could not be rebuilt from what we already had.
+ */
 export const commentRowSchema = z.object({
+  id: z.string().nullish(),
   author: z.string().nullish(),
+  author_id: z.string().nullish(),
+  author_url: z.string().nullish(),
+  author_thumbnail: z.string().nullish(),
+  author_is_uploader: z.boolean().nullish(),
+  author_is_verified: z.boolean().nullish(),
   text: z.string().nullish(),
   like_count: z.number().nullish(),
   is_pinned: z.boolean().nullish(),
+  is_favorited: z.boolean().nullish(),
+  timestamp: z.number().nullish(),
+  _time_text: z.string().nullish(),
+  /** 'root' for a top-level comment; the parent's id for a reply. */
   parent: z.string().nullish(),
 });
 
 export const commentsRowSchema = z.object({
   comments: z.array(commentRowSchema).nullish(),
+  /**
+   * With --write-comments yt-dlp OVERWRITES this with the number extracted,
+   * and sets it to null when the extraction was interrupted. So it is a
+   * three-state signal about this run, never the video's real total, which
+   * only a separate metadata pass can report.
+   */
+  comment_count: z.number().nullish(),
 });
 
 export const formatRowSchema = z.object({

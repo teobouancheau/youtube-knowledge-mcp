@@ -52,6 +52,7 @@ src/
     ├── ytdlp-parse.ts    # Guarded parsing of yt-dlp JSON
     ├── errors.ts         # Typed failure codes and stderr classification
     ├── preflight.ts      # yt-dlp / ffmpeg presence and staleness checks
+    ├── pot-preflight.ts  # PO token providers, JS runtimes and impersonate targets
     ├── context.ts        # Per-request abort signal, progress and logging
     ├── transcript.ts     # WebVTT parsing, slicing and windowing
     ├── transcript-search.ts # Finding a phrase in a transcript
@@ -62,6 +63,26 @@ src/
     ├── search-index.ts   # BM25 index, shared by the library and the brains
     ├── storage.ts        # Library persistence
     ├── json-file.ts      # Atomic JSON writes and validated reads
+    ├── store-paths.ts    # Every file the harvested store is made of
+    ├── store.ts          # The one node:sqlite connection: WAL, versioning, repair
+    ├── store-schema.ts   # The store's DDL, as one reviewable unit
+    ├── store-migrations.ts # Ordered schema migrations, one transaction each
+    ├── store-rows.ts     # Zod-validated reads out of the store
+    ├── store-health.ts   # What can be said about the store without harvesting
+    ├── harvest-receipts.ts # Completeness receipts, persisted with their rows
+    ├── harvest-catalog.ts # Walking every tab of a channel into the store
+    ├── harvest-lock.ts   # Exclusive access to one harvest target
+    ├── coverage.ts       # The only constructor for a completeness receipt
+    ├── coverage-text.ts  # The receipt as the sentence a model reads
+    ├── listing-cursor.ts # The opaque cursor fetch_videos hands back
+    ├── comment-threads.ts # Flat comment rows rebuilt into threads
+    ├── comment-store.ts  # Comments on disk, upserted and searchable
+    ├── video-store.ts    # Reading the catalogued videos back
+    ├── ytdlp-pacer.ts    # Cooldowns, adaptive concurrency and the circuit breaker
+    ├── sleep.ts          # A cancellable pause, shared by the retry loop and pacer
+    ├── ytdlp-stream.ts   # Reading yt-dlp output a line at a time
+    ├── video-stats.ts    # One -j read, serving every caller that needs part of it
+    ├── video-stats-cache.ts # Keeping one video's stats on disk
     ├── paths.ts          # The one directory everything is written under
     ├── brain-paths.ts    # Every file a brain is made of
     ├── brain-storage.ts  # Manifest and profile persistence
@@ -98,6 +119,7 @@ src/
     ├── youtube.ts        # Barrel over the modules below
     ├── youtube-url.ts    # Video ids and watch URLs
     ├── youtube-video.ts  # Video metadata, chapters and comments
+    ├── youtube-schemas.ts # The shapes yt-dlp's own JSON is parsed through
     ├── youtube-channel.ts # Channel and playlist listings and metadata
     ├── youtube-search.ts # Keyword search for videos and channels
     └── youtube-download.ts # Format listing and whole-video downloads
@@ -205,7 +227,7 @@ Explain **why** in the body, not just what — the diff already says what.
 
 1. Fork and branch from `main`.
 2. Make the change, with tests.
-3. Run `npm run validate` — CI runs the same gate on Node 22 and 24.
+3. Run `npm run validate` — CI runs the same gate on Node 22.22, 22 and 24.
 4. Open a PR describing the problem and how you addressed it.
 
 ## Reporting bugs

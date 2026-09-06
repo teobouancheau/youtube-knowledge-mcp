@@ -39,6 +39,41 @@ export const paginationShape = {
   nextOffset: z.number().int().optional().describe('Offset to pass to retrieve the next page'),
 };
 
+/**
+ * Pagination for a source that may not know its own size.
+ *
+ * `paginationShape` requires a total, which is right for a local collection
+ * and a lie for a live YouTube listing: `playlist_count` is populated for
+ * playlists and routinely absent for channel tabs. An absent `total` here
+ * means "unknown", never zero and never "this is all of them".
+ */
+export const cursorPageShape = {
+  count: z.number().int().describe('Items in this response'),
+  hasMore: z.boolean().describe('Whether more items exist beyond this page'),
+  nextCursor: z
+    .string()
+    .optional()
+    .describe('Opaque; pass back as `cursor`. Absent if and only if hasMore is false.'),
+  total: z
+    .number()
+    .int()
+    .optional()
+    .describe(
+      'Total available — ONLY when the source states one. ABSENT MEANS UNKNOWN. Never treat ' +
+        'count as the total, and never read an absent total as zero or as "this is everything".'
+    ),
+  totalSource: z
+    .enum(['youtube:playlist_count', 'local-store', 'source-exhausted'])
+    .optional()
+    .describe('Where total came from. Absent if and only if total is absent.'),
+  driftDetected: z
+    .boolean()
+    .describe(
+      'True when the listing changed between pages — a new upload shifts every index. The page ' +
+        'is still returned; the duplicate at the seam has been dropped.'
+    ),
+};
+
 export const videoSummarySchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -81,6 +116,34 @@ export const commentSchema = z.object({
   text: z.string(),
   likeCount: z.number(),
   isPinned: z.boolean(),
+});
+
+/** A comment with everything yt-dlp actually returns, including its place in a thread. */
+export const commentDetailSchema = z.object({
+  id: z.string(),
+  parentId: z.string().nullable().describe('null for a top-level comment'),
+  author: z.string(),
+  authorId: z.string().optional(),
+  authorUrl: z.string().optional(),
+  authorThumbnailUrl: z.string().optional(),
+  authorIsUploader: z.boolean(),
+  authorIsVerified: z.boolean(),
+  text: z.string(),
+  likeCount: z.number(),
+  isPinned: z.boolean(),
+  isFavorited: z.boolean(),
+  timestamp: z.number().optional(),
+  publishedAt: z.string().optional(),
+  timeText: z.string().optional().describe("yt-dlp's relative wording, e.g. '3 months ago'"),
+});
+
+export const commentThreadSchema = z.object({
+  comment: commentDetailSchema,
+  replies: z.array(commentDetailSchema),
+  replyCount: z
+    .number()
+    .int()
+    .describe('Replies present in THIS extraction, not the number the thread has'),
 });
 
 export const channelInfoSchema = z.object({
