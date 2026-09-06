@@ -65,6 +65,7 @@ describe('tool manifest', () => {
       'ask',
       'repair',
       'harvest',
+      'query',
     ]);
 
     for (const tool of stdioTools) {
