@@ -33,7 +33,7 @@ export const CIRCUIT_OPEN_MS = 5 * 60_000;
 interface RetryPolicy {
   /** Total spawns, including the first. */
   attempts: number;
-  backoff: 'none' | 'jitter' | 'exponential';
+  backoff: 'none' | 'exponential';
   cooldown: 'none' | 'rate-limit' | 'bot-check';
   concurrency: 'none' | 'decrease' | 'floor';
 }
@@ -64,7 +64,10 @@ const POLICIES: Partial<Record<YouTubeErrorCode, RetryPolicy>> = {
   },
   BOT_CHECK: { attempts: 1, backoff: 'none', cooldown: 'bot-check', concurrency: 'floor' },
   TIMEOUT: { attempts: 3, backoff: 'exponential', cooldown: 'none', concurrency: 'decrease' },
-  YTDLP_FAILED: { attempts: 2, backoff: 'jitter', cooldown: 'none', concurrency: 'none' },
+  // Deliberately absent: an unclassified yt-dlp failure carries no evidence
+  // that a second attempt would go differently, and `retryable` is false on it,
+  // so it falls through to TERMINAL. Listing it here with attempts > 1 would
+  // state a policy the retry loop correctly refuses to honour.
 };
 
 export function policyFor(code: YouTubeErrorCode): RetryPolicy {
@@ -102,7 +105,6 @@ function cooldownFor(kind: RetryPolicy['cooldown'], strikes: number): number {
 
 export function backoffDelay(attempt: number, style: RetryPolicy['backoff']): number {
   if (style === 'none') return 0;
-  if (style === 'jitter') return Math.round(Math.random() * BASE_BACKOFF_MS);
 
   // Exponential with full jitter, capped so a long run cannot stall for hours.
   const ceiling = Math.min(BASE_BACKOFF_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS);

@@ -160,6 +160,19 @@ describe('runYtDlp', () => {
     expect(Date.now() - started).toBeLessThan(1_000);
   });
 
+  it('spawns once for a failure it cannot classify', async () => {
+    // The generic YTDLP_FAILED carries retryable: false, because an
+    // unclassified failure is no evidence a second attempt goes differently.
+    // A pacer policy that retried it doubled requests on precisely the failures
+    // we cannot diagnose, and only the opt-in e2e lane noticed.
+    mockedExeca.mockRejectedValue(failWith({ stderr: 'something entirely unrecognised' }));
+
+    await expect(runYtDlp(['--version'], { target: TARGET })).rejects.toMatchObject({
+      code: 'YTDLP_FAILED',
+    });
+    expect(mockedExeca).toHaveBeenCalledTimes(1);
+  });
+
   it('never retries a deterministic failure', async () => {
     // yt_dlp/postprocessor/ffmpeg.py:225 — a missing binary will still be
     // missing on the second attempt, so retrying only wastes the caller's time.

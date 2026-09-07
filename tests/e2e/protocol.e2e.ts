@@ -6,6 +6,7 @@ import {
   startStdioServerViaSymlink,
   startHttpServer,
 } from './harness.js';
+import { TOOLS } from '../../src/registry/index.js';
 
 /** The built server's surface, over both transports, against what the unit lane snapshots. */
 describe('protocol', () => {
@@ -19,13 +20,16 @@ describe('protocol', () => {
     }
   });
 
-  it('lists 37 tools on stdio and 15 over HTTP, every one with an output schema and all four hints', async () => {
+  it('lists every registered tool on stdio and the remote-safe ones over HTTP, each with an output schema and all four hints', async () => {
     const stdio = await startStdioServer();
     const http = await startHttpServer();
     const local = (await stdio.client.listTools()).tools;
     const remote = (await http.client.listTools()).tools;
 
-    expect(local).toHaveLength(37);
+    // Counted from the registry rather than written here: a literal went stale
+    // the moment tools were added, and failed in the release lane instead of in
+    // `npm run validate`.
+    expect(local).toHaveLength(TOOLS.length);
     expect(remote).toHaveLength(15);
     for (const tool of local) {
       expect(tool.outputSchema, tool.name).toBeDefined();

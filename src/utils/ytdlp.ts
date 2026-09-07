@@ -115,7 +115,13 @@ export async function runYtDlp(args: string[], options: RunOptions): Promise<str
     } catch (error) {
       const failure = translateExecaFailure(error, timeoutMs);
       const decision = onFailure(failure.code, attempt);
-      if (decision.giveUp || attempt >= maxAttempts) throw failure;
+
+      // The error's own `retryable` wins over the pacer's policy. The
+      // classifier read the stderr and knows whether a retry can help; the
+      // pacer only knows the code. Dropping this gate made every unclassified
+      // YTDLP_FAILED retry, doubling requests on exactly the failures we cannot
+      // diagnose — the opposite of the point.
+      if (!failure.retryable || decision.giveUp || attempt >= maxAttempts) throw failure;
 
       log(
         'warning',
