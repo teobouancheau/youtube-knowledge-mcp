@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="icon-title">
+  <title id="icon-title">A rewind mark, two triangles pointing back, on a red square</title>
+  <rect x="32" y="32" width="448" height="448" rx="96" fill="#E5322D"/>
+  <g fill="#FFFFFF" stroke="#FFFFFF" stroke-width="16" stroke-linejoin="round">
+    <polygon points="128,256 240,176 240,336"/>
+    <polygon points="272,256 384,176 384,336"/>
+  </g>
+</svg>
