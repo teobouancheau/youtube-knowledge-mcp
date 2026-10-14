@@ -1,1 +1,2 @@
+sh scripts/secret-scan.sh staged
 npx lint-staged

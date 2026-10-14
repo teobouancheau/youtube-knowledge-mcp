@@ -1,0 +1,5 @@
+# gitleaks configuration. The default ruleset is kept whole: this file only adds to it.
+title = "youtube-knowledge-mcp"
+
+[extend]
+useDefault = true
