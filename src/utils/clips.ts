@@ -10,6 +10,11 @@ import { formatSrtTimestamp } from './transcript.js';
 import { getChapters, getVideoInfo } from './youtube.js';
 import { resolveChapter } from './chapters.js';
 import { dataDir } from './paths.js';
+import {
+  DETAIL_STREAM_SELECTOR,
+  FFMPEG_NETWORK_INPUT_ARGS,
+  resolveStreamUrl,
+} from './video-stream.js';
 
 /**
  * Pulling usable excerpts out of a video for editing.
@@ -227,24 +232,7 @@ export async function extractFrame(
 
   await mkdir(targetDir, { recursive: true });
 
-  const url = `https://www.youtube.com/watch?v=${info.id}`;
-  const mediaUrl = (
-    await runYtDlp(['-f', 'bestvideo[height<=1080]/best', '--get-url', '--no-playlist'], {
-      label: 'extract_frame (resolve)',
-      target: url,
-    })
-  )
-    .trim()
-    .split('\n')[0];
-
-  // ffmpeg accepts file:, pipe:, concat: and more as inputs; the only thing
-  // yt-dlp should have resolved is an https media URL, and the allowlist
-  // below makes ffmpeg refuse anything else even if it had.
-  if (!mediaUrl?.startsWith('https://')) {
-    throw new YouTubeError('YTDLP_FAILED', 'Could not resolve a video stream for this video.', {
-      nextStep: 'Check the video is playable, or call check_health.',
-    });
-  }
+  const mediaUrl = await resolveStreamUrl(info.id, DETAIL_STREAM_SELECTOR, 'extract_frame');
 
   const filePath = join(
     targetDir,
@@ -255,8 +243,7 @@ export async function extractFrame(
     await execa(
       'ffmpeg',
       [
-        '-protocol_whitelist',
-        'https,tls,tcp,crypto',
+        ...FFMPEG_NETWORK_INPUT_ARGS,
         // -ss before -i seeks without decoding everything up to that point.
         '-ss',
         String(timestamp),

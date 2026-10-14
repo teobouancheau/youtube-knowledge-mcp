@@ -91,6 +91,14 @@ export function fileResourceLink(
   };
 }
 
+/** A picture the model can look at, as an MCP image block. */
+export function imageBlock(
+  bytes: Uint8Array,
+  mimeType: string
+): { type: 'image'; data: string; mimeType: string } {
+  return { type: 'image', data: Buffer.from(bytes).toString('base64'), mimeType };
+}
+
 /** A result that both reads well and points at the file it produced. */
 export function fileResult(
   text: string,
