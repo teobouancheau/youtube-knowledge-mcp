@@ -66,6 +66,13 @@ from different channels are not comparable. Each passage names its channel.
 
 ### Security
 
+Seven packages move to their patched releases inside the ranges already allowed, which
+clears five advisories in production dependencies: the MCP SDK (1.30.0 to 1.32.1, an OAuth
+client could send credentials to a server-chosen authorization server), `proxy-addr`
+(critical, IP spoofing through an IPv4-mapped IPv6 trust subnet), `hono`, `ip-address` and
+`fast-uri`. `npm run audit` now fails on anything moderate or worse, in the pre-push hook
+and in CI, and the pre-push hook also runs `npm run validate` and `npm run smoke`.
+
 Every commit and push is now scanned for secrets with gitleaks, and so is `npm run
 validate`: the pre-commit hook scans what is staged, the pre-push hook the whole history,
 and validate the working tree. A missing gitleaks fails the gate rather than skipping it,

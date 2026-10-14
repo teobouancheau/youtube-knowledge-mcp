@@ -28,6 +28,12 @@ hook scans what is staged, the pre-push hook scans the whole history, and
 `npm run validate` scans the working tree. A missing gitleaks fails the hook rather than
 skipping it. The rules are gitleaks' defaults in full; `.gitleaks.toml` only extends them.
 
+The pre-push hook runs, in order: the secret scan over the whole history, `npm run audit`
+(dependencies with a known vulnerability of moderate severity or worse fail it, as they do in
+CI), `npm run validate` (types, lint, formatting, tests with coverage, secrets in the tree) and
+`npm run smoke` (builds the server and checks it starts and lists its tools). A push waits for
+all of it, so run `npm run validate` while you work rather than finding out at the end.
+
 ## Project structure
 
 ```

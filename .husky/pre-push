@@ -1,1 +1,4 @@
 sh scripts/secret-scan.sh history
+npm run audit
+npm run validate
+npm run smoke
