@@ -30,5 +30,21 @@ jobs:
       # supports, or this step fails before anything is published.
       - run: npm install -g npm@latest
       - run: npm ci
+
+      # `npm run validate` scans the tree for secrets, and a missing gitleaks fails it on
+      # purpose. The binary is the project's own release, checked against the checksums
+      # published with it.
+      - name: Install gitleaks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo gitleaks/gitleaks \
+            --pattern '*_linux_x64.tar.gz' --pattern '*_checksums.txt' --dir "$RUNNER_TEMP/gitleaks"
+          cd "$RUNNER_TEMP/gitleaks"
+          sha256sum --ignore-missing --check ./*_checksums.txt
+          tar -xzf ./*_linux_x64.tar.gz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
       - run: npm run validate
       - run: npm publish --provenance --access public
