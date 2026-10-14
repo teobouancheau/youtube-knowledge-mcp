@@ -17,9 +17,10 @@ vi.mock('../../src/utils/youtube.js', async (importOriginal) => {
 vi.mock('node:fs/promises', () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
+  readFile: vi.fn(),
 }));
 
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { extractClip, extractFrame } from '../../src/utils/clips.js';
 import { getTranscript } from '../../src/utils/youtube.js';
 import {
@@ -29,6 +30,7 @@ import {
 } from '../../src/tools/clips.js';
 import { exportSubtitlesHandler, extractFrameHandler } from '../../src/tools/frames-subtitles.js';
 import { YouTubeError } from '../../src/utils/errors.js';
+import { MAX_INLINE_IMAGE_BYTES } from '../../src/utils/image-fetch.js';
 
 const CLIP: ClipResult = {
   videoId: 'dQw4w9WgXcQ',
@@ -48,6 +50,7 @@ function clipOptions(call = 0): Record<string, unknown> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(readFile).mockResolvedValue(Buffer.from([1]));
   vi.mocked(extractClip).mockResolvedValue(CLIP);
   vi.mocked(extractFrame).mockResolvedValue({
     videoId: 'dQw4w9WgXcQ',
@@ -263,6 +266,29 @@ describe('extractFrameHandler', () => {
     const link = result.content.find((block) => block.type === 'resource_link');
 
     expect(link).toMatchObject({ mimeType });
+  });
+
+  it('returns the picture inline so the model can look at it', async () => {
+    const bytes = Buffer.from([1, 2, 3]);
+    vi.mocked(readFile).mockResolvedValue(bytes);
+
+    const result = await extractFrameHandler(args);
+
+    expect(result.content.find((block) => block.type === 'image')).toMatchObject({
+      mimeType: 'image/png',
+      data: bytes.toString('base64'),
+    });
+    expect(readFile).toHaveBeenCalledWith('/home/u/.youtube-knowledge/frames/A Talk [42s].png');
+  });
+
+  it('keeps a picture too large to inline on disk, and says so', async () => {
+    vi.mocked(readFile).mockResolvedValue(Buffer.alloc(MAX_INLINE_IMAGE_BYTES + 1));
+
+    const result = await extractFrameHandler(args);
+
+    expect(result.content.some((block) => block.type === 'image')).toBe(false);
+    expect(textOf(result)).toContain('too large to show inline');
+    expect(result.content.some((block) => block.type === 'resource_link')).toBe(true);
   });
 
   it('rejects an unparseable timestamp before touching the network', async () => {

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { thumbnailQualitySchema, type ThumbnailQuality } from '../thumbnail-schemas.js';
 import { YouTubeError } from '../utils/errors.js';
+import { imageBlock } from '../utils/format.js';
 import { probeImage, type ImageProbe } from '../utils/image-dimensions.js';
 import { fetchImage, MAX_INLINE_IMAGE_BYTES } from '../utils/image-fetch.js';
 import { climb, videoRungs } from '../utils/thumbnail-ladder.js';
@@ -82,7 +83,7 @@ export async function getThumbnailHandler(
         type: 'text',
         text: `${label} ${args.image}, ${probe.width}x${probe.height} ${probe.format.toUpperCase()}, ${Math.round(bytes.byteLength / 1024)} KB (${variant}${fromDisk ? ', from disk' : ''})`,
       },
-      { type: 'image', data: bytes.toString('base64'), mimeType: probe.mimeType },
+      imageBlock(bytes, probe.mimeType),
     ],
     structuredContent: {
       image: args.image,

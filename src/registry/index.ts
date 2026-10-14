@@ -8,6 +8,7 @@ import { mediaTools } from './media-tools.js';
 import { thumbnailTools } from './thumbnail-tools.js';
 import { transcriptTools } from './transcript-tools.js';
 import { videoTools } from './video-tools.js';
+import { visionTools } from './vision-tools.js';
 import type { ToolDefinition } from './types.js';
 
 export type { ToolDefinition, ToolMode } from './types.js';
@@ -20,6 +21,7 @@ export const TOOLS: ToolDefinition[] = [
   ...healthTools,
   ...libraryTools,
   ...mediaTools,
+  ...visionTools,
   ...brainTools,
   ...harvestTools,
   ...thumbnailTools,

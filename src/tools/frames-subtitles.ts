@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { join } from 'node:path';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { fileResult } from '../utils/format.js';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { fileResult, imageBlock } from '../utils/format.js';
+import { MAX_INLINE_IMAGE_BYTES } from '../utils/image-fetch.js';
 import { parseTimestamp, resolveOutputDir } from '../utils/validate.js';
 import { extractFrame, safeStem, subtitlesDir } from '../utils/clips.js';
 import { getTranscript } from '../utils/youtube.js';
@@ -44,7 +45,13 @@ export async function extractFrameHandler(args: {
     format: args.format,
   });
 
-  return fileResult(
+  // The file is the deliverable; showing it to the model too is what lets it answer
+  // "what is on screen" without a human opening the image.
+  const mimeType = args.format === 'png' ? 'image/png' : 'image/jpeg';
+  const bytes = await readFile(result.filePath);
+  const isInline = bytes.byteLength <= MAX_INLINE_IMAGE_BYTES;
+
+  const captured = fileResult(
     [
       '✓ Frame captured',
       '',
@@ -52,6 +59,9 @@ export async function extractFrameHandler(args: {
       `at ${formatTimestamp(result.timestamp)}`,
       '',
       result.filePath,
+      ...(isInline
+        ? []
+        : ['', 'This frame is too large to show inline: open the file, or capture as jpg.']),
     ].join('\n'),
     {
       videoId: result.videoId,
@@ -59,12 +69,12 @@ export async function extractFrameHandler(args: {
       filePath: result.filePath,
       timestampSeconds: result.timestamp,
     },
-    {
-      path: result.filePath,
-      name: `${result.title} frame`,
-      mimeType: args.format === 'png' ? 'image/png' : 'image/jpeg',
-    }
+    { path: result.filePath, name: `${result.title} frame`, mimeType }
   );
+
+  return isInline
+    ? { ...captured, content: [...captured.content, imageBlock(bytes, mimeType)] }
+    : captured;
 }
 
 // -- export_subtitles ----------------------------------------------------

@@ -16,6 +16,14 @@ import {
   downloadVideoHandler,
 } from '../tools/download-video.js';
 import {
+  extractGifSchema,
+  extractGifOutputSchema,
+  extractGifHandler,
+  concatClipsSchema,
+  concatClipsOutputSchema,
+  concatClipsHandler,
+} from '../tools/gif-concat.js';
+import {
   extractFrameSchema,
   extractFrameOutputSchema,
   extractFrameHandler,
@@ -89,6 +97,38 @@ export const mediaTools: ToolDefinition[] = [
       openWorldHint: true,
     },
     handler: extractFrameHandler,
+  }),
+  defineTool({
+    name: 'extract_gif',
+    mode: 'stdio',
+    title: 'Make a GIF',
+    description:
+      'Make a short looping GIF from a moment of a video, without downloading the file. Give start and end, or a chapter name, up to 15 seconds. Use to share a reaction or a key moment. Requires ffmpeg.',
+    inputSchema: extractGifSchema,
+    outputSchema: extractGifOutputSchema,
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    handler: extractGifHandler,
+  }),
+  defineTool({
+    name: 'concat_clips',
+    mode: 'stdio',
+    title: 'Join Clips Into One Video',
+    description:
+      'Join several video files into one, in the order given, re-encoded so clips from different moments or sources fit together. Pass the paths extract_clip returned. This is the last step of cutting a montage. Requires ffmpeg.',
+    inputSchema: concatClipsSchema,
+    outputSchema: concatClipsOutputSchema,
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    handler: concatClipsHandler,
   }),
   defineTool({
     name: 'export_subtitles',
