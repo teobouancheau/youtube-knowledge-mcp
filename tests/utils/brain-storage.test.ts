@@ -250,10 +250,21 @@ describe('withBuildLock', () => {
   });
 
   it('lets exactly one of two simultaneous builds through', async () => {
-    const outcomes = await Promise.allSettled([
-      withBuildLock(CHANNEL_ID, () => Promise.resolve('a')),
-      withBuildLock(CHANNEL_ID, () => Promise.resolve('b')),
-    ]);
+    // Each build holds the lock until one of them has been refused. A build that returned
+    // at once could release the lock before the other asked, and both would rightly succeed.
+    let release!: () => void;
+    const refused = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const attempt = (): Promise<void> =>
+      withBuildLock(CHANNEL_ID, async () => {
+        await refused;
+      }).catch((error: unknown) => {
+        release();
+        throw error;
+      });
+
+    const outcomes = await Promise.allSettled([attempt(), attempt()]);
 
     expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
   });

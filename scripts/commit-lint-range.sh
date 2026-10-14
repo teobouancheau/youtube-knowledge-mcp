@@ -21,4 +21,13 @@ if [ "$base" = "$(git rev-parse HEAD)" ]; then
   exit 0
 fi
 
-exec npx --no -- commitlint --from "$base" --to HEAD
+# The binary is the one installed beside this script, so the lookup does not depend on the
+# directory the push happens from or on what npx decides to resolve.
+bin="$(cd "$(dirname "$0")/.." && pwd)/node_modules/.bin/commitlint"
+
+if [ ! -x "$bin" ]; then
+  echo "commitlint is not installed here. Run 'npm ci' and push again." >&2
+  exit 127
+fi
+
+exec "$bin" --from "$base" --to HEAD
