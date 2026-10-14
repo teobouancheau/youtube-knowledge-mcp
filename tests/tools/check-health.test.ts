@@ -7,6 +7,7 @@ vi.mock('../../src/utils/preflight.js', () => ({
 }));
 vi.mock('../../src/utils/ytdlp.js', () => ({ concurrencyState: vi.fn() }));
 vi.mock('../../src/utils/pot-preflight.js', () => ({ runSessionPreflight: vi.fn() }));
+vi.mock('../../src/utils/whisper.js', () => ({ probeWhisper: vi.fn() }));
 vi.mock('../../src/utils/store-health.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/utils/store-health.js')>();
   return { ...actual, readStoreHealth: vi.fn() };
@@ -20,6 +21,7 @@ import { runPreflight } from '../../src/utils/preflight.js';
 import { concurrencyState } from '../../src/utils/ytdlp.js';
 import { runSessionPreflight } from '../../src/utils/pot-preflight.js';
 import { readStoreHealth } from '../../src/utils/store-health.js';
+import { probeWhisper } from '../../src/utils/whisper.js';
 import { readYtDlpEnv } from '../../src/utils/ytdlp-env.js';
 import { checkHealthHandler } from '../../src/tools/check-health.js';
 
@@ -53,6 +55,55 @@ beforeEach(() => {
     impersonateTargets: [],
   });
   vi.mocked(readStoreHealth).mockResolvedValue(EMPTY_STORE);
+  vi.mocked(probeWhisper).mockResolvedValue({ installed: false, modelFound: false });
+});
+
+describe('checkHealthHandler whisper', () => {
+  it('reports a ready local transcriber without exposing where the model is', async () => {
+    vi.mocked(probeWhisper).mockResolvedValue({
+      installed: true,
+      version: '1.9.5',
+      modelPath: '/home/someone/models/ggml-base.bin',
+      modelFound: true,
+    });
+
+    const result = await checkHealthHandler();
+
+    expect(structuredOf(result).whisper).toEqual({
+      installed: true,
+      version: '1.9.5',
+      modelConfigured: true,
+      modelFound: true,
+    });
+    expect(textOf(result)).toContain('whisper.cpp: 1.9.5, model ready');
+    expect(JSON.stringify(structuredOf(result))).not.toContain('/home/someone');
+  });
+
+  it('treats a missing whisper as optional: ok stays true and the text says what it enables', async () => {
+    const result = await checkHealthHandler();
+
+    expect(structuredOf(result)).toMatchObject({
+      ok: true,
+      whisper: { installed: false, modelConfigured: false, modelFound: false },
+    });
+    expect(textOf(result)).toContain(
+      'whisper.cpp: not installed (optional, enables transcribe_video)'
+    );
+  });
+
+  it('says when whisper is installed but no usable model is set', async () => {
+    vi.mocked(probeWhisper).mockResolvedValue({
+      installed: true,
+      version: '1.9.5',
+      modelPath: '/models/missing.bin',
+      modelFound: false,
+    });
+
+    const result = await checkHealthHandler();
+
+    expect(textOf(result)).toContain('model not found');
+    expect(structuredOf(result)).toMatchObject({ ok: true });
+  });
 });
 
 describe('checkHealthHandler store', () => {

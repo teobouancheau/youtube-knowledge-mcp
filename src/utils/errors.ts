@@ -23,6 +23,7 @@ export type YouTubeErrorCode =
   | 'CANCELLED'
   | 'YTDLP_MISSING'
   | 'FFMPEG_MISSING'
+  | 'WHISPER_MISSING'
   | 'YTDLP_FAILED'
   | 'FETCH_FAILED'
   | 'MALFORMED_RESPONSE'

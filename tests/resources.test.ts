@@ -90,6 +90,7 @@ beforeEach(() => {
     language: 'en',
     videoId: 'dQw4w9WgXcQ',
     cached: false,
+    source: 'captions' as const,
   });
   vi.mocked(listLibrary).mockResolvedValue([METADATA]);
   vi.mocked(getLibraryItem).mockResolvedValue({

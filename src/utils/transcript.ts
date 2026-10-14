@@ -20,6 +20,10 @@ export const transcriptSegmentSchema = z.object({
 
 export type TranscriptSegment = z.infer<typeof transcriptSegmentSchema>;
 
+/** Where a transcript's words came from. A machine's guess must never pass as captions. */
+export const TRANSCRIPT_SOURCES = ['captions', 'local-asr'] as const;
+export type TranscriptSource = (typeof TRANSCRIPT_SOURCES)[number];
+
 /** Bumped whenever the cache representation changes, so old files are refetched. */
 export const TRANSCRIPT_CACHE_VERSION = 2;
 

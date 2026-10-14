@@ -17,8 +17,16 @@ import {
   searchTranscriptOutputSchema,
   searchTranscriptHandler,
 } from '../tools/search-transcript.js';
+import {
+  transcribeVideoSchema,
+  transcribeVideoOutputSchema,
+  transcribeVideoHandler,
+} from '../tools/transcribe-video.js';
 
-/** Reading and searching transcripts, singly and in batches. Remote-safe. */
+/**
+ * Reading and searching transcripts, singly and in batches. Remote-safe, except
+ * transcribe_video, which runs whisper.cpp and writes to this machine's disk.
+ */
 export const transcriptTools: ToolDefinition[] = [
   defineTool({
     name: 'get_transcript',
@@ -83,5 +91,21 @@ export const transcriptTools: ToolDefinition[] = [
       openWorldHint: true,
     },
     handler: digestPlaylistHandler,
+  }),
+  defineTool({
+    name: 'transcribe_video',
+    mode: 'stdio',
+    title: 'Transcribe a Video Locally',
+    description:
+      'Transcribe the audio of a video that has no captions, on this machine, with whisper.cpp. Slow and CPU-heavy, so call it only when get_transcript reports NO_CAPTIONS. Always pass the spoken language. The result is kept and then read by get_transcript, search_transcript and export_subtitles, marked as a local transcription. Requires ffmpeg, whisper-cli on PATH and YOUTUBE_MCP_WHISPER_MODEL.',
+    inputSchema: transcribeVideoSchema,
+    outputSchema: transcribeVideoOutputSchema,
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    handler: transcribeVideoHandler,
   }),
 ];

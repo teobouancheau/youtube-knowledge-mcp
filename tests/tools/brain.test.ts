@@ -98,6 +98,7 @@ function transcript(videoId: string, segments: TranscriptSegment[]): TranscriptR
     segments,
     transcript: segmentsToText(segments),
     cached: false,
+    source: 'captions' as const,
   };
 }
 

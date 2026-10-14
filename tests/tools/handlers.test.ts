@@ -65,6 +65,7 @@ const TRANSCRIPT = {
   language: 'en',
   videoId: 'v1',
   cached: false,
+  source: 'captions' as const,
 };
 
 beforeEach(() => {
@@ -480,6 +481,7 @@ describe('digest_playlist chapters and transcript stats', () => {
       language: 'en',
       videoId: 'v1',
       cached: false,
+      source: 'captions' as const,
     });
 
     const result = await digestPlaylistHandler({
