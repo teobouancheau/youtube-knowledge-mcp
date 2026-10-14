@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.2] - 2026-10-14
+
+### Changed
+
+The Claude plugin runs the server from a locked install instead of an `npx` launcher. It
+ships a `package.json` and a `package-lock.json` that pin the published package and its
+dependencies, each at an exact version with an integrity hash from the npm registry; Claude
+Code installs them without running install scripts, and `.mcp.json` starts the installed
+package with `node`. Anthropic's directory no longer reports a missing lockfile.
+
 ## [3.0.1] - 2026-10-14
 
 ### Added
@@ -664,7 +674,8 @@ video but never say when something was said.
 
 Initial release.
 
-[unreleased]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v3.0.1...HEAD
+[unreleased]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v3.0.2...HEAD
+[3.0.2]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v3.0.1...v3.0.2
 [3.0.1]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v3.0.0...v3.0.1
 [3.0.0]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v2.2.0...v3.0.0
 [2.2.0]: https://github.com/teobouancheau/youtube-knowledge-mcp/compare/v2.1.0...v2.2.0
