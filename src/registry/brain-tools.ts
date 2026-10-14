@@ -1,5 +1,6 @@
 import { defineTool, type ToolDefinition } from './types.js';
 import { askBrainSchema, askBrainOutputSchema, askBrainHandler } from '../tools/ask-brain.js';
+import { askBrainsSchema, askBrainsOutputSchema, askBrainsHandler } from '../tools/ask-brains.js';
 import {
   listBrainsSchema,
   listBrainsOutputSchema,
@@ -59,6 +60,22 @@ export const brainTools: ToolDefinition[] = [
       openWorldHint: false,
     },
     handler: askBrainHandler,
+  }),
+  defineTool({
+    name: 'ask_brains',
+    mode: 'stdio',
+    title: 'Ask Several Channel Brains',
+    description:
+      'Put one question to several creators at once. Searches every brain built with build_brain, or the channels you name, and returns the best passages across them, each naming its channel with the timestamp and a link that opens the video there. Results are interleaved by rank because scores from different channels are not comparable.',
+    inputSchema: askBrainsSchema,
+    outputSchema: askBrainsOutputSchema,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    handler: askBrainsHandler,
   }),
   defineTool({
     name: 'list_brains',
