@@ -120,6 +120,26 @@ describe('runPreflight', () => {
     expect(report.ytDlp.warning).toContain('yt-dlp -U');
   });
 
+  it('raises no staleness warning for a yt-dlp version it cannot date', async () => {
+    respond({ ytDlp: 'custom-build', ffmpeg: '6.1.1' });
+
+    const report = await runPreflight();
+
+    expect(report.ytDlp).toMatchObject({ installed: true, version: 'custom-build' });
+    expect(report.ytDlp.warning).toBeUndefined();
+  });
+
+  it('calls an ffmpeg version it cannot read unknown, and still counts it installed', async () => {
+    mockedExeca.mockImplementation(((command: string) =>
+      Promise.resolve({
+        stdout: command === 'yt-dlp' ? '2026.08.01' : 'a build with no version banner',
+      })) as never);
+
+    const report = await runPreflight();
+
+    expect(report.ffmpeg).toMatchObject({ installed: true, version: 'unknown' });
+  });
+
   it('caches the result and re-probes only when forced', async () => {
     respond({ ytDlp: '2026.08.01', ffmpeg: '6.1.1' });
 
@@ -176,6 +196,17 @@ describe('formatPreflightReport', () => {
     expect(text).toContain('✓ Ready');
     expect(text).toContain('ffmpeg: not installed');
     expect(text).toContain('clip extraction');
+  });
+
+  it('says a binary is installed when it reports no version', () => {
+    const text = formatPreflightReport({
+      ok: true,
+      ytDlp: { name: 'yt-dlp', installed: true },
+      ffmpeg: { name: 'ffmpeg', installed: true },
+    });
+
+    expect(text).toContain('yt-dlp: installed');
+    expect(text).toContain('ffmpeg: installed');
   });
 
   it('surfaces the staleness warning', async () => {
