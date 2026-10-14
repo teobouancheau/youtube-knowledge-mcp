@@ -157,6 +157,8 @@ export const channelInfoSchema = z.object({
   // written before the images were read.
   avatarUrl: z.string().optional().describe("The channel's uncropped avatar image"),
   bannerUrl: z.string().optional().describe("The channel's uncropped banner image"),
+  isVerified: z.boolean().optional().describe('True when the channel carries the verified badge'),
+  tags: z.array(z.string()).optional().describe('The keywords the channel lists for itself'),
 });
 
 export const playlistInfoSchema = z.object({

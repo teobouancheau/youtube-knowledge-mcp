@@ -44,7 +44,7 @@ function cacheDir(): string {
 const VIDEO_STATS_TTL_MS = envInt('YOUTUBE_MCP_STATS_TTL_MS', 86_400_000, { min: 0 });
 
 /** Bumped when the stored shape changes, so old files are refetched, not misread. */
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 
 const cachedStatsSchema = z.object({
   version: z.literal(CACHE_VERSION),

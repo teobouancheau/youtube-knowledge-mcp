@@ -37,6 +37,24 @@ describe.skipIf(!inject('perVideo'))('video reads', () => {
     expect(transcript.structured.wordCount).toBeGreaterThan(0);
   });
 
+  it('get_video_details and list_captions read the same record the video has', async () => {
+    const details = await callToolOk(server.client, 'get_video_details', { video: VIDEO.id });
+    expect(details.structured).toMatchObject({
+      videoId: VIDEO.id,
+      captions: { manual: expect.any(Array) as string[], automatic: expect.any(Array) as string[] },
+    });
+
+    const captions = await callToolOk(server.client, 'list_captions', { video: VIDEO.id });
+    expect(captions.structured).toMatchObject({
+      videoId: VIDEO.id,
+      hasCaptions: VIDEO.captionsExpected,
+    });
+    // One read, two tools: the second is served from the saved copy.
+    expect(captions.structured.manual).toEqual(
+      (details.structured.captions as { manual: string[] }).manual.slice().sort()
+    );
+  });
+
   it('get_chapters, get_comments and list_formats read the video', async () => {
     const chapters = await callToolOk(server.client, 'get_chapters', { video: VIDEO.id });
     expect(Array.isArray(chapters.structured.chapters)).toBe(true);

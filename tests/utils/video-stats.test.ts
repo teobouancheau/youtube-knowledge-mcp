@@ -20,6 +20,7 @@ import {
   CATALOG_DESCRIPTION_PREVIEW_CHARS,
   MAX_DETAIL_JSON_BYTES,
   STRIPPED_KEYS,
+  fetchVideoStatsRow,
   getVideoStats,
   stripForStorage,
 } from '../../src/utils/video-stats.js';
@@ -83,6 +84,96 @@ describe('getVideoStats', () => {
 
   it('reports the real comment count, because this read has no --write-comments', async () => {
     expect((await getVideoStats('dQw4w9WgXcQ')).commentCount).toBe(2_400_000);
+  });
+});
+
+describe('the rest of what yt-dlp knows about a video', () => {
+  const FULL_ROW = {
+    ...ROW,
+    channel_url: 'https://www.youtube.com/channel/UCch',
+    uploader: 'A channel',
+    license: 'Creative Commons Attribution license (reuse allowed)',
+    language: 'en',
+    media_type: 'short',
+    playable_in_embed: true,
+    release_timestamp: 1_767_225_600,
+    track: 'A Song',
+    artist: 'An Artist',
+    album: 'An Album',
+    release_year: 2019,
+    width: 1920,
+    height: 1080,
+    fps: 30,
+  };
+
+  it('reports the channel, licence, language and format of the upload', async () => {
+    vi.mocked(runYtDlp).mockResolvedValue(JSON.stringify(FULL_ROW));
+
+    expect(await getVideoStats('dQw4w9WgXcQ')).toMatchObject({
+      channelUrl: 'https://www.youtube.com/channel/UCch',
+      uploader: 'A channel',
+      license: 'Creative Commons Attribution license (reuse allowed)',
+      language: 'en',
+      mediaType: 'short',
+      playableInEmbed: true,
+      releaseTimestamp: 1_767_225_600,
+      video: { width: 1920, height: 1080, fps: 30 },
+    });
+  });
+
+  it('groups the music credits YouTube attached', async () => {
+    vi.mocked(runYtDlp).mockResolvedValue(JSON.stringify(FULL_ROW));
+
+    expect((await getVideoStats('dQw4w9WgXcQ')).music).toEqual({
+      track: 'A Song',
+      artist: 'An Artist',
+      album: 'An Album',
+      releaseYear: 2019,
+    });
+  });
+
+  it('keeps only the music credits that exist', async () => {
+    vi.mocked(runYtDlp).mockResolvedValue(JSON.stringify({ ...ROW, track: 'Only A Title' }));
+
+    expect((await getVideoStats('dQw4w9WgXcQ')).music).toEqual({ track: 'Only A Title' });
+  });
+
+  it('omits what it was not told rather than inventing it', async () => {
+    const stats = await getVideoStats('dQw4w9WgXcQ');
+
+    for (const absent of [
+      stats.music,
+      stats.video,
+      stats.license,
+      stats.language,
+      stats.mediaType,
+      stats.playableInEmbed,
+      stats.releaseTimestamp,
+      stats.uploader,
+      stats.channelUrl,
+    ]) {
+      expect(absent).toBeUndefined();
+    }
+  });
+
+  it('keeps only the frame dimensions it was given', async () => {
+    vi.mocked(runYtDlp).mockResolvedValue(JSON.stringify({ ...ROW, width: 1920 }));
+
+    expect((await getVideoStats('dQw4w9WgXcQ')).video).toEqual({ width: 1920 });
+  });
+});
+
+describe('fetchVideoStatsRow', () => {
+  it('lets yt-dlp fail on a refused video by default', async () => {
+    await fetchVideoStatsRow('dQw4w9WgXcQ');
+
+    expect(vi.mocked(runYtDlp).mock.calls[0]?.[0]).not.toContain('--ignore-no-formats-error');
+  });
+
+  it('asks for a refused video as a row, with its availability, when told to tolerate it', async () => {
+    await fetchVideoStatsRow('dQw4w9WgXcQ', { tolerateRefusal: true });
+
+    expect(vi.mocked(runYtDlp).mock.calls[0]?.[0]).toContain('--ignore-no-formats-error');
   });
 });
 
