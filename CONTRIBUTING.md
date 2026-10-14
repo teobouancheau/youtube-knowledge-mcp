@@ -193,7 +193,7 @@ The pin moves with every release, and only once the release is on npm, because t
 can only name a version the registry serves. Release in this order: bump `package.json`,
 merge, publish; then, in a second commit, set `version` in `plugin/.claude-plugin/plugin.json`
 and `plugin/package.json` to the new version and run
-`cd plugin && npm install --package-lock-only --ignore-scripts youtube-knowledge-mcp@<version>`.
+`cd plugin && npm install --package-lock-only --ignore-scripts --save-exact youtube-knowledge-mcp@<version>`.
 `tests/plugin-bundle.test.ts` fails when the manifest, the plugin package, the pin and the
 lockfile disagree, or when the plugin gets ahead of the package. Never add a `.npmrc` to
 `plugin/`: it would change where the packages come from.

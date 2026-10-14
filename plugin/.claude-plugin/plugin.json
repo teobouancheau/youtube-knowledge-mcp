@@ -1,7 +1,7 @@
 {
   "name": "youtube-knowledge",
   "displayName": "YouTube Knowledge",
-  "version": "3.0.1",
+  "version": "3.0.2",
   "description": "Search YouTube, read timestamped transcripts, comments and metadata, cut clips, and keep a searchable local library and per channel brains. Runs locally; needs yt-dlp.",
   "author": {
     "name": "teobouancheau",
