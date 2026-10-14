@@ -1,0 +1,18 @@
+{
+  "name": "youtube-knowledge",
+  "displayName": "YouTube Knowledge",
+  "version": "3.0.0",
+  "description": "Search YouTube, read timestamped transcripts, comments and metadata, cut clips, and keep a searchable local library and per channel brains. Runs locally; needs yt-dlp.",
+  "author": {
+    "name": "teobouancheau",
+    "url": "https://github.com/teobouancheau"
+  },
+  "homepage": "https://github.com/teobouancheau/youtube-knowledge-mcp#readme",
+  "repository": "https://github.com/teobouancheau/youtube-knowledge-mcp",
+  "license": "MIT",
+  "keywords": ["youtube", "transcript", "mcp", "knowledge-management", "video"],
+  "icon": "./icon.png",
+  "documentationUrl": "https://github.com/teobouancheau/youtube-knowledge-mcp#readme",
+  "supportUrl": "https://github.com/teobouancheau/youtube-knowledge-mcp/issues",
+  "privacyPolicyUrl": "https://github.com/teobouancheau/youtube-knowledge-mcp/blob/main/PRIVACY.md"
+}

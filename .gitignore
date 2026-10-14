@@ -68,6 +68,8 @@ AGENTS.md
 
 # Local MCP config (use .mcp.json.example instead)
 .mcp.json
+# The plugin's own server declaration is a shipped file, not local config
+!plugin/.mcp.json
 
 # Husky (auto-generated)
 .husky/_/
