@@ -30,6 +30,37 @@ function args(
   };
 }
 
+function transcriptFrom(source: 'captions' | 'local-asr'): void {
+  vi.mocked(getTranscript).mockResolvedValue({
+    transcript: 'intro to the topic the main argument a closing thought',
+    segments: SEGMENTS,
+    language: 'en',
+    videoId: 'dQw4w9WgXcQ',
+    cached: false,
+    source,
+  });
+}
+
+describe('where the words came from', () => {
+  it('reports captions as the source of an ordinary transcript, with no warning', async () => {
+    transcriptFrom('captions');
+
+    const result = await getTranscriptHandler(args());
+
+    expect(structuredOf(result)).toMatchObject({ source: 'captions' });
+    expect(textOf(result)).not.toContain('transcribed locally');
+  });
+
+  it('says a local transcription was made by a machine, so it is not quoted as captions', async () => {
+    transcriptFrom('local-asr');
+
+    const result = await getTranscriptHandler(args());
+
+    expect(structuredOf(result)).toMatchObject({ source: 'local-asr' });
+    expect(textOf(result)).toContain('transcribed locally from the audio');
+  });
+});
+
 async function caught(promise: Promise<unknown>): Promise<YouTubeError> {
   const error: unknown = await promise.catch((e: unknown) => e);
   expect(error).toBeInstanceOf(YouTubeError);
@@ -45,6 +76,7 @@ beforeEach(() => {
     language: 'en',
     videoId: 'dQw4w9WgXcQ',
     cached: false,
+    source: 'captions' as const,
   });
   vi.mocked(getChapters).mockResolvedValue([
     {
@@ -264,6 +296,7 @@ describe('getTranscriptHandler', () => {
       language: 'en',
       videoId: 'dQw4w9WgXcQ',
       cached: true,
+      source: 'captions' as const,
     });
 
     expect(structuredOf(await getTranscriptHandler(args()))).toMatchObject({ cached: true });

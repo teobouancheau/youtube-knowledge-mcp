@@ -5,22 +5,25 @@ import { YouTubeError } from './errors.js';
 import { TIMEOUTS, runYtDlp } from './ytdlp.js';
 import { noCaptionsError } from './caption-probe.js';
 import { assertLanguageTag } from './validate.js';
-import { envInt } from './env.js';
-import { dataDir, ensurePrivateDir } from './paths.js';
-import { writeJsonAtomic } from './json-file.js';
+import { ensurePrivateDir } from './paths.js';
+import {
+  TRANSCRIPT_DIR,
+  asrPath,
+  captionsPath,
+  readTranscriptFile,
+  writeTranscriptFile,
+} from './transcript-files.js';
 import {
   TRANSCRIPT_CACHE_VERSION,
-  cachedTranscriptSchema,
   parseVtt,
   segmentsToText,
   type CachedTranscript,
   type TranscriptSegment,
+  type TranscriptSource,
 } from './transcript.js';
 import { extractVideoId, watchUrl } from './youtube-url.js';
 
 /** Fetching a transcript from YouTube and keeping it on disk. */
-
-const CACHE_DIR = dataDir('transcripts');
 
 export interface TranscriptResult {
   /** The whole transcript as plain text, unchanged from previous releases. */
@@ -31,6 +34,8 @@ export interface TranscriptResult {
   videoId: string;
   /** True when served from the local cache rather than refetched. */
   cached: boolean;
+  /** Where the words came from: YouTube's captions, or a local transcription of the audio. */
+  source: TranscriptSource;
 }
 
 export interface GetTranscriptOptions {
@@ -39,47 +44,27 @@ export interface GetTranscriptOptions {
   refresh?: boolean;
 }
 
-/** Captions rarely change, but a cache with no expiry is a cache that goes wrong. */
-const TRANSCRIPT_TTL_MS = envInt('YOUTUBE_MCP_TRANSCRIPT_TTL_MS', 30 * 86_400_000, { min: 0 });
-
-function cachePath(videoId: string, language: string): string {
-  return join(CACHE_DIR, `${videoId}.${language}.json`);
-}
-
-async function readCachedTranscript(
-  videoId: string,
-  language: string
-): Promise<CachedTranscript | undefined> {
-  const path = cachePath(videoId, language);
-  if (!existsSync(path)) return undefined;
-
-  try {
-    const parsed = cachedTranscriptSchema.safeParse(JSON.parse(await readFile(path, 'utf-8')));
-    // Anything unreadable — an older layout, a truncated write, a hand-edit —
-    // is treated as absent and refetched, rather than half-trusted.
-    if (!parsed.success) return undefined;
-
-    const cached = parsed.data;
-
-    // A cache written by an older version holds untimed text; regenerate it
-    // rather than reading it back as if it had timings.
-    if (cached.version !== TRANSCRIPT_CACHE_VERSION) return undefined;
-
-    const fetchedAt = Date.parse(cached.fetchedAt);
-    if (Number.isFinite(fetchedAt) && Date.now() - fetchedAt > TRANSCRIPT_TTL_MS) return undefined;
-
-    return cached;
-  } catch {
-    return undefined;
-  }
-}
-
 /** True when a usable transcript is already on disk, in any language. */
 export function hasCachedTranscript(videoId: string): boolean {
-  if (!existsSync(CACHE_DIR)) return false;
-  return readdirSync(CACHE_DIR).some(
+  if (!existsSync(TRANSCRIPT_DIR)) return false;
+  return readdirSync(TRANSCRIPT_DIR).some(
     (name) => name.startsWith(`${videoId}.`) && name.endsWith('.json')
   );
+}
+
+export function resultFromEntry(
+  entry: CachedTranscript,
+  videoId: string,
+  source: TranscriptSource
+): TranscriptResult {
+  return {
+    transcript: segmentsToText(entry.segments),
+    segments: entry.segments,
+    language: entry.language,
+    videoId,
+    cached: true,
+    source,
+  };
 }
 
 export async function getTranscript(
@@ -92,22 +77,16 @@ export async function getTranscript(
   assertLanguageTag(preferredLang);
   const url = watchUrl(videoId);
 
-  await ensurePrivateDir(CACHE_DIR);
+  await ensurePrivateDir(TRANSCRIPT_DIR);
 
   if (!options.refresh) {
-    const cached = await readCachedTranscript(videoId, preferredLang);
-    if (cached) {
-      return {
-        transcript: segmentsToText(cached.segments),
-        segments: cached.segments,
-        language: cached.language,
-        videoId,
-        cached: true,
-      };
-    }
+    const cached = await readTranscriptFile(captionsPath(videoId, preferredLang), {
+      expires: true,
+    });
+    if (cached) return resultFromEntry(cached, videoId, 'captions');
   }
 
-  const tempDir = join(CACHE_DIR, 'temp');
+  const tempDir = join(TRANSCRIPT_DIR, 'temp');
   await ensurePrivateDir(tempDir);
   const outputTemplate = join(tempDir, videoId);
 
@@ -151,7 +130,7 @@ export async function getTranscript(
       fetchedAt: new Date().toISOString(),
       segments,
     };
-    await writeJsonAtomic(cachePath(videoId, preferredLang), entry, { pretty: false });
+    await writeTranscriptFile(captionsPath(videoId, preferredLang), entry);
     await unlink(found.file).catch(() => undefined);
 
     return {
@@ -160,8 +139,16 @@ export async function getTranscript(
       language: found.language,
       videoId,
       cached: false,
+      source: 'captions',
     };
   } catch (error) {
+    if (error instanceof YouTubeError && error.code === 'NO_CAPTIONS') {
+      // A transcription made locally stands in only when the video has no captions
+      // at all, so real captions are never displaced by a machine's guess.
+      const heard = await readTranscriptFile(asrPath(videoId, preferredLang), { expires: false });
+      if (heard) return resultFromEntry(heard, videoId, 'local-asr');
+    }
+
     // Already typed and actionable — pass it through rather than flattening it
     // into a generic string, which is what the old wrapper did to every failure.
     if (error instanceof YouTubeError) throw error;

@@ -41,6 +41,7 @@ beforeEach(() => {
     language: 'en',
     videoId: 'dQw4w9WgXcQ',
     cached: false,
+    source: 'captions' as const,
   });
 });
 
@@ -140,6 +141,7 @@ describe('searchTranscriptHandler', () => {
         language: 'en',
         videoId: 'dQw4w9WgXcQ',
         cached: false,
+        source: 'captions' as const,
       });
 
       const result = await searchTranscriptHandler(args({ query: 'needle', contextSeconds: 5 }));

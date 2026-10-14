@@ -2,6 +2,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { formatPreflightReport, runPreflight } from '../utils/preflight.js';
 import { runSessionPreflight } from '../utils/pot-preflight.js';
 import { readStoreHealth, storeFailsHealth } from '../utils/store-health.js';
+import { probeWhisper, type WhisperStatus } from '../utils/whisper.js';
 import { pacerState } from '../utils/ytdlp-pacer.js';
 import { concurrencyState } from '../utils/ytdlp.js';
 import { describeYtDlpEnv, readYtDlpEnv } from '../utils/ytdlp-env.js';
@@ -15,6 +16,17 @@ export const checkHealthOutputSchema = {
   ok: z.boolean(),
   ytDlp: binaryStatusSchema,
   ffmpeg: binaryStatusSchema,
+  whisper: z
+    .object({
+      installed: z.boolean(),
+      version: z.string().optional(),
+      modelConfigured: z.boolean().describe('Whether YOUTUBE_MCP_WHISPER_MODEL is set'),
+      modelFound: z.boolean().describe('Whether that path is a readable file'),
+    })
+    .describe(
+      'Local transcription, which enables transcribe_video. Optional: never fails `ok`. ' +
+        'The model path is not reported.'
+    ),
   concurrency: z.object({
     active: z.number().int(),
     queued: z.number().int(),
@@ -67,11 +79,23 @@ export const checkHealthOutputSchema = {
  * When yt-dlp is missing or stale every other tool fails in a way that looks
  * like "YouTube is broken"; this turns that into one readable answer.
  */
+function describeWhisper(status: WhisperStatus): string {
+  if (!status.installed) return 'whisper.cpp: not installed (optional, enables transcribe_video)';
+  const version = status.version ?? 'unknown';
+  if (status.modelPath === undefined) {
+    return `whisper.cpp: ${version}, no model (set YOUTUBE_MCP_WHISPER_MODEL)`;
+  }
+  return status.modelFound
+    ? `whisper.cpp: ${version}, model ready`
+    : `whisper.cpp: ${version}, model not found (check YOUTUBE_MCP_WHISPER_MODEL)`;
+}
+
 export async function checkHealthHandler(): Promise<CallToolResult> {
-  const [report, capabilities, store] = await Promise.all([
+  const [report, capabilities, store, whisper] = await Promise.all([
     runPreflight({ force: true }),
     runSessionPreflight(),
     readStoreHealth(),
+    probeWhisper(),
   ]);
   const { active, queued, limit, ceiling } = concurrencyState();
   const pacer = pacerState();
@@ -84,6 +108,7 @@ export async function checkHealthHandler(): Promise<CallToolResult> {
 
   const lines = [
     formatPreflightReport(report),
+    describeWhisper(whisper),
     '',
     `yt-dlp concurrency: ${String(active)}/${String(limit)} active, ${String(queued)} queued` +
       (pacer.circuitOpen
@@ -107,6 +132,12 @@ export async function checkHealthHandler(): Promise<CallToolResult> {
     ok: report.ok && !storeFailsHealth(store),
     ytDlp: report.ytDlp,
     ffmpeg: report.ffmpeg,
+    whisper: {
+      installed: whisper.installed,
+      ...(whisper.version === undefined ? {} : { version: whisper.version }),
+      modelConfigured: whisper.modelPath !== undefined,
+      modelFound: whisper.modelFound,
+    },
     concurrency: {
       active,
       queued,

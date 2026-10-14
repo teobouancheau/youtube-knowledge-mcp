@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { fileResult, toolResult } from '../utils/format.js';
 import { clipResultSchema } from '../schemas.js';
-import { parseTimestamp } from '../utils/validate.js';
+import { parseOptionalTimestamp } from '../utils/validate.js';
 import { extractClip } from '../utils/clips.js';
 import { QUALITY_FORMAT_SELECTORS, type VideoQuality } from '../utils/youtube.js';
 import { inBatches } from '../utils/batches.js';
@@ -23,7 +23,7 @@ const QUALITY = z
   .default('1080p')
   .describe('Maximum resolution to fetch. Default: 1080p');
 
-const RANGE_FIELDS = {
+export const RANGE_FIELDS = {
   start: z
     .string()
     .optional()
@@ -54,14 +54,14 @@ function clipSelector(quality: string): string {
   return QUALITY_FORMAT_SELECTORS[known ?? '1080p'];
 }
 
-function parseRange(args: { start?: string; end?: string; chapter?: string }): {
+export function parseRange(args: { start?: string; end?: string; chapter?: string }): {
   start?: number;
   end?: number;
   chapter?: string;
 } {
   return {
-    start: args.start === undefined ? undefined : parseTimestamp(args.start, 'start'),
-    end: args.end === undefined ? undefined : parseTimestamp(args.end, 'end'),
+    start: parseOptionalTimestamp(args.start, 'start'),
+    end: parseOptionalTimestamp(args.end, 'end'),
     chapter: args.chapter,
   };
 }

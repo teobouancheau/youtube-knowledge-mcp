@@ -32,6 +32,7 @@ function transcript(segments: TranscriptSegment[]): TranscriptResult {
     segments,
     transcript: segmentsToText(segments),
     cached: false,
+    source: 'captions' as const,
   };
 }
 

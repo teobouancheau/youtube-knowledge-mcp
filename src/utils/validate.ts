@@ -100,4 +100,12 @@ export function parseTimestamp(value: string | number, field: string): number {
   return Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0);
 }
 
+/** `parseTimestamp` for a field the caller may leave out. */
+export function parseOptionalTimestamp(
+  value: string | number | undefined,
+  field: string
+): number | undefined {
+  return value === undefined ? undefined : parseTimestamp(value, field);
+}
+
 export * from './validate-youtube.js';
