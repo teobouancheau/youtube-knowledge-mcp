@@ -235,9 +235,9 @@ a cold start. Any paid plan removes that.
 
 ## MCP Tools
 
-44 tools. The 15 read-only ones work over both transports; the 29 that touch
-your filesystem are registered only in local (stdio) mode, so a remote
-deployment cannot reach the host's disk.
+58 tools. The 19 read-only ones work over both transports; the 39 that touch
+your filesystem or run ffmpeg are registered only in local (stdio) mode, so a
+remote deployment cannot reach the host's disk or spawn processes on it.
 
 Every tool returns human-readable text **and** typed structured output, and
 reports failures as an actionable message — `[NO_CAPTIONS] No "en" captions are
@@ -245,19 +245,23 @@ available for this video. Call get_transcript again with one of: fr, es, de.`
 
 ### Discovery — remote + local
 
-| Tool                | Key parameters                             | Returns                                                                                           |
-| ------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `search_videos`     | `query`, `limit`                           | Matching videos with durations, channels and view counts                                          |
-| `search_channels`   | `query`, `limit`                           | Matching channels with subscriber counts                                                          |
-| `fetch_videos`      | `url`, `limit`, `cursor`                   | One page of a playlist or channel, with a cursor. `total` is present only when YouTube states one |
-| `get_video_info`    | `video`                                    | Title, channel, duration, views, likes, description, tags                                         |
-| `get_channel_info`  | `channel`                                  | Name, handle, subscriber count, description, avatar and banner                                    |
-| `get_playlist_info` | `url`                                      | Title, channel, video count, last updated                                                         |
-| `get_chapters`      | `video`                                    | Chapter titles with start/end times and deep links                                                |
-| `get_comments`      | `video`, `limit`, `includeReplies`, `sort` | Comments with replies and a completeness receipt saying how many of the video's comments this is  |
-| `list_formats`      | `video`                                    | Available formats grouped by video+audio, video-only, audio-only                                  |
-| `get_thumbnail`     | `video`, `channel`, `image`, `quality`     | A video thumbnail, channel avatar or banner as an image, with its real size                       |
-| `check_health`      | —                                          | yt-dlp and ffmpeg status, versions, staleness warnings, and which session options are set         |
+| Tool                     | Key parameters                             | Returns                                                                                                                |
+| ------------------------ | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `search_videos`          | `query`, `limit`                           | Matching videos with durations, channels and view counts                                                               |
+| `search_channels`        | `query`, `limit`                           | Matching channels with subscriber counts                                                                               |
+| `fetch_videos`           | `url`, `limit`, `cursor`                   | One page of a playlist or channel, with a cursor. `total` is present only when YouTube states one                      |
+| `get_video_info`         | `video`                                    | Title, channel, duration, views, likes, description, tags                                                              |
+| `get_channel_info`       | `channel`                                  | Name, handle, subscriber count, description, avatar, banner, verified badge and keywords                               |
+| `get_playlist_info`      | `url`                                      | Title, channel, video count, last updated                                                                              |
+| `get_video_details`      | `video`, `heatmap`, `refresh`              | Most-replayed moments with links, category, licence, language, age limit, music credits, frame size, caption inventory |
+| `list_captions`          | `video`                                    | Caption languages split into human-made and automatic, and the spoken language                                         |
+| `list_channel_playlists` | `channel`, `limit`                         | A channel's public playlists with titles and links                                                                     |
+| `get_sponsor_segments`   | `video`, `categories`                      | Community-marked sponsor, intro, outro and filler segments with links (SponsorBlock)                                   |
+| `get_chapters`           | `video`                                    | Chapter titles with start/end times and deep links                                                                     |
+| `get_comments`           | `video`, `limit`, `includeReplies`, `sort` | Comments with replies and a completeness receipt saying how many of the video's comments this is                       |
+| `list_formats`           | `video`                                    | Available formats grouped by video+audio, video-only, audio-only                                                       |
+| `get_thumbnail`          | `video`, `channel`, `image`, `quality`     | A video thumbnail, channel avatar or banner as an image, with its real size                                            |
+| `check_health`           | —                                          | yt-dlp and ffmpeg status, versions, staleness warnings, and which session options are set                              |
 
 ### Transcripts — remote + local
 
@@ -274,19 +278,56 @@ pieces instead of returning 100,000+ tokens at once.
 
 ### Extraction for editing — local only
 
-| Tool                 | Key parameters                                                             | Returns                      |
-| -------------------- | -------------------------------------------------------------------------- | ---------------------------- |
-| `extract_clip`       | `video`, `start`+`end` or `chapter`, `quality`, `preciseCuts`, `outputDir` | Path to the cut video        |
-| `extract_audio_clip` | `video`, `start`+`end` or `chapter`, `audioFormat`, `outputDir`            | Path to the audio file       |
-| `extract_clips`      | `video`, `ranges` (up to 20), `quality`, `preciseCuts`, `outputDir`        | One file per range           |
-| `extract_frame`      | `video`, `timestamp`, `format`, `outputDir`                                | Path to a PNG or JPG still   |
-| `export_subtitles`   | `video`, `format` (srt/vtt/txt), `language`, `outputDir`                   | Path to the subtitle file    |
-| `download_video`     | `video`, `quality`, `formatId`, `outputDir`                                | Path to the downloaded video |
+| Tool                 | Key parameters                                                             | Returns                                    |
+| -------------------- | -------------------------------------------------------------------------- | ------------------------------------------ |
+| `extract_clip`       | `video`, `start`+`end` or `chapter`, `quality`, `preciseCuts`, `outputDir` | Path to the cut video                      |
+| `extract_audio_clip` | `video`, `start`+`end` or `chapter`, `audioFormat`, `outputDir`            | Path to the audio file                     |
+| `extract_clips`      | `video`, `ranges` (up to 20), `quality`, `preciseCuts`, `outputDir`        | One file per range                         |
+| `extract_frame`      | `video`, `timestamp`, `format`, `outputDir`                                | A PNG or JPG still, saved and shown inline |
+| `extract_gif`        | `video`, `start`+`end` or `chapter`, `width`, `fps`, `outputDir`           | Path to a looping GIF, up to 15 s          |
+| `concat_clips`       | `clips` (2 to 20 paths), `name`, `outputDir`                               | Path to one video joining them, re-encoded |
+| `export_subtitles`   | `video`, `format` (srt/vtt/txt), `language`, `outputDir`                   | Path to the subtitle file                  |
+| `download_video`     | `video`, `quality`, `formatId`, `outputDir`                                | Path to the downloaded video               |
 
 Clips are cut with `--download-sections`, so only the byte range covering the
 window is fetched rather than the whole file. `preciseCuts` (default `true`)
 cuts exactly at the requested times; set it to `false` for a faster
 keyframe-aligned cut. All of these require ffmpeg.
+
+### Looking at a video — local only
+
+Everything above works from words. These work from pixels: each tool returns
+images the model can read, and writes nothing to disk. All of them require ffmpeg.
+
+| Tool                    | Key parameters                                            | Returns                                                         |
+| ----------------------- | --------------------------------------------------------- | --------------------------------------------------------------- |
+| `extract_frames`        | `video`, `timestamps` or `count`, `start`, `end`, `width` | Up to 12 frames as images, each labelled with its moment        |
+| `extract_contact_sheet` | `video`, `count` (up to 24), `start`, `end`, `columns`    | One image tiling the frames, with the timestamp of every cell   |
+| `detect_scenes`         | `video`, `start`, `end`, `threshold`                      | Timestamps where the video cuts, with links (up to 15 min/call) |
+
+Start with `extract_contact_sheet` to see what a video looks like, then
+`extract_frames` at the moments that matter, found with `search_transcript` or
+`detect_scenes`. Frames are shrunk to `width` and never enlarged.
+
+### Videos with no captions — local only
+
+| Tool               | Key parameters                 | Returns                                                    |
+| ------------------ | ------------------------------ | ---------------------------------------------------------- |
+| `transcribe_video` | `video`, `language`, `refresh` | A transcription made on this machine, kept for later reads |
+
+When `get_transcript` reports `NO_CAPTIONS`, `transcribe_video` downloads the
+audio and runs [whisper.cpp](https://github.com/ggml-org/whisper.cpp) over it.
+It is optional and nothing runs unless you call it. Install whisper.cpp so that
+`whisper-cli` is on your `PATH` (macOS: `brew install whisper.cpp`), download a
+ggml model such as `ggml-base.bin`, and set `YOUTUBE_MCP_WHISPER_MODEL` to its
+path. `check_health` reports whether both are in place.
+
+Always pass `language`: auto-detection on a small model took English speech for
+French. The result is kept beside the video's captions, never over them, and
+`get_transcript`, `search_transcript`, `export_subtitles` and the channel brains
+read it with `source: "local-asr"` so a machine's guess is never mistaken for
+YouTube's captions. Accuracy depends on the model you choose; names and rare
+words are the first to suffer.
 
 ### Knowledge library — local only
 
@@ -307,15 +348,18 @@ returns a **completeness receipt**: `complete` is true only when the server can
 prove it has everything in scope, and a consumer must not describe the data as a
 full history while it is false.
 
-| Tool               | Key parameters                                                         | Returns                                                     |
-| ------------------ | ---------------------------------------------------------------------- | ----------------------------------------------------------- |
-| `harvest_channel`  | `channel`, `maxVideos`                                                 | Every video across all tabs, catalogued, with a receipt     |
-| `harvest_comments` | `video`, `maxComments`, `sort`, `maxRepliesPerThread`                  | Comments and replies stored locally, with a receipt         |
-| `get_coverage`     | `scope`, `incompleteOnly`, `verify`, `limit`, `offset`                 | What the server can prove it holds, and what it cannot      |
-| `query_comments`   | `video`, `channel`, `match`, `author`, `threadOf`, `order`, `limit`    | Full-text search over stored comments, with real pagination |
-| `query_videos`     | `channel`, `match`, `since`, `until`, `withComments`, `order`, `limit` | The catalogued videos, filtered and sorted                  |
-| `prune_harvest`    | `channel`, `video`, `author`, `scope`, `confirm`, `vacuum`             | What was removed from the store                             |
-| `repair_store`     | `confirm`                                                              | Moves a damaged store aside and starts a fresh one          |
+| Tool                | Key parameters                                                         | Returns                                                                     |
+| ------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `harvest_channel`   | `channel`, `maxVideos`                                                 | Every video across all tabs, catalogued, with a receipt                     |
+| `harvest_details`   | `channel`, `maxVideos`, `retryUnreadable`                              | The full record of each catalogued video, kept in the store, with a receipt |
+| `check_new_uploads` | `channel`, `lookback`                                                  | Videos the channel lists that the catalogue lacks; writes nothing           |
+| `harvest_comments`  | `video`, `maxComments`, `sort`, `maxRepliesPerThread`                  | Comments and replies stored locally, with a receipt                         |
+| `get_coverage`      | `scope`, `incompleteOnly`, `verify`, `limit`, `offset`                 | What the server can prove it holds, and what it cannot                      |
+| `query_comments`    | `video`, `channel`, `match`, `author`, `threadOf`, `order`, `limit`    | Full-text search over stored comments, with real pagination                 |
+| `query_videos`      | `channel`, `match`, `since`, `until`, `withComments`, `order`, `limit` | The catalogued videos, filtered and sorted                                  |
+| `prune_harvest`     | `channel`, `video`, `author`, `scope`, `confirm`, `vacuum`             | What was removed from the store                                             |
+| `export_data`       | `dataset`, `format`, `channel`, `video`, `limit`, `outputDir`          | JSON, CSV or Markdown file of harvested rows, with their receipts           |
+| `repair_store`      | `confirm`                                                              | Moves a damaged store aside and starts a fresh one                          |
 
 `get_coverage` never contacts YouTube, so it is cheap enough to call before
 making any claim about the data. Check `anyIncomplete` first.
@@ -331,14 +375,15 @@ The `author` filter is the per-person erasure path.
 
 ### Channel brains — local only
 
-| Tool                 | Key parameters                                                    | Returns                                          |
-| -------------------- | ----------------------------------------------------------------- | ------------------------------------------------ |
-| `build_brain`        | `channel`, `maxVideos`, `language`, `since`, `minDurationSeconds` | What was read, what was ruled out, and the stats |
-| `ask_brain`          | `channel`, `query`, `limit`, `offset`                             | Passages with timestamps and `?t=` links         |
-| `list_brains`        | —                                                                 | Every brain built locally                        |
-| `get_brain_info`     | `channel`, `includeVideos`                                        | Coverage, statistics and repeated phrases        |
-| `save_brain_profile` | `channel`, `content`                                              | Path to the saved profile                        |
-| `delete_brain`       | `channel`                                                         | What was removed                                 |
+| Tool                 | Key parameters                                                    | Returns                                                          |
+| -------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `build_brain`        | `channel`, `maxVideos`, `language`, `since`, `minDurationSeconds` | What was read, what was ruled out, and the stats                 |
+| `ask_brain`          | `channel`, `query`, `limit`, `offset`                             | Passages with timestamps and `?t=` links                         |
+| `ask_brains`         | `query`, `channels`, `limit`                                      | The best passages across several brains, each naming its channel |
+| `list_brains`        | —                                                                 | Every brain built locally                                        |
+| `get_brain_info`     | `channel`, `includeVideos`                                        | Coverage, statistics and repeated phrases                        |
+| `save_brain_profile` | `channel`, `content`                                              | Path to the saved profile                                        |
+| `delete_brain`       | `channel`                                                         | What was removed                                                 |
 
 `build_brain` is the only one that touches the network. The rest resolve a
 channel from what is already on disk, so they work offline and cost nothing to
@@ -436,6 +481,7 @@ All optional.
 | `YOUTUBE_MCP_MAX_CONCURRENCY`      | `3`         | Concurrent yt-dlp processes                                                                                                                                  |
 | `YOUTUBE_MCP_TRANSCRIPT_TTL_MS`    | 30 days     | Transcript cache lifetime                                                                                                                                    |
 | `YOUTUBE_MCP_STATS_TTL_MS`         | 1 day       | Per-video stats cache lifetime                                                                                                                               |
+| `YOUTUBE_MCP_WHISPER_MODEL`        | none        | Path to a whisper.cpp ggml model file. Enables `transcribe_video`; never downloaded for you                                                                  |
 | `YOUTUBE_MCP_COOKIES_FROM_BROWSER` | unset       | Browser whose cookies yt-dlp should read: `brave`, `chrome`, `chromium`, `edge`, `firefox`, `opera`, `safari`, `vivaldi` or `whale`. See Signed-in content   |
 | `YOUTUBE_MCP_COOKIES_FILE`         | unset       | A Netscape-format cookies file inside your home directory, as an alternative to a browser                                                                    |
 | `YOUTUBE_MCP_PROXY`                | unset       | An `http`, `https`, `socks4` or `socks5` proxy URL for yt-dlp                                                                                                |

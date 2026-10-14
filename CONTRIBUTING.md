@@ -22,6 +22,12 @@ You also need [yt-dlp](https://github.com/yt-dlp/yt-dlp) on your `PATH`, and
 Run the `check_health` tool at any time to confirm both are present and current
 — an outdated yt-dlp is the most common cause of unexplained failures.
 
+[gitleaks](https://github.com/gitleaks/gitleaks) is required too, because every commit
+and push is scanned for secrets with it (macOS: `brew install gitleaks`). The pre-commit
+hook scans what is staged, the pre-push hook scans the whole history, and
+`npm run validate` scans the working tree. A missing gitleaks fails the hook rather than
+skipping it. The rules are gitleaks' defaults in full; `.gitleaks.toml` only extends them.
+
 ## Project structure
 
 ```
@@ -58,8 +64,19 @@ src/
     ├── transcript-search.ts # Finding a phrase in a transcript
     ├── subtitles.ts      # SRT and WebVTT export
     ├── transcript-cache.ts # Fetching captions and keeping them on disk
+    ├── transcript-files.ts # Where transcripts live on disk and how they are read back
+    ├── whisper.ts        # whisper.cpp: probing it, running it, reading its output
+    ├── local-transcription.ts # Transcribing a video's audio when it has no captions
     ├── caption-probe.ts  # Naming the caption languages a video does have
     ├── clips.ts          # Clip, audio and frame extraction
+    ├── ffmpeg.ts         # The one place ffmpeg runs: cancellation, time budget, typed failure
+    ├── seconds.ts        # Seconds and milliseconds, and rounding between them
+    ├── video-stream.ts   # Resolving a stream for ffmpeg, behind an https-only allowlist
+    ├── frame-plan.ts     # Choosing which moments of a video to look at
+    ├── frames.ts         # Stills captured into memory, never onto disk
+    ├── contact-sheet.ts  # Many frames tiled into one image
+    ├── scenes.ts         # Finding where a video cuts
+    ├── moment.ts         # A point in a video: seconds, clock reading, link
     ├── search-index.ts   # BM25 index, shared by the library and the brains
     ├── storage.ts        # Library persistence
     ├── json-file.ts      # Atomic JSON writes and validated reads
@@ -78,9 +95,22 @@ src/
     ├── comment-threads.ts # Flat comment rows rebuilt into threads
     ├── comment-store.ts  # Comments on disk, upserted and searchable
     ├── video-store.ts    # Reading the catalogued videos back
+    ├── sponsorblock.ts   # Community-marked sponsor and intro segments
+    ├── gif.ts            # A short looping GIF from a moment of a video
+    ├── concat.ts         # Joining clips into one video
+    ├── video-detail-store.ts # What a full read of a video said, on its catalogue row
+    ├── harvest-details.ts # Reading every catalogued video, resumably, with a receipt
+    ├── detail-batch.ts   # Reading one batch of videos and keeping what came back
+    ├── upload-check.ts   # What a channel published since its catalogue
+    ├── export-format.ts  # CSV and Markdown, with spreadsheet-injection defused
+    ├── export-data.ts    # Harvested rows out as a file, with their receipts
+    ├── export-rows.ts    # The rows and columns an export holds
+    ├── export-load.ts    # Reading those rows and their receipts out of the store
     ├── ytdlp-pacer.ts    # Cooldowns, adaptive concurrency and the circuit breaker
     ├── sleep.ts          # A cancellable pause, shared by the retry loop and pacer
     ├── ytdlp-stream.ts   # Reading yt-dlp output a line at a time
+    ├── video-stats-schema.ts # The shape of one -j read of a video
+    ├── video-stats-storage.ts # What of that record is kept in the store
     ├── video-stats.ts    # One -j read, serving every caller that needs part of it
     ├── video-stats-cache.ts # Keeping one video's stats on disk
     ├── paths.ts          # The one directory everything is written under
@@ -91,6 +121,7 @@ src/
     ├── brain-ingest.ts   # Reading one video into passages
     ├── brain-build.ts    # Reading a channel, resumably
     ├── brain-index.ts    # Passage persistence and retrieval
+    ├── brain-fusion.ts   # Merging searches of several brains by rank
     ├── brain-lookup.ts   # Finding a brain from whatever the channel was called
     ├── brain-phrases.ts  # Phrases a creator repeats across videos
     ├── brain-stats.ts    # What can be counted about a channel
@@ -121,12 +152,37 @@ src/
     ├── youtube-video.ts  # Video metadata, chapters and comments
     ├── youtube-schemas.ts # The shapes yt-dlp's own JSON is parsed through
     ├── youtube-channel.ts # Channel and playlist listings and metadata
+    ├── channel-playlists.ts # The playlists a channel has published
+    ├── most-replayed.ts  # The moments of a video people replay most
     ├── youtube-search.ts # Keyword search for videos and channels
     └── youtube-download.ts # Format listing and whole-video downloads
 tests/                    # Unit, protocol-level and filesystem tests
 └── e2e/                  # The built server against real yt-dlp (opt-in, see below)
 scripts/smoke.mjs         # Post-build check that boots the server as a real client
+scripts/render-icon.mjs   # Renders the plugin icon and favicons from assets/icon.svg
+scripts/secret-scan.sh     # gitleaks over what is staged, the history or the tree
 ```
+
+## Claude plugin
+
+`plugin/` is the folder Anthropic's directory validates and installs. It holds a
+manifest (`.claude-plugin/plugin.json`), the server declaration (`.mcp.json`), a README
+and the icon, and it ships no code of its own: `.mcp.json` launches this package with
+`npx -y youtube-knowledge-mcp@<version>`, because the directory refuses a launcher that
+is not pinned to an exact version. `assets/icon.svg` is the single source of the mark.
+`npm run render:icon` renders `plugin/icon.png` (512 by 512) and the favicons in
+`assets/` from it; edit the SVG, rerun the script and commit the outputs together. The
+script calls `rsvg-convert` from librsvg, the GNOME project's SVG renderer, which is
+a system tool rather than an npm dependency (macOS: `brew install librsvg`).
+
+The pin moves with every release. When you bump `version` in `package.json`, change
+`version` in `plugin/.claude-plugin/plugin.json` and the pin in `plugin/.mcp.json` in the
+same commit; `tests/plugin-bundle.test.ts` fails otherwise. Publish the package to npm
+before the directory picks up the new commit, because the plugin installs the version it
+names.
+
+Before submitting or changing the plugin, run `claude plugin validate ./plugin`, then
+select **Validate** in the developer portal at claude.ai/directory/manage.
 
 ## Scripts
 

@@ -5,6 +5,89 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+A Claude plugin in `plugin/`, for Anthropic's plugin directory. It launches the
+published package with `npx` at an exact version and ships its own README, icon and
+privacy policy (`PRIVACY.md`). `tests/plugin-bundle.test.ts` fails when the plugin's
+version or pin drifts from `package.json`.
+
+A new mark: a white rewind glyph on a red square, replacing the play-and-transcript
+icon. `assets/icon.svg` stays the single source; `npm run render:icon` now renders
+`plugin/icon.png` and the favicons from it with librsvg's `rsvg-convert`, where the PNG
+used to be made by hand.
+
+Looking at a video. Three tools return images the model can read and write nothing
+to disk: `extract_frames` (several frames, at exact moments or spread evenly),
+`extract_contact_sheet` (a whole video in one image, with the timestamp of every
+cell) and `detect_scenes` (where a video cuts, with links). `extract_frame` now
+also shows the picture it saved. All need ffmpeg and run locally only.
+
+More of what yt-dlp already knew. `get_video_details` returns the moments viewers
+replay most (with links), category, licence, language, age limit, music credits,
+frame size and caption inventory from one saved read. `list_captions` splits a
+video's caption languages into human-made and automatic and names the spoken
+language. `list_channel_playlists` lists a channel's playlists, and
+`get_channel_info` now reports the verified badge and the channel's keywords.
+
+Videos with no captions. `transcribe_video` downloads the audio and transcribes it
+with whisper.cpp on this machine. It is optional: it needs `whisper-cli` on `PATH`
+and `YOUTUBE_MCP_WHISPER_MODEL` pointing at a ggml model, which is never downloaded
+for you, and `check_health` reports both. The result is kept beside the captions,
+never over them, and every transcript now carries `source`, so a machine's
+transcription is never mistaken for YouTube's captions.
+
+Editing. `extract_gif` makes a looping GIF of a moment (up to 15 seconds) and
+`concat_clips` joins clips into one video, re-encoded so clips of different sizes fit
+together. Burning subtitles into the picture is not offered: it needs an ffmpeg built
+with libass, which many are not.
+
+Sponsor segments. `get_sponsor_segments` returns the sponsor reads, intros, outros and
+filler the SponsorBlock community has marked, with links. It sends SponsorBlock only a
+four-character hash prefix of the video id, as its API is designed to be used, and
+`PRIVACY.md` now says so.
+
+The harvested store, finished. `harvest_details` reads the full record of every
+catalogued video and keeps it, which the store's `detail_json`, `heatmap_json` and
+`detail_at` columns were always meant for but nothing wrote: `query_videos` now reports
+`detailed` truthfully. Its receipt is complete only when every video of a complete
+catalogue has been read; videos that are private or removed are marked unreadable so
+they cannot starve the rest, and keep the receipt incomplete. `check_new_uploads` names
+the videos a channel lists that the catalogue lacks, without writing anything.
+`export_data` writes harvested videos or comments as JSON, CSV or Markdown and carries
+the receipts with them (beside the file for CSV). CSV text is defused against
+spreadsheet formula injection.
+
+`ask_brains` puts one question to several creators at once: it searches every brain
+(or the channels you name) and interleaves the results by rank, because BM25 scores
+from different channels are not comparable. Each passage names its channel.
+
+### Security
+
+Every commit and push is now scanned for secrets with gitleaks, and so is `npm run
+validate`: the pre-commit hook scans what is staged, the pre-push hook the whole history,
+and validate the working tree. A missing gitleaks fails the gate rather than skipping it,
+and `tests/secret-scan.test.ts` proves the gate stops a planted token, keeps it out of
+its own output, and still finds it after the file that held it was fixed.
+
+### Fixed
+
+`harvest_channel` never reported a catalogue as complete for a channel missing one of
+the five tabs it walks, which is most channels. It recognised a missing tab by looking
+for yt-dlp's words in the error message, and the error message never carries them.
+The words now classify the error as `NOT_FOUND` (yt-dlp `_tab.py:2393`), and a missing
+tab is the complete answer it is. Found by running the built server against a real
+channel; the unit tests had been faking the message.
+
+### Changed
+
+`get_transcript` returns a `source` (`captions` or `local-asr`) and falls back to a
+kept local transcription only when the video has no captions at all. The cached
+per-video stats gain licence, language, music, format and media-type fields, so
+copies saved by earlier releases are read again once.
+
 ## [3.0.0] - 2026-09-07
 
 ### Breaking
