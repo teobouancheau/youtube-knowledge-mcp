@@ -16,7 +16,7 @@ FROM node:24-slim
 # yt-dlp is pinned so an image rebuild is reproducible. It still needs regular
 # bumping — YouTube changes often and a stale yt-dlp is the most common failure.
 # The scheduled workflow in .github/workflows/ opens a PR when a new one lands.
-ARG YT_DLP_VERSION=2026.07.04
+ARG YT_DLP_VERSION=2026.08.19
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3 python3-pip ffmpeg ca-certificates && \
