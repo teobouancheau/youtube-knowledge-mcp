@@ -14,6 +14,11 @@ import {
   searchChannelsOutputSchema,
   searchChannelsHandler,
 } from '../tools/search-channels.js';
+import {
+  listChannelPlaylistsSchema,
+  listChannelPlaylistsOutputSchema,
+  listChannelPlaylistsHandler,
+} from '../tools/list-channel-playlists.js';
 
 /** Channels and playlists. Remote-safe. */
 export const channelTools: ToolDefinition[] = [
@@ -64,5 +69,21 @@ export const channelTools: ToolDefinition[] = [
       openWorldHint: true,
     },
     handler: getPlaylistInfoHandler,
+  }),
+  defineTool({
+    name: 'list_channel_playlists',
+    mode: 'all',
+    title: 'List YouTube Channel Playlists',
+    description:
+      'List the public playlists a YouTube channel has published, with titles and links. Pass a playlist URL on to fetch_videos or digest_playlist to read what is in it.',
+    inputSchema: listChannelPlaylistsSchema,
+    outputSchema: listChannelPlaylistsOutputSchema,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    handler: listChannelPlaylistsHandler,
   }),
 ];

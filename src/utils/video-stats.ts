@@ -2,6 +2,16 @@ import { z } from 'zod';
 import { TIMEOUTS, parseYtDlpJson, runYtDlp } from './ytdlp.js';
 import { extractVideoId, formatDuration, watchUrl } from './youtube-url.js';
 import { classifyPlayability } from './errors.js';
+import { videoStatsRowSchema, type MusicCredits, type VideoFormat } from './video-stats-schema.js';
+
+export { videoStatsRowSchema } from './video-stats-schema.js';
+export {
+  CATALOG_DESCRIPTION_PREVIEW_CHARS,
+  MAX_DETAIL_JSON_BYTES,
+  STRIPPED_KEYS,
+  stripForStorage,
+} from './video-stats-storage.js';
+export type { MusicCredits, VideoFormat } from './video-stats-schema.js';
 
 /**
  * One full read of a video, serving every caller that needs part of it.
@@ -17,56 +27,6 @@ import { classifyPlayability } from './errors.js';
  * the record. Stripped, a video is 4,785 bytes. Storing the raw object would
  * cost 6.4GB per 10,000 videos instead of 48MB.
  */
-
-/** A stored snapshot must stay small enough that a catalogue is not mostly URLs. */
-export const MAX_DETAIL_JSON_BYTES = 32_768;
-
-/** Keys dropped before storage: expiring URLs and bulk we can re-fetch. */
-export const STRIPPED_KEYS = [
-  'formats',
-  'requested_formats',
-  'automatic_captions',
-  'subtitles',
-  'thumbnails',
-  'comments',
-  'heatmap',
-] as const;
-
-const heatmapEntrySchema = z.object({
-  start_time: z.number(),
-  end_time: z.number(),
-  value: z.number(),
-});
-
-export const videoStatsRowSchema = z.object({
-  id: z.string(),
-  title: z.string().nullish(),
-  channel: z.string().nullish(),
-  channel_id: z.string().nullish(),
-  channel_url: z.string().nullish(),
-  channel_follower_count: z.number().nullish(),
-  upload_date: z.string().nullish(),
-  duration: z.number().nullish(),
-  view_count: z.number().nullish(),
-  like_count: z.number().nullish(),
-  comment_count: z.number().nullish(),
-  concurrent_view_count: z.number().nullish(),
-  categories: z.array(z.string()).nullish(),
-  tags: z.array(z.string()).nullish(),
-  age_limit: z.number().nullish(),
-  availability: z.string().nullish(),
-  live_status: z.string().nullish(),
-  was_live: z.boolean().nullish(),
-  is_live: z.boolean().nullish(),
-  description: z.string().nullish(),
-  thumbnail: z.string().nullish(),
-  chapters: z
-    .array(z.object({ title: z.string(), start_time: z.number(), end_time: z.number() }))
-    .nullish(),
-  heatmap: z.array(heatmapEntrySchema).nullish(),
-  automatic_captions: z.record(z.string(), z.unknown()).nullish(),
-  subtitles: z.record(z.string(), z.unknown()).nullish(),
-});
 
 export interface VideoStats {
   id: string;
@@ -96,25 +56,24 @@ export interface VideoStats {
   descriptionChars: number;
   description: string;
   thumbnailUrl?: string;
+  channelUrl?: string;
+  uploader?: string;
+  license?: string;
+  language?: string;
+  /** yt-dlp's own label, such as `video`, `short` or `livestream`. */
+  mediaType?: string;
+  playableInEmbed?: boolean;
+  /** Unix seconds a premiere or scheduled video goes live. */
+  releaseTimestamp?: number;
+  music?: MusicCredits;
+  video?: VideoFormat;
 }
 
-export const CATALOG_DESCRIPTION_PREVIEW_CHARS = 500;
-
-/** Drops the bulk keys, so what is stored is the record rather than its attachments. */
-export function stripForStorage(raw: Record<string, unknown>): Record<string, unknown> {
-  const kept: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(raw)) {
-    if (STRIPPED_KEYS.some((stripped) => stripped === key)) continue;
-    kept[key] = value;
-  }
-
-  const description = kept.description;
-  if (typeof description === 'string' && description.length > CATALOG_DESCRIPTION_PREVIEW_CHARS) {
-    kept.description = description.slice(0, CATALOG_DESCRIPTION_PREVIEW_CHARS);
-    kept.description_truncated = true;
-  }
-
-  return kept;
+/** `{ [key]: value }` when yt-dlp told us something, `{}` when it said null or nothing. */
+function present<K extends string, V>(key: K, value: V | null | undefined): Partial<Record<K, V>> {
+  const field: Partial<Record<K, V>> = {};
+  if (value !== null && value !== undefined) field[key] = value;
+  return field;
 }
 
 export function toVideoStats(row: z.infer<typeof videoStatsRowSchema>): VideoStats {
@@ -131,38 +90,45 @@ export function toVideoStats(row: z.infer<typeof videoStatsRowSchema>): VideoSta
   const heatmap = row.heatmap ?? undefined;
   const description = row.description ?? '';
 
+  const music: MusicCredits = {
+    ...present('track', row.track),
+    ...present('artist', row.artist),
+    ...present('album', row.album),
+    ...present('releaseYear', row.release_year),
+  };
+  const format: VideoFormat = {
+    ...present('width', row.width),
+    ...present('height', row.height),
+    ...present('fps', row.fps),
+  };
+
   return {
     id: row.id,
     title: row.title ?? 'Unknown',
     url: watchUrl(row.id),
     channel: row.channel ?? 'Unknown',
-    ...(row.channel_id === null || row.channel_id === undefined
-      ? {}
-      : { channelId: row.channel_id }),
-    ...(row.channel_follower_count === null || row.channel_follower_count === undefined
-      ? {}
-      : { channelFollowerCount: row.channel_follower_count }),
+    ...present('channelId', row.channel_id),
+    ...present('channelFollowerCount', row.channel_follower_count),
+    ...present('channelUrl', row.channel_url),
+    ...present('uploader', row.uploader),
     uploadDate: row.upload_date ?? '',
     durationSeconds: duration,
     durationFormatted: formatDuration(Math.floor(duration)),
-    ...(row.view_count === null || row.view_count === undefined
-      ? {}
-      : { viewCount: row.view_count }),
-    ...(row.like_count === null || row.like_count === undefined
-      ? {}
-      : { likeCount: row.like_count }),
-    ...(row.comment_count === null || row.comment_count === undefined
-      ? {}
-      : { commentCount: row.comment_count }),
+    ...present('viewCount', row.view_count),
+    ...present('likeCount', row.like_count),
+    ...present('commentCount', row.comment_count),
     categories: row.categories ?? [],
     tags: row.tags ?? [],
     ageLimit: row.age_limit ?? 0,
-    ...(row.availability === null || row.availability === undefined
-      ? {}
-      : { availability: row.availability }),
-    ...(row.live_status === null || row.live_status === undefined
-      ? {}
-      : { liveStatus: row.live_status }),
+    ...present('availability', row.availability),
+    ...present('liveStatus', row.live_status),
+    ...present('license', row.license),
+    ...present('language', row.language),
+    ...present('mediaType', row.media_type),
+    ...present('playableInEmbed', row.playable_in_embed),
+    ...present('releaseTimestamp', row.release_timestamp),
+    ...(Object.keys(music).length === 0 ? {} : { music }),
+    ...(Object.keys(format).length === 0 ? {} : { video: format }),
     wasLive: row.was_live ?? false,
     chapters: (row.chapters ?? []).map((chapter) => ({
       title: chapter.title,
@@ -187,18 +153,27 @@ export function toVideoStats(row: z.infer<typeof videoStatsRowSchema>): VideoSta
         }),
     descriptionChars: description.length,
     description,
-    ...(row.thumbnail === null || row.thumbnail === undefined
-      ? {}
-      : { thumbnailUrl: row.thumbnail }),
+    ...present('thumbnailUrl', row.thumbnail),
   };
 }
 
 /** One `-j` read, serving info, details, chapters, captions and the heatmap. */
 export async function fetchVideoStatsRow(
-  urlOrId: string
+  urlOrId: string,
+  options: {
+    /**
+     * Have yt-dlp return a video YouTube refuses to serve as a row, with `availability`
+     * filled in, instead of failing. Without it a private video fails with a message that
+     * asks to sign in, which reads as a session problem rather than as that one video.
+     */
+    tolerateRefusal?: boolean;
+  } = {}
 ): Promise<z.infer<typeof videoStatsRowSchema>> {
   const videoId = extractVideoId(urlOrId);
-  const stdout = await runYtDlp(['-j', '--skip-download'], {
+  const args = ['-j', '--skip-download'];
+  if (options.tolerateRefusal === true) args.push('--ignore-no-formats-error');
+
+  const stdout = await runYtDlp(args, {
     label: 'get_video_stats',
     timeoutMs: TIMEOUTS.metadata,
     target: watchUrl(videoId),

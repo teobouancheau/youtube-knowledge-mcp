@@ -42,6 +42,10 @@ export interface ChannelInfo {
   avatarUrl?: string;
   /** The channel's uncropped banner, when yt-dlp listed one. */
   bannerUrl?: string;
+  /** Present only when the channel page says so. */
+  isVerified?: boolean;
+  /** The keywords the channel lists for itself; absent when it lists none. */
+  tags?: string[];
 }
 
 export interface PlaylistInfo {
@@ -156,6 +160,12 @@ export async function getChannelInfo(channel: string): Promise<ChannelInfo> {
     subscriberCount: data.channel_follower_count ?? 0,
     channelUrl: data.channel_url ?? channelUrl,
     description: data.description ?? '',
+    ...(data.channel_is_verified === null || data.channel_is_verified === undefined
+      ? {}
+      : { isVerified: data.channel_is_verified }),
+    ...(data.tags === null || data.tags === undefined || data.tags.length === 0
+      ? {}
+      : { tags: data.tags }),
     // The same listing carries the avatar and banner; they were discarded here
     // for two releases.
     ...selectChannelImages(data.thumbnails),

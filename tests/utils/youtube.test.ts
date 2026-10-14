@@ -1008,6 +1008,37 @@ describe('getChannelInfo', () => {
     expect(execa).not.toHaveBeenCalled();
   });
 
+  it('reports the keywords and the verified badge the channel page lists', async () => {
+    const { execa } = await import('execa');
+    vi.mocked(execa).mockResolvedValue(
+      execaSuccess(
+        JSON.stringify({
+          channel: 'Google',
+          channel_is_verified: true,
+          tags: ['Google', 'Technology'],
+        })
+      )
+    );
+
+    const { getChannelInfo } = await import('../../src/utils/youtube.js');
+    const info = await getChannelInfo('@Google');
+
+    expect(info).toMatchObject({ isVerified: true, tags: ['Google', 'Technology'] });
+  });
+
+  it('leaves out keywords and verification when the page lists none', async () => {
+    const { execa } = await import('execa');
+    vi.mocked(execa).mockResolvedValue(
+      execaSuccess(JSON.stringify({ channel: 'Plain', tags: [], channel_is_verified: null }))
+    );
+
+    const { getChannelInfo } = await import('../../src/utils/youtube.js');
+    const info = await getChannelInfo('@Plain');
+
+    expect(info).not.toHaveProperty('tags');
+    expect(info).not.toHaveProperty('isVerified');
+  });
+
   it('reports Unknown rather than an empty name', async () => {
     const { execa } = await import('execa');
     vi.mocked(execa).mockResolvedValue(execaSuccess(JSON.stringify({})));

@@ -27,6 +27,8 @@ export async function getChannelInfoHandler({
     info.channelUrl,
   ].filter(Boolean);
 
+  if (info.isVerified === true) lines.push('Verified');
+  if (info.tags !== undefined) lines.push(`Keywords: ${info.tags.join(', ')}`);
   if (info.avatarUrl !== undefined) lines.push(`Avatar: ${info.avatarUrl}`);
   if (info.bannerUrl !== undefined) lines.push(`Banner: ${info.bannerUrl}`);
 

@@ -143,6 +143,8 @@ export const channelMetaSchema = z.object({
   channel_url: z.string().nullish(),
   uploader_id: z.string().nullish(),
   channel_follower_count: z.number().nullish(),
+  channel_is_verified: z.boolean().nullish(),
+  tags: z.array(z.string()).nullish(),
   description: z.string().nullish(),
   /** Checked by `selectChannelImages`, which tolerates any shape. */
   thumbnails: z.unknown(),
