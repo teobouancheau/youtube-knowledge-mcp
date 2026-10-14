@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -12,7 +12,6 @@ import { join, resolve } from 'node:path';
  */
 
 const ROOT = resolve(import.meta.dirname, '..');
-const BIN = join(ROOT, 'node_modules', '.bin');
 const read = (path: string): string => readFileSync(join(ROOT, path), 'utf-8');
 
 const lint = (message: string): { code: number; output: string } => {
@@ -102,7 +101,6 @@ describe('scripts/commit-lint-range.sh', () => {
     const result = spawnSync('/bin/sh', [join(ROOT, 'scripts', 'commit-lint-range.sh')], {
       cwd: repo,
       encoding: 'utf-8',
-      env: { ...process.env, PATH: `${BIN}:${process.env.PATH ?? ''}` },
     });
     return { code: result.status ?? -1, output: `${result.stdout}${result.stderr}` };
   };
@@ -118,6 +116,8 @@ describe('scripts/commit-lint-range.sh', () => {
     git('config', 'user.email', 'test@example.com');
     git('config', 'user.name', 'Test');
     writeFileSync(join(repo, 'commitlint.config.js'), read('commitlint.config.js'));
+    // The configuration extends a shared preset, which has to resolve from the repository.
+    symlinkSync(join(ROOT, 'node_modules'), join(repo, 'node_modules'), 'dir');
     commit('chore: an old commit the rules would not judge');
     git('update-ref', 'refs/remotes/origin/main', 'HEAD');
   });
