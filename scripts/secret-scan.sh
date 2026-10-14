@@ -12,6 +12,16 @@ set -eu
 
 mode="${1:-}"
 
+# The argument is judged before the tool is looked for: a typo is a usage error wherever
+# gitleaks happens to be installed.
+case "$mode" in
+  staged | history | tree) ;;
+  *)
+    echo "usage: secret-scan.sh staged|history|tree" >&2
+    exit 64
+    ;;
+esac
+
 if ! command -v gitleaks >/dev/null 2>&1; then
   echo "gitleaks is not installed, so secrets cannot be scanned for." >&2
   echo "Install it: macOS 'brew install gitleaks', or see https://github.com/gitleaks/gitleaks#installing" >&2
@@ -25,8 +35,4 @@ case "$mode" in
   staged)  exec gitleaks git --config "$config" --redact --no-banner --staged "$root" ;;
   history) exec gitleaks git --config "$config" --redact --no-banner "$root" ;;
   tree)    exec gitleaks dir --config "$config" --redact --no-banner "$root" ;;
-  *)
-    echo "usage: secret-scan.sh staged|history|tree" >&2
-    exit 64
-    ;;
 esac
