@@ -58,6 +58,12 @@ const SAMPLES: [string, string][] = [
       'authentication. Also see  https://github.com/yt-dlp/yt-dlp/wiki/FAQ  for tips on effectively ' +
       'exporting YouTube cookies',
   ],
+  [
+    // Captured verbatim from yt-dlp 2026.8.19 listing @Google/releases on 2026-10-14. The
+    // harvest depends on recognising it: a channel lacking a tab is not a failed harvest.
+    'NOT_FOUND',
+    'ERROR: [youtube:tab] @Google: This channel does not have a releases tab',
+  ],
 ];
 
 describe('classifyYtDlpFailure', () => {

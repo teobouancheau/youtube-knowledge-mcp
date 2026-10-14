@@ -31,8 +31,16 @@ export type HarvestTab = (typeof HARVEST_TABS)[number];
 
 export const MAX_VIDEOS_PER_CATALOG = 10_000;
 
-/** yt-dlp says this, in these words, for a tab the channel does not have. */
-const NO_SUCH_TAB = 'does not have a';
+/**
+ * Whether a listing failed only because the channel has no such tab.
+ *
+ * Recognised by the error's code, which the classifier assigns from yt-dlp's own words.
+ * It used to look for those words in the message, which never carries them, so no
+ * channel lacking a tab was ever catalogued as complete.
+ */
+export function isAbsentTab(error: unknown): boolean {
+  return error instanceof YouTubeError && error.code === 'NOT_FOUND';
+}
 
 export interface TabResult {
   tab: HarvestTab;
@@ -72,7 +80,13 @@ ON CONFLICT(video_id) DO UPDATE SET
     ELSE json_insert(video.also_in_tabs, '$[#]', excluded.tab)
   END`;
 
-async function listTab(channelUrl: string, tab: HarvestTab, limit: number): Promise<string> {
+/** A channel tab as yt-dlp's flat listing, one JSON object per line, newest first. */
+export async function listTab(
+  channelUrl: string,
+  tab: HarvestTab,
+  limit: number,
+  label = `harvest_channel:${tab}`
+): Promise<string> {
   return runYtDlp(
     [
       '--skip-download',
@@ -84,7 +98,7 @@ async function listTab(channelUrl: string, tab: HarvestTab, limit: number): Prom
       String(limit),
     ],
     {
-      label: `harvest_channel:${tab}`,
+      label,
       timeoutMs: TIMEOUTS.transcript,
       target: resolveListTarget(`${channelUrl}/${tab}`),
     }
@@ -159,7 +173,7 @@ async function walkTabs(
       stdout = await listTab(info.channelUrl, tab, maxVideos);
     } catch (error) {
       const message = error instanceof YouTubeError ? error.message : String(error);
-      const absent = error instanceof YouTubeError && error.message.includes(NO_SUCH_TAB);
+      const absent = isAbsentTab(error);
       tabs.push({
         tab,
         listed: 0,

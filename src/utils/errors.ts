@@ -125,6 +125,16 @@ const RULES: Rule[] = [
     retryable: true,
   },
   {
+    // Raised as an expected error, so a harvest that walks every tab of a channel meets
+    // it for each tab the channel lacks. It is an answer, not a failure, and has to be
+    // recognisable as one: the generic fallback below carries none of yt-dlp's words.
+    code: 'NOT_FOUND',
+    emits: 'This channel does not have a',
+    source: 'yt_dlp/extractor/youtube/_tab.py:2393',
+    message: 'This channel does not have that tab.',
+    nextStep: 'Not every channel has every tab; this is not an error with the channel.',
+  },
+  {
     code: 'NO_CAPTIONS',
     emits: 'There are no subtitles for the requested languages',
     source: 'yt_dlp/YoutubeDL.py:4459',
