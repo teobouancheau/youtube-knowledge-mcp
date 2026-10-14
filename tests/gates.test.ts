@@ -17,8 +17,9 @@ const scripts = (JSON.parse(read('package.json')) as { scripts: Record<string, s
 describe('the pre-push gate', () => {
   const lines = read('.husky/pre-push').trim().split('\n');
 
-  it('scans the history for secrets, audits dependencies, validates, then smoke-tests the build', () => {
+  it('judges the messages, scans the history for secrets, audits, validates, then smoke-tests the build', () => {
     expect(lines).toEqual([
+      'sh scripts/commit-lint-range.sh',
       'sh scripts/secret-scan.sh history',
       'npm run audit',
       'npm run validate',
