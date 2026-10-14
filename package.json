@@ -46,7 +46,9 @@
     "prepare": "husky",
     "prepublishOnly": "npm run rebuild && npm run validate",
     "render:icon": "node scripts/render-icon.mjs",
-    "secrets": "sh scripts/secret-scan.sh tree"
+    "secrets": "sh scripts/secret-scan.sh tree",
+    "audit": "npm audit --audit-level=moderate",
+    "smoke": "npm run build && node scripts/smoke.mjs"
   },
   "files": [
     "dist"
