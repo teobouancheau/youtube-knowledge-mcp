@@ -50,7 +50,7 @@ function tabs(byTab: Partial<Record<string, string[]>>): void {
     const ids = byTab[tab];
     if (ids === undefined) {
       return Promise.reject(
-        new YouTubeError('YTDLP_FAILED', `@example: This channel does not have a ${tab} tab`)
+        new YouTubeError('NOT_FOUND', `@example: This channel does not have a ${tab} tab`)
       );
     }
     return Promise.resolve(entries(ids));
@@ -102,7 +102,7 @@ describe('harvest_channel', () => {
       const tab = (options.label ?? '').split(':')[1] ?? '';
       if (tab === 'videos') return Promise.resolve(entries(['a']));
       if (tab === 'shorts') return Promise.reject(new YouTubeError('RATE_LIMITED', 'throttled'));
-      return Promise.reject(new YouTubeError('YTDLP_FAILED', `does not have a ${tab} tab`));
+      return Promise.reject(new YouTubeError('NOT_FOUND', `does not have a ${tab} tab`));
     });
 
     const result = await harvestChannelHandler({ channel: '@example', maxVideos: 500 });
