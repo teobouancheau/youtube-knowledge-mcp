@@ -56,6 +56,11 @@ export const expectedSourceSchema = z.enum([
   'youtube:comment_count',
   'youtube:playlist_count',
   'source-exhausted',
+  /**
+   * The channel catalogue held in the store. Only ever the total of a catalogue whose own
+   * receipt is complete, so it is exactly as trustworthy as that receipt and no more.
+   */
+  'store:catalog',
 ]);
 export type ExpectedSource = z.infer<typeof expectedSourceSchema>;
 

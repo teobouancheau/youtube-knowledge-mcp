@@ -5,6 +5,7 @@ import { channelTools } from './channel-tools.js';
 import { healthTools } from './health-tools.js';
 import { libraryTools } from './library-tools.js';
 import { mediaTools } from './media-tools.js';
+import { storeTools } from './store-tools.js';
 import { thumbnailTools } from './thumbnail-tools.js';
 import { transcriptTools } from './transcript-tools.js';
 import { videoTools } from './video-tools.js';
@@ -24,6 +25,7 @@ export const TOOLS: ToolDefinition[] = [
   ...visionTools,
   ...brainTools,
   ...harvestTools,
+  ...storeTools,
   ...thumbnailTools,
 ];
 
