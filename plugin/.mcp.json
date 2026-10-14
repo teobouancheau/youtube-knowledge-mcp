@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "youtube-knowledge": {
-      "command": "npx",
-      "args": ["-y", "youtube-knowledge-mcp@3.0.1"]
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/node_modules/youtube-knowledge-mcp/dist/cli.js"]
     }
   }
 }

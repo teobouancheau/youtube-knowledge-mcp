@@ -30,8 +30,8 @@ third party services, always from your own computer and network address:
   request carries the first four characters of a SHA-256 hash of the video id, never the
   id itself, as SponsorBlock's API is designed to be used. SponsorBlock's own policy
   governs that request.
-- **The npm registry.** `npx` downloads the published package when the plugin first runs.
-  npm's own policies govern that request.
+- **The npm registry.** Claude Code downloads the packages pinned by the plugin's
+  `package-lock.json` when the plugin is installed. npm's own policies govern that request.
 
 Local transcription (`transcribe_video`) runs whisper.cpp on your computer. The audio
 and the text it produces never leave it, and the model is a file you provide.

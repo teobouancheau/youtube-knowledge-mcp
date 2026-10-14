@@ -25,12 +25,13 @@ common cause of failures, because YouTube changes often; `yt-dlp -U` fixes most 
 
 ## What the plugin runs
 
-The server is declared in `.mcp.json` as `npx -y youtube-knowledge-mcp@<exact version>`.
-On first use, npx downloads that exact version of the published
-[npm package](https://www.npmjs.com/package/youtube-knowledge-mcp) and its dependencies
-from the npm registry. The package then starts over stdio and spawns `yt-dlp` and
-`ffmpeg` from your PATH. The plugin ships no scripts, hooks or binaries of its own. The
-full source is in the [repository](https://github.com/teobouancheau/youtube-knowledge-mcp).
+The plugin pins the published [npm package](https://www.npmjs.com/package/youtube-knowledge-mcp)
+and every package it depends on in `package-lock.json`, each at an exact version with its
+integrity hash, all from the npm registry. When you install the plugin, Claude Code installs
+exactly those packages, without running any install script. `.mcp.json` then starts the
+server with `node` from that installed copy, over stdio, and it spawns `yt-dlp` and `ffmpeg`
+from your PATH. The plugin ships no scripts, hooks or binaries of its own. The full source
+is in the [repository](https://github.com/teobouancheau/youtube-knowledge-mcp).
 
 ## What it sends and fetches
 
@@ -41,7 +42,7 @@ full source is in the [repository](https://github.com/teobouancheau/youtube-know
   This is the only HTTP request the server makes itself.
 - **YouTube media, through ffmpeg.** For clips, audio clips, frames and downloads,
   yt-dlp resolves the media URL and ffmpeg reads it over HTTPS.
-- **The npm registry**, once, to install the package.
+- **The npm registry**, once, when the plugin is installed, to download the locked packages.
 
 There is no analytics, no telemetry and no other destination. The author receives no data.
 
