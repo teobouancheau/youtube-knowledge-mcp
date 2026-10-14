@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+Commit messages are checked with commitlint: by a `commit-msg` hook on every commit and
+by the pre-push hook on every commit a push adds. The rules are in `commitlint.config.js`.
+
 A Claude plugin in `plugin/`, for Anthropic's plugin directory. It launches the
 published package with `npx` at an exact version and ships its own README, icon and
 privacy policy (`PRIVACY.md`). `tests/plugin-bundle.test.ts` fails when the plugin's

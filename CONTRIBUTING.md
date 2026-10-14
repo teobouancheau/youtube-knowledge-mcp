@@ -28,7 +28,12 @@ hook scans what is staged, the pre-push hook scans the whole history, and
 `npm run validate` scans the working tree. A missing gitleaks fails the hook rather than
 skipping it. The rules are gitleaks' defaults in full; `.gitleaks.toml` only extends them.
 
-The pre-push hook runs, in order: the secret scan over the whole history, `npm run audit`
+The commit-msg hook runs [commitlint](https://commitlint.js.org/) on every message (see
+[Commit convention](#commit-convention)).
+
+The pre-push hook runs, in order: commitlint over every commit the push adds to `origin/main`
+(it fails, asking for `git fetch origin`, when that base is unknown, rather than skipping),
+the secret scan over the whole history, `npm run audit`
 (dependencies with a known vulnerability of moderate severity or worse fail it, as they do in
 CI), `npm run validate` (types, lint, formatting, tests with coverage, secrets in the tree) and
 `npm run smoke` (builds the server and checks it starts and lists its tools). A push waits for
@@ -284,6 +289,12 @@ refactor: simplify VTT parsing
 ```
 
 Explain **why** in the body, not just what — the diff already says what.
+
+`commitlint.config.js` enforces it, on commit and again on push: the types above and no
+others, a header of at most 72 characters, body lines of at most 100, a blank line before the
+body and before any footer, and no attribution line (no co-author trailer, no "generated
+with"). Wrap the body by hand before committing; a refused message is a mistake to prevent,
+and each retry reruns lint-staged.
 
 ## Pull requests
 
