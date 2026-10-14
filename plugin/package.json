@@ -1,0 +1,10 @@
+{
+  "name": "youtube-knowledge-plugin",
+  "version": "3.0.1",
+  "private": true,
+  "description": "The packages the YouTube Knowledge plugin runs, pinned by package-lock.json.",
+  "license": "MIT",
+  "dependencies": {
+    "youtube-knowledge-mcp": "3.0.1"
+  }
+}

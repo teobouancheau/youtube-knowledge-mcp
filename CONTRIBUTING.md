@@ -177,20 +177,26 @@ scripts/secret-scan.sh     # gitleaks over what is staged, the history or the tr
 ## Claude plugin
 
 `plugin/` is the folder Anthropic's directory validates and installs. It holds a
-manifest (`.claude-plugin/plugin.json`), the server declaration (`.mcp.json`), a README
-and the icon, and it ships no code of its own: `.mcp.json` launches this package with
-`npx -y youtube-knowledge-mcp@<version>`, because the directory refuses a launcher that
-is not pinned to an exact version. `assets/icon.svg` is the single source of the mark.
+manifest (`.claude-plugin/plugin.json`), the server declaration (`.mcp.json`), a README,
+the icon, and a `package.json` with its `package-lock.json`. It ships no code of its own:
+Claude Code installs the packages the lockfile pins, each at an exact version with its
+integrity hash, and `.mcp.json` runs this package from that install with
+`node ${CLAUDE_PLUGIN_ROOT}/node_modules/youtube-knowledge-mcp/dist/cli.js`. The directory
+holds a `npx` launcher for a reviewer however it is pinned and warns that it has no lockfile;
+the lockfile install is the route it documents. `assets/icon.svg` is the single source of the mark.
 `npm run render:icon` renders `plugin/icon.png` (512 by 512) and the favicons in
 `assets/` from it; edit the SVG, rerun the script and commit the outputs together. The
 script calls `rsvg-convert` from librsvg, the GNOME project's SVG renderer, which is
 a system tool rather than an npm dependency (macOS: `brew install librsvg`).
 
-The pin moves with every release. When you bump `version` in `package.json`, change
-`version` in `plugin/.claude-plugin/plugin.json` and the pin in `plugin/.mcp.json` in the
-same commit; `tests/plugin-bundle.test.ts` fails otherwise. Publish the package to npm
-before the directory picks up the new commit, because the plugin installs the version it
-names.
+The pin moves with every release, and only once the release is on npm, because the lockfile
+can only name a version the registry serves. Release in this order: bump `package.json`,
+merge, publish; then, in a second commit, set `version` in `plugin/.claude-plugin/plugin.json`
+and `plugin/package.json` to the new version and run
+`cd plugin && npm install --package-lock-only --ignore-scripts youtube-knowledge-mcp@<version>`.
+`tests/plugin-bundle.test.ts` fails when the manifest, the plugin package, the pin and the
+lockfile disagree, or when the plugin gets ahead of the package. Never add a `.npmrc` to
+`plugin/`: it would change where the packages come from.
 
 Before submitting or changing the plugin, run `claude plugin validate ./plugin`, then
 select **Validate** in the developer portal at claude.ai/directory/manage.

@@ -5,10 +5,11 @@ import { probeImage } from '../src/utils/image-dimensions.js';
 
 /**
  * The plugin folder is what Anthropic's directory validates and what users install.
- * It launches this package through npx, and the directory refuses a launcher that is
- * not pinned to an exact version, so the pin is written down in `plugin/.mcp.json`.
- * Nothing else ties that pin to a release: a version bump that forgot it would ship a
- * plugin that installs the previous version. These checks fail by name instead.
+ * Claude Code installs the packages that `plugin/package-lock.json` pins, with their
+ * hashes, and the server runs from them with `node`. The pin to this package is written in
+ * `plugin/package.json` and again in the lockfile, and the plugin's own version is a third
+ * copy. Nothing else ties them together: a release that moved one would ship a plugin that
+ * installs the previous version. These checks fail by name instead.
  */
 
 const ROOT = new URL('../', import.meta.url);
@@ -16,7 +17,43 @@ const PLUGIN = new URL('plugin/', ROOT);
 
 const httpsUrl = z.string().url().startsWith('https://');
 
-const packageSchema = z.object({ name: z.string().min(1), version: z.string().min(1) });
+const PLUGIN_ROOT_VARIABLE = '$' + '{CLAUDE_PLUGIN_ROOT}';
+const EXACT_VERSION = /^\d+\.\d+\.\d+$/;
+const REGISTRY = 'https://registry.npmjs.org/';
+
+const packageSchema = z.object({
+  name: z.string().min(1),
+  version: z.string().min(1),
+  bin: z.record(z.string(), z.string()),
+});
+
+const pluginPackageSchema = z.object({
+  version: z.string().min(1),
+  private: z.literal(true),
+  dependencies: z.record(z.string(), z.string()),
+});
+
+const lockSchema = z.object({
+  lockfileVersion: z.union([z.literal(2), z.literal(3)]),
+  packages: z.record(
+    z.string(),
+    z.object({
+      version: z.string().optional(),
+      resolved: z.string().optional(),
+      integrity: z.string().optional(),
+      hasInstallScript: z.boolean().optional(),
+      link: z.boolean().optional(),
+      dependencies: z.record(z.string(), z.string()).optional(),
+    })
+  ),
+});
+
+/** Negative when `a` is the older version, zero when equal, positive when newer. */
+function compareVersions(a: string, b: string): number {
+  const [left, right] = [a, b].map((version) => version.split('.').map(Number));
+  const difference = left?.findIndex((part, index) => part !== right?.[index]) ?? -1;
+  return difference === -1 ? 0 : (left?.[difference] ?? 0) - (right?.[difference] ?? 0);
+}
 
 const pluginSchema = z.object({
   name: z.string(),
@@ -43,26 +80,61 @@ async function load(): Promise<{
   pkg: z.infer<typeof packageSchema>;
   plugin: z.infer<typeof pluginSchema>;
   mcp: z.infer<typeof mcpSchema>;
+  pluginPackage: z.infer<typeof pluginPackageSchema>;
+  lock: z.infer<typeof lockSchema>;
 }> {
-  const [pkg, plugin, mcp] = await Promise.all([
+  const [pkg, plugin, mcp, pluginPackage, lock] = await Promise.all([
     readJson(new URL('package.json', ROOT), packageSchema),
     readJson(new URL('.claude-plugin/plugin.json', PLUGIN), pluginSchema),
     readJson(new URL('.mcp.json', PLUGIN), mcpSchema),
+    readJson(new URL('package.json', PLUGIN), pluginPackageSchema),
+    readJson(new URL('package-lock.json', PLUGIN), lockSchema),
   ]);
-  return { pkg, plugin, mcp };
+  return { pkg, plugin, mcp, pluginPackage, lock };
 }
 
 describe('plugin bundle', () => {
-  it('is released with the package', async () => {
+  it('is never ahead of the package it installs', async () => {
     const { pkg, plugin } = await load();
-    expect(plugin.version).toBe(pkg.version);
+    // The plugin is pointed at a release once that release is on npm, so it may trail the
+    // package for the length of one release, and may never lead it.
+    expect(compareVersions(plugin.version, pkg.version)).toBeLessThanOrEqual(0);
   });
 
-  it('launches exactly this package at exactly this version', async () => {
+  it('is one version in the manifest, the plugin package and the dependency it pins', async () => {
+    const { pkg, plugin, pluginPackage } = await load();
+    expect(plugin.version).toMatch(EXACT_VERSION);
+    expect(pluginPackage.version).toBe(plugin.version);
+    expect(pluginPackage.dependencies).toEqual({ [pkg.name]: plugin.version });
+  });
+
+  it('locks that version, every package with a hash, from the npm registry over https', async () => {
+    const { pkg, plugin, pluginPackage, lock } = await load();
+    const { '': root, ...installed } = lock.packages;
+
+    expect(root?.dependencies).toEqual(pluginPackage.dependencies);
+    expect(installed[`node_modules/${pkg.name}`]?.version).toBe(plugin.version);
+
+    const entries = Object.entries(installed);
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.filter(([, entry]) => !entry.integrity?.startsWith('sha512-'))).toEqual([]);
+    expect(entries.filter(([, entry]) => !entry.resolved?.startsWith(REGISTRY))).toEqual([]);
+    // Claude Code runs no install script, so a package that needs one would be half installed.
+    expect(entries.filter(([, entry]) => entry.hasInstallScript === true)).toEqual([]);
+    expect(entries.filter(([, entry]) => entry.link === true)).toEqual([]);
+  });
+
+  it('runs the locked package with node, from the plugin and not through a launcher', async () => {
     const { pkg, mcp } = await load();
+    const binary = pkg.bin[pkg.name];
     const servers = Object.values(mcp.mcpServers);
+
+    expect(binary).toBeDefined();
     expect(servers).toHaveLength(1);
-    expect(servers[0]).toEqual({ command: 'npx', args: ['-y', `${pkg.name}@${pkg.version}`] });
+    expect(servers[0]).toEqual({
+      command: 'node',
+      args: [`${PLUGIN_ROOT_VARIABLE}/node_modules/${pkg.name}/${binary ?? ''}`],
+    });
   });
 
   it('has a name the directory accepts', async () => {
@@ -105,9 +177,7 @@ describe('plugin bundle', () => {
   it('keeps files the directory refuses out of the plugin folder', async () => {
     const files = await readdir(PLUGIN, { recursive: true });
     const refused = files.filter((file) =>
-      /(^|\/)(\.DS_Store|Thumbs\.db|desktop\.ini|\.npmrc|package\.json|package-lock\.json)$/.test(
-        file
-      )
+      /(^|\/)(\.DS_Store|Thumbs\.db|desktop\.ini|\.npmrc|bunfig\.toml|uv\.toml)$/.test(file)
     );
     expect(refused).toEqual([]);
   });

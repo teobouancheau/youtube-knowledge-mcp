@@ -14,10 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Commit messages are checked with commitlint: by a `commit-msg` hook on every commit and
 by the pre-push hook on every commit a push adds. The rules are in `commitlint.config.js`.
 
-A Claude plugin in `plugin/`, for Anthropic's plugin directory. It launches the
-published package with `npx` at an exact version and ships its own README, icon and
-privacy policy (`PRIVACY.md`). `tests/plugin-bundle.test.ts` fails when the plugin's
-version or pin drifts from `package.json`.
+A Claude plugin in `plugin/`, for Anthropic's plugin directory. It pins the published
+package and its 114 dependencies in a `package-lock.json`, each at an exact version with an
+integrity hash from the npm registry, which Claude Code installs without running install
+scripts; the server then runs with `node` from that install. It ships its own README, icon
+and privacy policy (`PRIVACY.md`). `tests/plugin-bundle.test.ts` fails when the manifest,
+the plugin package, the pin or the lockfile drift apart.
 
 A new mark: a white rewind glyph on a red square, replacing the play-and-transcript
 icon. `assets/icon.svg` stays the single source; `npm run render:icon` now renders
