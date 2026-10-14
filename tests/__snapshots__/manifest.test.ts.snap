@@ -24,6 +24,24 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
   },
   {
     "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "ask_brains",
+    "parameters": [
+      "channels",
+      "limit",
+      "query",
+    ],
+    "required": [
+      "query",
+    ],
+  },
+  {
+    "annotations": {
       "destructiveHint": true,
       "idempotentHint": true,
       "openWorldHint": true,
@@ -53,6 +71,41 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     "name": "check_health",
     "parameters": [],
     "required": [],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "check_new_uploads",
+    "parameters": [
+      "channel",
+      "lookback",
+    ],
+    "required": [
+      "channel",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "concat_clips",
+    "parameters": [
+      "clips",
+      "name",
+      "outputDir",
+    ],
+    "required": [
+      "clips",
+    ],
   },
   {
     "annotations": {
@@ -111,6 +164,25 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
       "readOnlyHint": true,
     },
     "hasOutputSchema": true,
+    "name": "detect_scenes",
+    "parameters": [
+      "end",
+      "start",
+      "threshold",
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
     "name": "digest_playlist",
     "parameters": [
       "includeChapters",
@@ -139,6 +211,27 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     ],
     "required": [
       "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "export_data",
+    "parameters": [
+      "channel",
+      "dataset",
+      "format",
+      "limit",
+      "outputDir",
+      "video",
+    ],
+    "required": [
+      "dataset",
     ],
   },
   {
@@ -229,6 +322,26 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
       "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "extract_contact_sheet",
+    "parameters": [
+      "columns",
+      "count",
+      "end",
+      "start",
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
       "readOnlyHint": false,
     },
     "hasOutputSchema": true,
@@ -241,6 +354,49 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     ],
     "required": [
       "timestamp",
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "extract_frames",
+    "parameters": [
+      "count",
+      "end",
+      "start",
+      "timestamps",
+      "video",
+      "width",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "extract_gif",
+    "parameters": [
+      "chapter",
+      "end",
+      "fps",
+      "outputDir",
+      "start",
+      "video",
+      "width",
+    ],
+    "required": [
       "video",
     ],
   },
@@ -408,6 +564,23 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
       "readOnlyHint": true,
     },
     "hasOutputSchema": true,
+    "name": "get_sponsor_segments",
+    "parameters": [
+      "categories",
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
     "name": "get_thumbnail",
     "parameters": [
       "channel",
@@ -467,6 +640,24 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
       "readOnlyHint": true,
     },
     "hasOutputSchema": true,
+    "name": "get_video_details",
+    "parameters": [
+      "heatmap",
+      "refresh",
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
     "name": "get_video_info",
     "parameters": [
       "video",
@@ -515,6 +706,24 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "harvest_details",
+    "parameters": [
+      "channel",
+      "maxVideos",
+      "retryUnreadable",
+    ],
+    "required": [
+      "channel",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
     },
@@ -522,6 +731,39 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
     "name": "list_brains",
     "parameters": [],
     "required": [],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "list_captions",
+    "parameters": [
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "list_channel_playlists",
+    "parameters": [
+      "channel",
+      "limit",
+    ],
+    "required": [
+      "channel",
+    ],
   },
   {
     "annotations": {
@@ -786,6 +1028,24 @@ exports[`tool manifest snapshot > matches the recorded local surface 1`] = `
   },
   {
     "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+    },
+    "hasOutputSchema": true,
+    "name": "transcribe_video",
+    "parameters": [
+      "language",
+      "refresh",
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
       "destructiveHint": true,
       "idempotentHint": true,
       "openWorldHint": false,
@@ -932,6 +1192,23 @@ exports[`tool manifest snapshot > matches the recorded remote surface 1`] = `
       "readOnlyHint": true,
     },
     "hasOutputSchema": true,
+    "name": "get_sponsor_segments",
+    "parameters": [
+      "categories",
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
     "name": "get_thumbnail",
     "parameters": [
       "channel",
@@ -991,12 +1268,63 @@ exports[`tool manifest snapshot > matches the recorded remote surface 1`] = `
       "readOnlyHint": true,
     },
     "hasOutputSchema": true,
+    "name": "get_video_details",
+    "parameters": [
+      "heatmap",
+      "refresh",
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
     "name": "get_video_info",
     "parameters": [
       "video",
     ],
     "required": [
       "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "list_captions",
+    "parameters": [
+      "video",
+    ],
+    "required": [
+      "video",
+    ],
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+    },
+    "hasOutputSchema": true,
+    "name": "list_channel_playlists",
+    "parameters": [
+      "channel",
+      "limit",
+    ],
+    "required": [
+      "channel",
     ],
   },
   {

@@ -30,7 +30,7 @@ describe('protocol', () => {
     // the moment tools were added, and failed in the release lane instead of in
     // `npm run validate`.
     expect(local).toHaveLength(TOOLS.length);
-    expect(remote).toHaveLength(15);
+    expect(remote).toHaveLength(TOOLS.filter((tool) => tool.mode === 'all').length);
     for (const tool of local) {
       expect(tool.outputSchema, tool.name).toBeDefined();
       expect(tool.annotations, tool.name).toMatchObject({

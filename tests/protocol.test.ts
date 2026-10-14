@@ -67,6 +67,9 @@ describe('tool manifest', () => {
       'harvest',
       'query',
       'prune',
+      'detect',
+      'transcribe',
+      'concat',
     ]);
 
     for (const tool of stdioTools) {
